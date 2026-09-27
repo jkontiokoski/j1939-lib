@@ -45,6 +45,7 @@ j1939_add_test(test_id test_support unit/test_id.c)
 j1939_add_test(test_queue test_support unit/test_queue.c)
 j1939_add_test(test_stack test_support unit/test_stack.c)
 j1939_add_test(test_request test_support unit/test_request.c)
+j1939_add_test(test_diag test_support unit/test_diag.c)
 j1939_add_test(test_request_exchange test_support integration/test_request_exchange.c)
 
 # Port conformance: the bundled ports, plus the configured port if it is another one.

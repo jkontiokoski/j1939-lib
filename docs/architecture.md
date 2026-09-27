@@ -49,6 +49,7 @@ include/j1939/        public headers
                         j1939_request.h         Request and Acknowledgement
                         j1939_tp.h              transport protocol
                         j1939_addr.h            address claiming
+                        j1939_diag.h            J1939/73 DTC, lamp status and DM1/DM2 payload codec
                         j1939_queue.h           CAN frame queue over integrator storage
                         j1939_ring.h            ring index type shared by the queues (members private)
                         j1939_config.h          compile-time configuration and defaults
@@ -96,6 +97,9 @@ The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
 | Stack                  | `j1939_t`, configured by `j1939_cfg_t`           | One per CAN bus. Queues, message slots, PGN lists, CAs, event counters                |
 | Controller Application | `j1939_ca_t`, configured by `j1939_ca_cfg_t`     | Source address; NAME and address-claim state with J1939/81. Referenced by `j1939_ca_id_t` |
 | Event counters         | `j1939_stats_t`                                  | Messages and frames dropped because integrator storage was full                       |
+| DTC                    | `j1939_diag_dtc_t {spn, fmi, oc, cm}`            | J1939/73 diagnostic trouble code; 4-byte codec `j1939_diag_dtc_*()`                   |
+| Lamp status            | `j1939_diag_lamps_t`                             | MIL, red stop, amber warning, protect lamp status and flash; 2-byte codec             |
+| DM payload codec       | `j1939_diag_dm_build()`, `j1939_diag_dm_parse()` | DM1/DM2 payloads over caller buffers: lamp bytes and a DTC list, up to 1785 bytes     |
 | Return codes           | `enum j1939_ret`                                 | Returned by every fallible API                                                        |
 
 ## Interface boundaries
@@ -173,6 +177,18 @@ Receive filtering in `j1939_process()`:
 The J1939DA content is copyrighted by SAE.
 The library provides the database engine (SPN descriptor schema, bit extraction, scaling, J1939/71 not-available/error ranges) and a small illustrative table.
 Integrators supply their licensed DA content as `const` tables.
+
+### Diagnostics (J1939/73)
+
+`j1939_diag` is a pure codec; it holds no state and does not send.
+The application builds a DM1 or DM2 payload with `j1939_diag_dm_build()` into its own buffer and sends it as a message with PGN `J1939_PGN_DM1` or `J1939_PGN_DM2`.
+A received payload is decoded in place from the message slot with `j1939_diag_dm_parse()` into caller-supplied lamp and DTC storage.
+
+- DTCs are encoded with SPN conversion method 0 (the version 4 layout) only; a DTC with CM set is rejected.
+  On decode a set CM bit is reported in `cm` and the SPN is read at its version 4 position, unconverted: versions 1–3 cannot be told apart from the message.
+- No DTCs are sent as the lamp bytes, the all-zero DTC and two 0xFF bytes. One DTC is padded to eight bytes with 0xFF. Two or more DTCs give 2 + 4n bytes, sent with the transport protocol.
+- The parser accepts 2 + 4n bytes (n ≥ 1) and the padded eight-byte form. A single DTC with SPN 0 and FMI 0 means no DTCs. For the builder that DTC is reserved and rejected in a list.
+- Malformed payloads return `J1939_RET_ERR_ARG`; a too small output buffer or DTC array returns `J1939_RET_ERR_FULL`, and the parser then reports the number of DTCs the payload holds.
 
 ## Development standards
 
