@@ -22,7 +22,7 @@ target_include_directories(example_common PUBLIC common)
 target_link_libraries(example_common PUBLIC ${_example_lib})
 j1939_set_warnings(example_common)
 
-foreach(_example addr_claim_demo)
+foreach(_example addr_claim_demo pgn_listener)
 	add_executable(${_example} ${_example}/${_example}.c)
 	set_target_properties(${_example} PROPERTIES C_STANDARD 99 C_EXTENSIONS OFF)
 	target_link_libraries(${_example} PRIVATE example_common)

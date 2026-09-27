@@ -65,6 +65,7 @@ port/socketcan/       Linux SocketCAN (CAN_RAW) port, plus j1939_socketcan.[ch] 
 examples/             example applications on Linux SocketCAN, built with J1939_BUILD_EXAMPLES
                         common/                 clock, Ctrl-C and printing helpers of the examples
                         addr_claim_demo/        address claiming and arbitration between instances
+                        pgn_listener/           receives PGNs (single frame and TP), answers a Request
 examples/signals/     illustrative signal table: invented Proprietary B signals
 tests/port/           port conformance tests, compiled once per port; SocketCAN loopback test
 tests/unit/           unit tests per module (mock port)
