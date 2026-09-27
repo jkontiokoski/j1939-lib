@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 jkontiokoski
+//
+// cppcheck suppressions. Each entry is a documented deviation, see docs/architecture.md.
+
+// System headers are not analysed.
+missingIncludeSystem
+checkersReport
+
+// Public API functions have no callers inside the library.
+unusedFunction
+
+// The optional integrator configuration include is only resolvable in integrator builds.
+preprocessorErrorDirective:include/j1939/j1939_config.h
+
+// MISRA 2.3/2.4: public headers declare types and tags for the integrator's use.
+misra-c2012-2.3:include/j1939/*
+misra-c2012-2.4:include/j1939/*

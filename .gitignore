@@ -1,0 +1,15 @@
+# Build directories
+/build/
+/build-*/
+
+# Build artefacts outside CMake build directories
+*.o
+*.a
+*.gcda
+*.gcno
+
+# Editor and tool state
+.vscode/
+.idea/
+.cache/
+compile_commands.json
