@@ -28,7 +28,7 @@
 | M2        | J1939/21 core: stack init/process, DA and PGN filtering, message pull API, single-frame send, Request (PGN 59904), Acknowledgement (PGN 59392)             | Done    |
 | M3        | J1939/21 transport protocol: BAM and RTS/CTS tx/rx, timers T1–T4/Tr/Th, aborts, session pool with integrator-supplied reassembly memory                   | Done    |
 | M4        | J1939/81 network management: NAME codec, address claiming, Cannot Claim, Request for Address Claimed, arbitrary address capability, Commanded Address     | Done    |
-| M5        | SocketCAN example applications, porting guide worked examples                                                                                             | Planned |
+| M5        | SocketCAN example applications, porting guide worked examples                                                                                             | Done    |
 | M6        | Signals / database layer (J1939/71 + DA schema): SPN descriptors, bit extraction and insertion, scaling, validity ranges                                  | Done    |
 | M7        | Diagnostics (J1939/73): DTC codec, lamp status, DM1/DM2 payload codec, DM1/DM2/DM3/DM11 PGNs done. Pending: periodic DM1 (1 s), DM1/DM2 over TP, DM3/DM11 handling in the stack | In progress |
 
