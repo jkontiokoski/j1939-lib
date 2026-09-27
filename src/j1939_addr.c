@@ -140,6 +140,41 @@ static void address_lost(j1939_t *s, j1939_ca_t *ca) {
 	}
 }
 
+/* Corrupted claim state: stop transmitting, drop a pending command and announce it. */
+static void fail_safe(j1939_t *s, j1939_ca_t *ca) {
+	ca->commanded = J1939_ADDR_NULL;
+	cannot_claim_enter(s, ca);
+}
+
+/*
+ * Applies a pending Commanded Address. Returns true if the CA gave up its
+ * address for the commanded one; its claim then starts as after a loss.
+ */
+static bool command_apply(j1939_t *s, j1939_ca_t *ca) {
+	uint8_t next = ca->commanded;
+	bool moved = false;
+
+	ca->commanded = J1939_ADDR_NULL;
+	if (next > CA_ADDRESS_MAX) {
+		/* No command pending. */
+	} else if (ca->address == next) {
+		/* Already there: announce it again; an unclaimed CA claims it anyway. */
+		if (held(ca)) {
+			claim_repeat(s, ca);
+		}
+	} else if (local_in_use(s, next)) {
+		/* Another CA of the stack uses the address: refused. */
+	} else {
+		address_release(s, ca);
+		ca->address = next;
+		ca->state = J1939_ADDR_STATE_UNCLAIMED;
+		ca->cannot_claim_pending = false;
+		claim_start(s, ca);
+		moved = true;
+	}
+	return moved;
+}
+
 /* Returns true once timer_us has run out, and counts it down otherwise. */
 static bool timer_expired(j1939_ca_t *ca, uint32_t elapsed_us) {
 	bool expired = ca->timer_us <= elapsed_us;
@@ -158,6 +193,8 @@ void j1939_addr_ca_init(j1939_ca_t *ca, const j1939_ca_cfg_t *cfg) {
 	ca->timer_us = 0U;
 	ca->address = cfg->address;
 	ca->cannot_claim_pending = false;
+	ca->accept_commanded = cfg->accept_commanded;
+	ca->commanded = J1939_ADDR_NULL;
 }
 
 void j1939_addr_process(j1939_t *s, uint32_t elapsed_us) {
@@ -166,26 +203,31 @@ void j1939_addr_process(j1939_t *s, uint32_t elapsed_us) {
 	for (i = 0U; i < s->ca_count; i++) {
 		j1939_ca_t *ca = &s->ca[i];
 
+		/* A new claim started by a command counts its time from the next call. */
 		switch (ca->state) {
 		case J1939_ADDR_STATE_UNCLAIMED:
-			claim_start(s, ca);
+			if (!command_apply(s, ca)) {
+				claim_start(s, ca);
+			}
 			break;
 		case J1939_ADDR_STATE_CLAIMING:
-			if (timer_expired(ca, elapsed_us)) {
+			if (!command_apply(s, ca) && timer_expired(ca, elapsed_us)) {
 				ca->state = J1939_ADDR_STATE_CLAIMED;
 			}
 			break;
 		case J1939_ADDR_STATE_CLAIMED:
+			(void)command_apply(s, ca);
 			break;
 		case J1939_ADDR_STATE_CANNOT_CLAIM:
-			if (ca->cannot_claim_pending && timer_expired(ca, elapsed_us) &&
+			if (!command_apply(s, ca) && ca->cannot_claim_pending &&
+			    timer_expired(ca, elapsed_us) &&
 			    (claim_tx(s, ca, J1939_ADDR_NULL) == J1939_RET_OK)) {
 				ca->cannot_claim_pending = false;
 			}
 			break;
 		default:
 			/* Corrupted state: stop transmitting and announce it. */
-			cannot_claim_enter(s, ca);
+			fail_safe(s, ca);
 			break;
 		}
 	}
@@ -246,6 +288,35 @@ void j1939_addr_claim_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8
 	}
 }
 
+bool j1939_addr_command_accepted(const j1939_t *s) {
+	bool found = false;
+	uint8_t i;
+
+	for (i = 0U; (!found) && (i < s->ca_count); i++) {
+		found = s->ca[i].accept_commanded;
+	}
+	return found;
+}
+
+void j1939_addr_command_handle(j1939_t *s, const uint8_t *data, uint16_t len) {
+	if (len >= J1939_ADDR_COMMAND_LEN) {
+		uint64_t name = 0U;
+		uint8_t next = data[J1939_NAME_LEN];
+		uint8_t i;
+
+		(void)j1939_name_from_bytes(data, &name);
+		for (i = 0U; i < s->ca_count; i++) {
+			j1939_ca_t *ca = &s->ca[i];
+
+			/* 254 and 255 are not addresses a CA can claim. */
+			if (ca->accept_commanded && (ca->name == name) &&
+			    (next <= CA_ADDRESS_MAX)) {
+				ca->commanded = next;
+			}
+		}
+	}
+}
+
 void j1939_addr_request_handle(j1939_t *s, uint8_t da) {
 	uint8_t i;
 
@@ -268,7 +339,7 @@ void j1939_addr_request_handle(j1939_t *s, uint8_t da) {
 				}
 				break;
 			default:
-				cannot_claim_enter(s, ca);
+				fail_safe(s, ca);
 				break;
 			}
 		}
@@ -301,6 +372,28 @@ j1939_ret_t j1939_addr_get(const j1939_t *s, j1939_ca_id_t ca, uint8_t *address,
 		*address = held(c) ? c->address : J1939_ADDR_NULL;
 		*state = c->state;
 		ret = J1939_RET_OK;
+	}
+	return ret;
+}
+
+j1939_ret_t j1939_addr_command_send(j1939_t *s, j1939_ca_id_t ca, uint64_t name, uint8_t address,
+                                    uint8_t da) {
+	j1939_ret_t ret = J1939_RET_ERR_ARG;
+
+	if ((address <= CA_ADDRESS_MAX) && (da != J1939_ADDR_NULL)) {
+		uint8_t data[J1939_ADDR_COMMAND_LEN];
+		j1939_msg_t msg;
+
+		(void)j1939_name_to_bytes(name, data);
+		data[J1939_NAME_LEN] = address;
+		msg.pgn = J1939_PGN_COMMANDED_ADDRESS;
+		msg.prio = J1939_PRIO_DEFAULT;
+		msg.sa = 0U;
+		msg.da = da;
+		msg.len = (uint16_t)J1939_ADDR_COMMAND_LEN;
+		msg.data = data;
+		/* The transport protocol copies the payload; it needs a claimed sender. */
+		ret = j1939_send(s, ca, &msg);
 	}
 	return ret;
 }
