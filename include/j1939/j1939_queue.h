@@ -22,15 +22,12 @@
 
 #include "j1939/j1939_port_contract.h"
 #include "j1939/j1939_ret.h"
+#include "j1939/j1939_ring.h"
 
 /** Frame queue. Members are private to the library. */
 typedef struct j1939_queue {
 	j1939_port_frame_t *buf; /**< Integrator storage. */
-	uint16_t len;            /**< Number of slots in buf. */
-	uint16_t head;           /**< Next slot to be written. */
-	uint16_t tail;           /**< Oldest written slot. */
-	uint16_t count;          /**< Number of written slots. */
-	j1939_port_lock_t lock;  /**< Protects head, tail and count. */
+	j1939_ring_t ring;       /**< Indices into buf. */
 } j1939_queue_t;
 
 /**

@@ -5,25 +5,14 @@
 
 #include <stddef.h>
 
-static uint16_t next_index(const j1939_queue_t *q, uint16_t index) {
-	uint16_t next = (uint16_t)(index + 1U);
-
-	if (next >= q->len) {
-		next = 0U;
-	}
-	return next;
-}
+#include "j1939_ring_priv.h"
 
 j1939_ret_t j1939_queue_init(j1939_queue_t *q, j1939_port_frame_t *buf, uint16_t len) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((q != NULL) && (buf != NULL) && (len > 0U)) {
 		q->buf = buf;
-		q->len = len;
-		q->head = 0U;
-		q->tail = 0U;
-		q->count = 0U;
-		j1939_port_lock_init(&q->lock);
+		j1939_ring_init(&q->ring, len);
 		ret = J1939_RET_OK;
 	}
 	return ret;
@@ -31,13 +20,10 @@ j1939_ret_t j1939_queue_init(j1939_queue_t *q, j1939_port_frame_t *buf, uint16_t
 
 j1939_port_frame_t *j1939_queue_acquire(j1939_queue_t *q) {
 	j1939_port_frame_t *slot = NULL;
+	uint16_t index;
 
-	if (q != NULL) {
-		j1939_port_lock(&q->lock);
-		if (q->count < q->len) {
-			slot = &q->buf[q->head];
-		}
-		j1939_port_unlock(&q->lock);
+	if ((q != NULL) && j1939_ring_head(&q->ring, &index)) {
+		slot = &q->buf[index];
 	}
 	return slot;
 }
@@ -46,15 +32,7 @@ j1939_ret_t j1939_queue_commit(j1939_queue_t *q) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if (q != NULL) {
-		j1939_port_lock(&q->lock);
-		if (q->count < q->len) {
-			q->head = next_index(q, q->head);
-			q->count++;
-			ret = J1939_RET_OK;
-		} else {
-			ret = J1939_RET_ERR_FULL;
-		}
-		j1939_port_unlock(&q->lock);
+		ret = j1939_ring_push(&q->ring) ? J1939_RET_OK : J1939_RET_ERR_FULL;
 	}
 	return ret;
 }
@@ -77,13 +55,10 @@ j1939_ret_t j1939_queue_put(j1939_queue_t *q, const j1939_port_frame_t *frame) {
 
 const j1939_port_frame_t *j1939_queue_peek(j1939_queue_t *q) {
 	const j1939_port_frame_t *slot = NULL;
+	uint16_t index;
 
-	if (q != NULL) {
-		j1939_port_lock(&q->lock);
-		if (q->count > 0U) {
-			slot = &q->buf[q->tail];
-		}
-		j1939_port_unlock(&q->lock);
+	if ((q != NULL) && j1939_ring_tail(&q->ring, &index)) {
+		slot = &q->buf[index];
 	}
 	return slot;
 }
@@ -92,15 +67,7 @@ j1939_ret_t j1939_queue_pop(j1939_queue_t *q) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if (q != NULL) {
-		j1939_port_lock(&q->lock);
-		if (q->count > 0U) {
-			q->tail = next_index(q, q->tail);
-			q->count--;
-			ret = J1939_RET_OK;
-		} else {
-			ret = J1939_RET_ERR_EMPTY;
-		}
-		j1939_port_unlock(&q->lock);
+		ret = j1939_ring_pop(&q->ring) ? J1939_RET_OK : J1939_RET_ERR_EMPTY;
 	}
 	return ret;
 }
@@ -109,9 +76,7 @@ uint16_t j1939_queue_count(j1939_queue_t *q) {
 	uint16_t count = 0U;
 
 	if (q != NULL) {
-		j1939_port_lock(&q->lock);
-		count = q->count;
-		j1939_port_unlock(&q->lock);
+		count = j1939_ring_count(&q->ring);
 	}
 	return count;
 }
