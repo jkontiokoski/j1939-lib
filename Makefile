@@ -10,6 +10,7 @@ BUILD_DIR := build
 TEST_DIR  := build-test
 COV_DIR   := build-coverage
 ARM_DIR   := build-arm
+EX_DIR    := build-examples
 
 COVERAGE_MIN := 90
 
@@ -18,7 +19,7 @@ FORMAT_FILES = $(shell find include src tests port examples \
 CPPCHECK_FLAGS = --std=c99 --enable=all --inconclusive --error-exitcode=1 --inline-suppr \
 	--suppressions-list=cppcheck-suppressions.txt
 
-.PHONY: all lib test coverage cross format format-check lint clean
+.PHONY: all lib test coverage cross examples format format-check lint clean
 
 all: lib
 
@@ -42,6 +43,10 @@ cross:
 	$(CMAKE) -S . -B $(ARM_DIR) --toolchain cmake/arm-none-eabi.cmake -DJ1939_BUILD_TESTS=OFF
 	$(CMAKE) --build $(ARM_DIR)
 
+examples:
+	$(CMAKE) -S . -B $(EX_DIR) -DCMAKE_BUILD_TYPE=Debug -DJ1939_BUILD_TESTS=OFF -DJ1939_BUILD_EXAMPLES=ON
+	$(CMAKE) --build $(EX_DIR)
+
 format:
 	clang-format -i $(FORMAT_FILES)
 
@@ -53,6 +58,8 @@ lint:
 		-I include -I port/mock -i port/mock/j1939_port_fixture.c src include port/mock
 	cppcheck $(CPPCHECK_FLAGS) \
 		-I include -I port/socketcan -i port/socketcan/j1939_port_fixture.c port/socketcan
+	cppcheck $(CPPCHECK_FLAGS) -I include -I port/socketcan -I examples/common \
+		examples/common examples/addr_claim_demo
 
 clean:
-	rm -rf $(BUILD_DIR) $(TEST_DIR) $(COV_DIR) $(ARM_DIR)
+	rm -rf $(BUILD_DIR) $(TEST_DIR) $(COV_DIR) $(ARM_DIR) $(EX_DIR)
