@@ -14,6 +14,7 @@
 #include "j1939/j1939_addr.h"
 #include "j1939/j1939_config.h"
 #include "j1939/j1939_diag.h"
+#include "j1939/j1939_dm.h"
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_msg.h"
 #include "j1939/j1939_name.h"

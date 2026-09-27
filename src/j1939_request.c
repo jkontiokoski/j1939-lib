@@ -8,6 +8,7 @@
 #include "j1939/j1939_addr.h"
 #include "j1939/j1939_id.h"
 #include "j1939_addr_priv.h"
+#include "j1939_dm_priv.h"
 #include "j1939_stack_priv.h"
 
 #define BYTE_MASK         0xFFU
@@ -57,6 +58,8 @@ void j1939_request_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t 
 			/* Malformed Request. */
 		} else if (pgn == J1939_PGN_ADDRESS_CLAIMED) {
 			j1939_addr_request_handle(s, da);
+		} else if (j1939_dm_request_handle(s, id, pgn)) {
+			/* Diagnostic message answered by the stack. */
 		} else if (j1939_stack_pgn_listed(s->req_pgns, s->req_pgns_len, pgn)) {
 			j1939_stack_deliver(s, id, data, len);
 		} else if ((da != J1939_ADDR_GLOBAL) && j1939_addr_claimed(s, da)) {

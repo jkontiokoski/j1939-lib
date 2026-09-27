@@ -24,6 +24,7 @@ Each layer depends only on the layers below it.
  ──────────────────────────────────────────────────────────────────────────────
  j1939_diag (J1939/73)   j1939_signal (J1939/71 + DA schema)              optional modules
  ──────────────────────────────────────────────────────────────────────────────
+ j1939_dm (J1939/73): DM1/DM2 transmission, DM3/DM11 handling per CA
  j1939_addr (J1939/81)   j1939_tp (J1939/21 TP.BAM / TP.CM)               protocol core
  j1939_stack: j1939_t, rx/tx queues, CA objects, DA/PGN filtering, message slots
  j1939_request: Request (PGN 59904) and Acknowledgement (PGN 59392)
@@ -51,6 +52,7 @@ include/j1939/        public headers
                         j1939_tp.h              transport protocol
                         j1939_addr.h            address claiming
                         j1939_diag.h            J1939/73 DTC, lamp status and DM1/DM2 payload codec
+                        j1939_dm.h              J1939/73 diagnostics of a CA: DM1, DM2, DM3, DM11
                         j1939_queue.h           CAN frame queue over integrator storage
                         j1939_ring.h            ring index type shared by the queues (members private)
                         j1939_config.h          compile-time configuration and defaults
@@ -103,10 +105,11 @@ The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
 | Signal descriptor      | `j1939_signal_t`, `j1939_signal_*()` functions   | SPN position, length, scaling and J1939/71 range type; `const` integrator data        |
 | Stack                  | `j1939_t`, configured by `j1939_cfg_t`           | One per CAN bus. Queues, message slots, PGN lists, CAs, event counters                |
 | Controller Application | `j1939_ca_t`, configured by `j1939_ca_cfg_t`     | Source address; NAME and address-claim state with J1939/81. Referenced by `j1939_ca_id_t` |
-| Event counters         | `j1939_stats_t`                                  | Messages and frames dropped because integrator storage was full; transport protocol aborts and refusals |
+| Event counters         | `j1939_stats_t`                                  | Messages and frames dropped because integrator storage was full; transport protocol aborts and refusals; diagnostic sends retried or given up |
 | DTC                    | `j1939_diag_dtc_t {spn, fmi, oc, cm}`            | J1939/73 diagnostic trouble code; 4-byte codec `j1939_diag_dtc_*()`                   |
 | Lamp status            | `j1939_diag_lamps_t`                             | MIL, red stop, amber warning, protect lamp status and flash; 2-byte codec             |
 | DM payload codec       | `j1939_diag_dm_build()`, `j1939_diag_dm_parse()` | DM1/DM2 payloads over caller buffers: lamp bytes and a DTC list, up to 1785 bytes     |
+| Diagnostic state       | `j1939_dm_t`, configured by `j1939_dm_cfg_t`     | Per CA, integrator storage: copies of the active and previously active DTCs and the lamps; DM1 schedule, change hold records, pending answers and clear requests |
 | TP buffer              | `j1939_tp_buf_t`                                 | Integrator storage for one multi-packet message (`J1939_CFG_TP_BUF_SIZE` bytes), for sending or reassembly |
 | TP session             | `j1939_tp_session_t`, pool of `J1939_CFG_TP_SESSIONS` in `j1939_t` | One BAM or RTS/CTS transfer in either direction; explicit state machine with its timer |
 | Return codes           | `enum j1939_ret`                                 | Returned by every fallible API                                                        |
@@ -164,6 +167,7 @@ PGNs in the lists must be valid PGNs: at most 0x3FFFF, lowest byte 0 for PDU1 fo
 | Application tx      | `j1939_send(&stack, ca, &msg)`, `j1939_request_send(&stack, ca, pgn, da)`                 | Main loop / task                   |
 | Address claim state | `j1939_addr_get(&stack, ca, &address, &state)`                                            | Main loop / task                   |
 | Commanded Address   | `j1939_addr_command_send(&stack, ca, name, address, da)`                                  | Main loop / task                   |
+| Diagnostics         | `j1939_dm_active_set()`, `j1939_dm_prev_set()`, `j1939_dm_lamps_set()`; `j1939_dm_clear_get()` → `j1939_dm_clear_confirm()` | Main loop / task                   |
 
 - The rx and tx queues are `j1939_queue_t` instances over the integrator's buffers, reached through `j1939_rx_queue()` and `j1939_tx_queue()`. Each has one producer and one consumer, which may run in different contexts; index updates run inside the port lock, frame contents are written and read outside it. Every slot of the buffer is usable.
 - `j1939_process()` handles the frames present in the rx queue when it starts; frames arriving meanwhile wait for the next call. It stores application messages in the message slots and queues frames the stack generates into the tx queue.
@@ -194,6 +198,7 @@ Receive filtering in `j1939_process()`:
 2. Frames addressed to an address none of the stack's CAs holds are dropped; global frames pass. Address Claimed (PGN 60928) is handled by address claiming whatever its destination, and is also delivered to the application if it is in `rx_pgns`.
 3. A Request (PGN 59904) is handled by the Request module:
    - a Request for Address Claimed (PGN 60928) is answered by the stack for every CA it concerns and is never delivered;
+   - a Request for DM1, DM2, and for DM3 or DM11 where the CA accepts them, is handled by the diagnostics of the CAs it addresses and is not delivered (see Diagnostics);
    - for a PGN in `req_pgns` it is delivered to the application, which reads the PGN with `j1939_request_pgn_get()` and answers with `j1939_send()`;
    - a destination-specific Request for any other PGN is answered by the stack with a NACK (PGN 59392), sent to the global address with the requester in byte 5, as J1939/21 specifies; a CA still in its claim wait sends no NACK;
    - a global Request for any other PGN, and a Request shorter than 3 bytes, are ignored.
@@ -287,7 +292,6 @@ if ((msg != NULL) &&
 ### Diagnostics (J1939/73)
 
 `j1939_diag` is a pure codec; it holds no state and does not send.
-The application builds a DM1 or DM2 payload with `j1939_diag_dm_build()` into its own buffer and sends it as a message with PGN `J1939_PGN_DM1` or `J1939_PGN_DM2`.
 A received payload is decoded in place from the message slot with `j1939_diag_dm_parse()` into caller-supplied lamp and DTC storage.
 
 - DTCs are encoded with SPN conversion method 0 (the version 4 layout) only; a DTC with CM set is rejected.
@@ -295,6 +299,36 @@ A received payload is decoded in place from the message slot with `j1939_diag_dm
 - No DTCs are sent as the lamp bytes, the all-zero DTC and two 0xFF bytes. One DTC is padded to eight bytes with 0xFF. Two or more DTCs give 2 + 4n bytes, sent with the transport protocol.
 - The parser accepts 2 + 4n bytes (n ≥ 1) and the padded eight-byte form. A single DTC with SPN 0 and FMI 0 means no DTCs. For the builder that DTC is reserved and rejected in a list.
 - Malformed payloads return `J1939_RET_ERR_ARG`; a too small output buffer or DTC array returns `J1939_RET_ERR_FULL`, and the parser then reports the number of DTCs the payload holds.
+
+`j1939_dm` (`src/j1939_dm.c`) transmits the diagnostic state of a CA.
+The application owns its fault memory (detection, occurrence counts, the move of a DTC from active to previously active) and copies the result into the stack; the stack never calls out.
+
+```c
+static j1939_diag_dtc_t active[8], prev[8];
+static j1939_dm_hold_t hold[4];
+static uint8_t dm_buf[J1939_DM_BUF_LEN(8)];
+static j1939_dm_t dm;
+
+const j1939_dm_cfg_t dm_cfg = {
+	.active = active, .active_len = 8,
+	.prev = prev, .prev_len = 8,
+	.hold = hold, .hold_len = 4,
+	.buf = dm_buf, .buf_len = sizeof(dm_buf),
+	.dm3_enable = false, .dm11_enable = true,
+};
+j1939_dm_init(&stack, ca, &dm, &dm_cfg);
+j1939_dm_active_set(&stack, ca, dtcs, n);   /* whenever the fault set changes */
+```
+
+- `j1939_dm_active_set()`, `j1939_dm_prev_set()` and `j1939_dm_lamps_set()` validate and copy; the lists keep the application's order. A DTC is identified by SPN and FMI; duplicates are rejected.
+- DM1 goes to the global address once per second (`J1939_DM1_PERIOD_US`), also without DTCs. The first DM1 goes out in the `j1939_process()` call in which the CA's claim completes; the period counts from the next call and keeps its phase across late calls. Before the claim, or after the CA lost its address, nothing is sent.
+- On a change of the active set (a DTC new or gone) a DM1 goes out with the next `j1939_process()`, besides the periodic ones. J1939/73 recommends at most one reported state change per DTC per second: a DTC whose change triggered a DM1 holds for one second (`j1939_dm_hold_t` records, fresh records count from the next call) and a further change of it triggers nothing; its new state goes out with the next DM1. A change of another DTC still triggers. While every record is held, a change triggers nothing and waits for the periodic DM1, so at most `hold_len` change-triggered DM1s go out per second. Occurrence count and lamp changes trigger nothing.
+- A Request for DM1 or DM2, global or to the CA's address, is answered to the global address, both being PDU2 PGNs: DM1 at once, DM2 with the previously active list. DM payloads of more than 8 bytes use BAM.
+- Sends that find the tx queue full or the CA's broadcast busy are retried with every call and counted in `dm_tx_retry`. A DM2 answer or acknowledgement not sent within `J1939_DM_RESPONSE_US` (Tr, 200 ms), or pending when the CA loses its address, is given up and counted in `dm_tx_dropped`; so is a periodic DM1 still unsent when the next one is due. A BAM of many DTCs can outlast a period: size the lists for what the bus carries.
+- DM3 (clear previously active DTCs) and DM11 (clear active DTCs) are opt-in per CA (`dm3_enable`, `dm11_enable`). Without the option the Request is handled as any unsupported PGN: NACK when destination specific, delivered if the PGN is in `req_pgns`.
+- Clearing is the application's decision. The stack records the request and reports it with `j1939_dm_clear_get()`; `j1939_dm_clear_confirm()` accepts or refuses it within `J1939_DM_RESPONSE_US` after the first `j1939_process()` following the request, otherwise it is refused. On acceptance the stack empties its copy of the concerned list (DM3: previously active, DM11: active; the other list stays), the application clears its own records before the next `j1939_process()`, which acknowledges (ACK) a destination specific request. A refused destination specific request is answered with NACK. A global request is never acknowledged. A further request from another requester while one is in progress is answered with Cannot Respond; a global one is covered by it. Faults still present are set again by the application and reported as new.
+  Reasoning: clearing erases evidence of faults, which in a safety-rated system is a decision of the application's fault management (operating state, access rights, non-volatile memory), not of the protocol layer. The pull style keeps the library free of callbacks, and the time limit keeps a request that the application does not handle from staying open.
+- Not implemented: RTS/CTS answers to a destination specific Request of a multi-packet DM (answers go global with BAM); DM1 on several networks; lamp changes as a DM1 trigger; the OBD rule that DM11 is accepted only globally.
 
 ## Development standards
 
@@ -338,6 +372,7 @@ A received payload is decoded in place from the message slot with `j1939_diag_dm
 - `test_signal` compares bit extraction and insertion against a bit-by-bit reference model for every offset and length in payloads of 1 to 8 bytes. `test_signal_example` builds and decodes messages with the example table from `examples/signals/`.
 - Timers are tested by passing the elapsed time to `j1939_process()`, for example one call 1 µs before and one at a deadline.
 - `test_addr_command` drives Commanded Address on one stack with injected BAM and RTS/CTS transfers; `test_addr_command_exchange` lets a tool node move a target with BAM and with RTS/CTS while a monitor node watches the Address Claimed messages.
+- `test_dm` checks the DM1 period at its boundaries, change triggers and their per-DTC hold, 0, 1 and several DTCs (BAM), Request answers, the DM3/DM11 decisions and timeouts, claim gating, full tx queue and busy broadcast; `test_dm_exchange` has a diagnostic tool node parse DM1 (single frame and BAM), request DM2 and clear with DM11.
 - `test_tp` drives the transport protocol of one stack with injected peer frames and checks every sent frame and timer boundary; `test_tp_exchange` runs BAM and RTS/CTS transfers of up to 1785 bytes between three stacks, with a lost packet, aborts, concurrent sessions and exhausted reassembly memory.
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Coverage with gcov/gcovr; target ≥ 90 % line coverage on the protocol core, branch coverage reported. Defensive checks against states the design rules out remain as uncovered branches.

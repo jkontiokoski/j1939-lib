@@ -15,6 +15,9 @@
  * - A destination specific Request for any other PGN is answered by the
  *   stack with a NACK, sent to the global address.
  * - A global Request for any other PGN is ignored.
+ *
+ * Requests for DM1, DM2, DM3 and DM11 to a CA with diagnostics enabled are
+ * handled by the stack before these rules, see j1939_dm.h.
  */
 
 #ifndef J1939_REQUEST_H
