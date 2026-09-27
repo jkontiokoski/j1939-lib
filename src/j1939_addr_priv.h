@@ -24,6 +24,9 @@ void j1939_addr_process(j1939_t *s, uint32_t elapsed_us);
 /* Returns true if a CA of the stack holds address, so frames to it are received. */
 bool j1939_addr_held(const j1939_t *s, uint8_t address);
 
+/* Returns true if a CA of the stack has claimed address and may transmit from it. */
+bool j1939_addr_claimed(const j1939_t *s, uint8_t address);
+
 /* Returns true if the CA has claimed its address and may transmit. */
 bool j1939_addr_tx_allowed(const j1939_ca_t *ca);
 

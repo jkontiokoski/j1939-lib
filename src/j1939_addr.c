@@ -191,6 +191,16 @@ bool j1939_addr_held(const j1939_t *s, uint8_t address) {
 	return found;
 }
 
+bool j1939_addr_claimed(const j1939_t *s, uint8_t address) {
+	bool found = false;
+	uint8_t i;
+
+	for (i = 0U; (!found) && (i < s->ca_count); i++) {
+		found = j1939_addr_tx_allowed(&s->ca[i]) && (s->ca[i].address == address);
+	}
+	return found;
+}
+
 bool j1939_addr_tx_allowed(const j1939_ca_t *ca) {
 	return ca->state == J1939_ADDR_STATE_CLAIMED;
 }

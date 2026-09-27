@@ -167,7 +167,7 @@ Receive filtering in `j1939_process()`:
 3. A Request (PGN 59904) is handled by the Request module:
    - a Request for Address Claimed (PGN 60928) is answered by the stack for every CA it concerns and is never delivered;
    - for a PGN in `req_pgns` it is delivered to the application, which reads the PGN with `j1939_request_pgn_get()` and answers with `j1939_send()`;
-   - a destination-specific Request for any other PGN is answered by the stack with a NACK (PGN 59392), sent to the global address with the requester in byte 5, as J1939/21 specifies;
+   - a destination-specific Request for any other PGN is answered by the stack with a NACK (PGN 59392), sent to the global address with the requester in byte 5, as J1939/21 specifies; a CA still in its claim wait sends no NACK;
    - a global Request for any other PGN, and a Request shorter than 3 bytes, are ignored.
 4. Any other PGN in `rx_pgns` is delivered to the application; the rest are dropped.
 

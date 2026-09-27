@@ -195,6 +195,33 @@ static void test_claiming_ca_receives_its_frames(void) {
 	TEST_ASSERT_NULL(j1939_msg_peek(&s));
 }
 
+/* During the claim wait the stack generates no traffic from the address but claims. */
+static void test_nack_only_from_claimed_address(void) {
+	const uint8_t req[3] = {0x20U, 0xFFU, 0x00U}; /* unsupported PGN 0xFF20 */
+	uint32_t id = 0U;
+	const j1939_port_frame_t *f;
+
+	(void)ca_add(OWN, NAME_LOSE); /* claimed, at another address */
+	(void)ca_add(0x80U, NAME_OWN);
+	process(0U);
+	tx_expect_claim(OWN, NAME_LOSE);
+	tx_expect_claim(0x80U, NAME_OWN);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_id_build(6U, J1939_PGN_REQUEST, 0x80U, OTHER, &id));
+	rx(id, req, 3U);
+	process(0U);
+	expect_state(1U, J1939_ADDR_STATE_CLAIMING, 0x80U);
+	tx_expect_empty();
+
+	process(J1939_ADDR_CLAIM_WAIT_US);
+	rx(id, req, 3U);
+	process(0U);
+	f = j1939_queue_peek(j1939_tx_queue(&s));
+	TEST_ASSERT_NOT_NULL(f);
+	TEST_ASSERT_EQUAL_HEX32(0x18E8FF80U, j1939_port_frame_id_get(f));
+	TEST_ASSERT_EQUAL_HEX8(J1939_ACK_CTRL_NACK, j1939_port_frame_data(f)[0]);
+	TEST_ASSERT_EQUAL_HEX8(OTHER, j1939_port_frame_data(f)[4]);
+}
+
 static void test_contention_won_repeats_claim(void) {
 	j1939_ca_id_t ca = ca_add(0x80U, NAME_OWN);
 
@@ -575,6 +602,7 @@ int main(void) {
 	RUN_TEST(test_claim_is_sent_by_first_process);
 	RUN_TEST(test_wait_applies_only_to_self_configurable_addresses);
 	RUN_TEST(test_claiming_ca_receives_its_frames);
+	RUN_TEST(test_nack_only_from_claimed_address);
 	RUN_TEST(test_contention_won_repeats_claim);
 	RUN_TEST(test_contention_lost_sends_cannot_claim_after_delay);
 	RUN_TEST(test_cannot_claim_delay_is_at_most_153_ms);
