@@ -78,3 +78,16 @@ uint16_t j1939_ring_count(j1939_ring_t *r) {
 	j1939_port_unlock(&r->lock);
 	return count;
 }
+
+bool j1939_ring_holds(j1939_ring_t *r, uint16_t index) {
+	bool held;
+
+	j1939_port_lock(&r->lock);
+	if (index >= r->tail) {
+		held = (uint16_t)(index - r->tail) < r->count;
+	} else {
+		held = (uint16_t)((index + r->len) - r->tail) < r->count;
+	}
+	j1939_port_unlock(&r->lock);
+	return held;
+}

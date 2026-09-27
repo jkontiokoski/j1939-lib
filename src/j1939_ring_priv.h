@@ -33,4 +33,7 @@ bool j1939_ring_pop(j1939_ring_t *r);
 /* Number of written slots. */
 uint16_t j1939_ring_count(j1939_ring_t *r);
 
+/* Returns true if slot index (< len) is written and not yet released. */
+bool j1939_ring_holds(j1939_ring_t *r, uint16_t index);
+
 #endif /* J1939_RING_PRIV_H */
