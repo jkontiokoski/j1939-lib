@@ -99,10 +99,12 @@ The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
 | Signal descriptor      | `j1939_signal_t`, `j1939_signal_*()` functions   | SPN position, length, scaling and J1939/71 range type; `const` integrator data        |
 | Stack                  | `j1939_t`, configured by `j1939_cfg_t`           | One per CAN bus. Queues, message slots, PGN lists, CAs, event counters                |
 | Controller Application | `j1939_ca_t`, configured by `j1939_ca_cfg_t`     | Source address; NAME and address-claim state with J1939/81. Referenced by `j1939_ca_id_t` |
-| Event counters         | `j1939_stats_t`                                  | Messages and frames dropped because integrator storage was full                       |
+| Event counters         | `j1939_stats_t`                                  | Messages and frames dropped because integrator storage was full; transport protocol aborts and refusals |
 | DTC                    | `j1939_diag_dtc_t {spn, fmi, oc, cm}`            | J1939/73 diagnostic trouble code; 4-byte codec `j1939_diag_dtc_*()`                   |
 | Lamp status            | `j1939_diag_lamps_t`                             | MIL, red stop, amber warning, protect lamp status and flash; 2-byte codec             |
 | DM payload codec       | `j1939_diag_dm_build()`, `j1939_diag_dm_parse()` | DM1/DM2 payloads over caller buffers: lamp bytes and a DTC list, up to 1785 bytes     |
+| TP buffer              | `j1939_tp_buf_t`                                 | Integrator storage for one multi-packet message (`J1939_CFG_TP_BUF_SIZE` bytes), for sending or reassembly |
+| TP session             | `j1939_tp_session_t`, pool of `J1939_CFG_TP_SESSIONS` in `j1939_t` | One BAM or RTS/CTS transfer in either direction; explicit state machine with its timer |
 | Return codes           | `enum j1939_ret`                                 | Returned by every fallible API                                                        |
 
 ## Interface boundaries
@@ -123,6 +125,8 @@ The integrator allocates all memory and hands it to the stack at initialisation:
 static j1939_port_frame_t rx_buf[16];
 static j1939_port_frame_t tx_buf[16];
 static j1939_msg_slot_t msg_buf[8];
+static j1939_tp_buf_t tp_tx_buf[1];                    /* multi-packet sends */
+static j1939_tp_buf_t tp_rx_buf[2];                    /* multi-packet reassembly */
 static const uint32_t rx_pgns[] = {0xFEF1U, 0xE800U};  /* delivered to the application */
 static const uint32_t req_pgns[] = {0xFEEBU};          /* answered on Request by the application */
 static j1939_t stack;
@@ -134,6 +138,8 @@ const j1939_cfg_t cfg = {
 	.msg_buf = msg_buf, .msg_len = 8,
 	.rx_pgns = rx_pgns, .rx_pgns_len = 2,
 	.req_pgns = req_pgns, .req_pgns_len = 1,
+	.tp_tx_buf = tp_tx_buf, .tp_tx_buf_len = 1,
+	.tp_rx_buf = tp_rx_buf, .tp_rx_buf_len = 2,
 };
 j1939_init(&stack, &cfg);
 j1939_ca_add(&stack, &(j1939_ca_cfg_t){.address = 0x80, .name = MY_NAME}, &ca);
@@ -157,8 +163,23 @@ PGNs in the lists must be valid PGNs: at most 0x3FFFF, lowest byte 0 for PDU1 fo
 - The rx and tx queues are `j1939_queue_t` instances over the integrator's buffers, reached through `j1939_rx_queue()` and `j1939_tx_queue()`. Each has one producer and one consumer, which may run in different contexts; index updates run inside the port lock, frame contents are written and read outside it. Every slot of the buffer is usable.
 - `j1939_process()` handles the frames present in the rx queue when it starts; frames arriving meanwhile wait for the next call. It stores application messages in the message slots and queues frames the stack generates into the tx queue.
 - A received message and its data stay valid in its slot until `j1939_msg_pop()`.
-- `j1939_send()` builds the frame immediately; the message and its data may be reused after the call. Payloads longer than 8 bytes are rejected until the transport protocol is available.
+- `j1939_send()` builds a single frame immediately. A payload of 9 to `J1939_CFG_TP_BUF_SIZE` bytes is copied into a free TP transmit buffer and sent with BAM to the global address, with RTS/CTS to a specific one; the BAM or RTS frame is queued at once, the data packets by `j1939_process()`. Either way the message and its data may be reused after the call.
 - When the message slots or the tx queue are full, the stack drops the message or frame it generated and counts it in `j1939_stats_t`. Application sends report `J1939_RET_ERR_FULL` instead.
+
+Transport protocol (J1939/21, `src/j1939_tp.c`):
+
+- Sessions come from one pool of `J1939_CFG_TP_SESSIONS`, shared by both directions. Per pair of addresses there is at most one session per direction: one BAM per sender, one RTS/CTS connection per originator and responder. A second send to the same destination from the same CA returns `J1939_RET_ERR_BUSY`; no free session or transmit buffer returns `J1939_RET_ERR_FULL`.
+- Received multi-packet messages reach the application through the message slots like single frames; `msg->data` points into the TP reassembly buffer. The buffer stays reserved until `j1939_msg_pop()` releases the slot. Only the stack's own context changes buffer state: a delivered buffer becomes free when its slot has been released or reused, checked when a new session needs a buffer.
+- `rx_pgns` filters the reassembled PGN. An RTS for another PGN is answered with Connection Abort (reason 250), a BAM for it is ignored.
+- `msg->prio` of a received message is the priority of the RTS or BAM frame. The originator sends RTS, BAM and data packets with the message priority; CTS, EndOfMsgAck and Connection Abort use priority 7. `msg->da` is the responder's address for RTS/CTS and `J1939_ADDR_GLOBAL` for BAM.
+- Timers (T1 750 ms, T2 1250 ms, T3 1250 ms, T4 1050 ms, Tr 200 ms, Th 500 ms) advance only through `elapsed_us` of `j1939_process()`. A timer started by an event counts from the next call, so a timeout expires between its nominal value and one call period later.
+- BAM data packets go out one per `j1939_process()` call, `J1939_CFG_TP_BAM_GAP_US` (50–200 ms, default 50 ms) apart at the least. The integrator calls `j1939_process()` often enough to keep the gap under 200 ms.
+- The originator sends the packets a CTS requests as far as the tx queue has room, and waits for room at most Tr. It honours CTS with 0 packets (hold, T4) and retransmission requests.
+- The responder asks for all remaining packets in one CTS, limited by the RTS's packets-per-CTS value. While all message slots are in use it holds the connection before requesting the packets that complete the message (CTS with 0 packets, repeated every Th, at most `J1939_TP_HOLD_MAX` times, then Connection Abort reason 2).
+- Robustness on reception: a packet already received is ignored; a skipped sequence number aborts a connection (reason 7) and drops a BAM; a data packet while holding aborts (reason 6). A repeated RTS for the same PGN from an open originator restarts the connection without an abort; an RTS for another PGN is refused with reason 1 and the open connection continues. A new BAM from a sender replaces its unfinished one. A Connection Abort ends the matching session (same peer and PGN). RTS without free session: reason 1; without buffer, or larger than `J1939_CFG_TP_BUF_SIZE`: reason 2; larger than 1785 bytes: reason 9; inconsistent size and packet count: reason 250.
+- A completed RTS/CTS message that finds no free message slot is answered with Connection Abort (reason 2) instead of EndOfMsgAck, so the originator learns that it was lost.
+- Frames the stack generates (CTS, EndOfMsgAck, Connection Abort) are dropped and counted in `tx_overflow` when the tx queue is full; the protocol timers then end the session.
+- `tp_tx_aborted` and `tp_rx_aborted` count sessions that ended without the message (abort, timeout, sequence error); `tp_rx_refused` counts RTS and BAM refused for lack of a session or buffer.
 
 Receive filtering in `j1939_process()`:
 
@@ -169,7 +190,8 @@ Receive filtering in `j1939_process()`:
    - for a PGN in `req_pgns` it is delivered to the application, which reads the PGN with `j1939_request_pgn_get()` and answers with `j1939_send()`;
    - a destination-specific Request for any other PGN is answered by the stack with a NACK (PGN 59392), sent to the global address with the requester in byte 5, as J1939/21 specifies; a CA still in its claim wait sends no NACK;
    - a global Request for any other PGN, and a Request shorter than 3 bytes, are ignored.
-4. Any other PGN in `rx_pgns` is delivered to the application; the rest are dropped.
+4. TP.CM (PGN 60416) and TP.DT (PGN 60160) frames go to the transport protocol. Frames that are not 8 bytes long or come from address 254 or 255 are dropped.
+5. Any other PGN in `rx_pgns` is delivered to the application; the rest are dropped.
 
 ### Address claiming (J1939/81)
 
@@ -197,7 +219,7 @@ The procedure runs inside `j1939_process()`; its only clock is `elapsed_us`.
 
 ### Configuration
 
-- `include/j1939/j1939_config.h` defines the defaults: `J1939_CFG_TP_SESSIONS`, `J1939_CFG_CA_MAX` and module enables (`J1939_CFG_TP_ENABLE`, `J1939_CFG_DIAG_ENABLE`, ...).
+- `include/j1939/j1939_config.h` defines the defaults: `J1939_CFG_TP_SESSIONS`, `J1939_CFG_TP_BUF_SIZE` (largest multi-packet message, 9–1785 bytes), `J1939_CFG_TP_BAM_GAP_US`, `J1939_CFG_CA_MAX` and module enables (`J1939_CFG_TP_ENABLE`, `J1939_CFG_DIAG_ENABLE`, ...).
 - An integrator overrides them with `-DJ1939_CONFIG_FILE="my_cfg.h"`.
 - Buffer sizes are runtime parameters given at initialisation.
 
@@ -295,6 +317,7 @@ A received payload is decoded in place from the message slot with `j1939_diag_dm
 - Integration tests run several `j1939_t` instances in one process; `tests/support/test_bus.c` moves every frame from one stack's tx queue to the rx queues of all others.
 - `test_signal` compares bit extraction and insertion against a bit-by-bit reference model for every offset and length in payloads of 1 to 8 bytes. `test_signal_example` builds and decodes messages with the example table from `examples/signals/`.
 - Timers are tested by passing the elapsed time to `j1939_process()`, for example one call 1 µs before and one at a deadline.
+- `test_tp` drives the transport protocol of one stack with injected peer frames and checks every sent frame and timer boundary; `test_tp_exchange` runs BAM and RTS/CTS transfers of up to 1785 bytes between three stacks, with a lost packet, aborts, concurrent sessions and exhausted reassembly memory.
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Coverage with gcov/gcovr; target ≥ 90 % line coverage on the protocol core, branch coverage reported. Defensive checks against states the design rules out remain as uncovered branches.
 

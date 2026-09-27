@@ -12,6 +12,7 @@
 #include "j1939_addr_priv.h"
 #include "j1939_ring_priv.h"
 #include "j1939_stack_priv.h"
+#include "j1939_tp_priv.h"
 
 #define PDU1_DA_MASK   0xFFU
 #define CA_ADDRESS_MAX 0xFDU
@@ -55,6 +56,8 @@ static void frame_handle(j1939_t *s, const j1939_port_frame_t *f) {
 		} else if ((da == J1939_ADDR_GLOBAL) || j1939_addr_held(s, da)) {
 			if (pgn == J1939_PGN_REQUEST) {
 				j1939_request_handle(s, id, data, len);
+			} else if ((pgn == J1939_PGN_TP_CM) || (pgn == J1939_PGN_TP_DT)) {
+				j1939_tp_handle(s, id, data, len);
 			} else if (j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, pgn)) {
 				j1939_stack_deliver(s, id, data, len);
 			} else {
@@ -91,6 +94,7 @@ void j1939_stack_deliver(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t l
 			(void)memcpy(slot->data, data, len);
 		}
 		slot->msg.data = slot->data;
+		slot->tp_buf = NULL;
 		(void)j1939_ring_push(&s->msgs.ring);
 	} else {
 		s->stats.rx_msg_overflow++;
@@ -122,7 +126,7 @@ static bool cfg_valid(const j1939_cfg_t *cfg) {
 	return (cfg->rx_buf != NULL) && (cfg->rx_len > 0U) && (cfg->tx_buf != NULL) &&
 	       (cfg->tx_len > 0U) && (cfg->msg_buf != NULL) && (cfg->msg_len > 0U) &&
 	       pgn_list_valid(cfg->rx_pgns, cfg->rx_pgns_len) &&
-	       pgn_list_valid(cfg->req_pgns, cfg->req_pgns_len);
+	       pgn_list_valid(cfg->req_pgns, cfg->req_pgns_len) && j1939_tp_cfg_valid(cfg);
 }
 
 j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg) {
@@ -145,6 +149,7 @@ j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg) {
 		s->stats.rx_msg_overflow = 0U;
 		s->stats.tx_overflow = 0U;
 		j1939_addr_init(s);
+		j1939_tp_init(s, cfg);
 		ret = J1939_RET_OK;
 	}
 	return ret;
@@ -192,6 +197,7 @@ j1939_ret_t j1939_process(j1939_t *s, uint32_t elapsed_us) {
 				(void)j1939_queue_pop(&s->rx);
 			}
 		}
+		j1939_tp_process(s, elapsed_us);
 		ret = J1939_RET_OK;
 	}
 	return ret;
@@ -220,11 +226,13 @@ j1939_ret_t j1939_send(j1939_t *s, j1939_ca_id_t ca, const j1939_msg_t *msg) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((s != NULL) && (msg != NULL) && (ca < s->ca_count) &&
-	    (msg->len <= J1939_MSG_SINGLE_FRAME_MAX) && ((msg->data != NULL) || (msg->len == 0U))) {
-		if (j1939_addr_tx_allowed(&s->ca[ca])) {
+	    ((msg->data != NULL) || (msg->len == 0U))) {
+		if (!j1939_addr_tx_allowed(&s->ca[ca])) {
+			ret = J1939_RET_ERR_NO_ADDRESS;
+		} else if (msg->len <= J1939_MSG_SINGLE_FRAME_MAX) {
 			ret = j1939_stack_send(s, msg, s->ca[ca].address);
 		} else {
-			ret = J1939_RET_ERR_NO_ADDRESS;
+			ret = j1939_tp_send(s, s->ca[ca].address, msg);
 		}
 	}
 	return ret;

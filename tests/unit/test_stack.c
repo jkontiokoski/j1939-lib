@@ -250,8 +250,10 @@ static void test_send_rejects_invalid_messages(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_send(NULL, ca_a, &msg));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_send(&s, ca_a, NULL));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_send(&s, 1U, &msg));
-	msg.len = 9U;
+	msg.len = J1939_TP_MSG_MAX + 1U;
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_send(&s, ca_a, &msg));
+	msg.len = 9U; /* multi-packet, but no transport protocol transmit buffer is configured */
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_FULL, j1939_send(&s, ca_a, &msg));
 	msg.len = 1U;
 	msg.data = NULL;
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_send(&s, ca_a, &msg));

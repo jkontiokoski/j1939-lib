@@ -27,12 +27,30 @@
 #define J1939_CFG_TP_SESSIONS 2
 #endif
 
+/** Largest message a transport protocol buffer holds, in bytes. */
+#ifndef J1939_CFG_TP_BUF_SIZE
+#define J1939_CFG_TP_BUF_SIZE 1785
+#endif
+
+/** Gap between the packets of a sent broadcast (BAM), in microseconds. */
+#ifndef J1939_CFG_TP_BAM_GAP_US
+#define J1939_CFG_TP_BAM_GAP_US 50000
+#endif
+
 #if (J1939_CFG_CA_MAX < 1) || (J1939_CFG_CA_MAX > 253)
 #error "J1939_CFG_CA_MAX must be in range 1..253"
 #endif
 
 #if (J1939_CFG_TP_SESSIONS < 1) || (J1939_CFG_TP_SESSIONS > 32)
 #error "J1939_CFG_TP_SESSIONS must be in range 1..32"
+#endif
+
+#if (J1939_CFG_TP_BUF_SIZE < 9) || (J1939_CFG_TP_BUF_SIZE > 1785)
+#error "J1939_CFG_TP_BUF_SIZE must be in range 9..1785"
+#endif
+
+#if (J1939_CFG_TP_BAM_GAP_US < 50000) || (J1939_CFG_TP_BAM_GAP_US > 200000)
+#error "J1939_CFG_TP_BAM_GAP_US must be in range 50000..200000"
 #endif
 
 #endif /* J1939_CONFIG_H */

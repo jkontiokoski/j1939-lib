@@ -11,6 +11,7 @@ set(J1939_CORE_SOURCES
 	"${PROJECT_SOURCE_DIR}/src/j1939_request.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_signal.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_stack.c"
+	"${PROJECT_SOURCE_DIR}/src/j1939_tp.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_version.c"
 )
 
