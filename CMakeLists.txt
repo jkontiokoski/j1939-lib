@@ -31,6 +31,7 @@ include(cmake/warnings.cmake)
 include(cmake/instrumentation.cmake)
 
 add_library(j1939 STATIC
+	src/j1939_id.c
 	src/j1939_version.c
 )
 add_library(j1939::j1939 ALIAS j1939)

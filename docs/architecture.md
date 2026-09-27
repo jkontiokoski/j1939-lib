@@ -181,7 +181,7 @@ Integrators supply their licensed DA content as `const` tables.
 | ---------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
 | `unusedFunction`                               | All                  | Public API functions have no callers inside the library                    |
 | `preprocessorErrorDirective`                   | `j1939_config.h`     | The optional `J1939_CONFIG_FILE` include is resolved only in integrator builds |
-| MISRA 2.3 (unused type), 2.4 (unused tag)      | `include/j1939/`     | Public headers declare types for the integrator's use                     |
+| MISRA 2.5 (unused macro)                       | `include/j1939/`     | Public headers define macros for the integrator's use                     |
 
 ### Tooling
 

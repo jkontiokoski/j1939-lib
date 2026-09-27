@@ -16,3 +16,4 @@ function(j1939_add_test name)
 endfunction()
 
 j1939_add_test(test_version unit/test_version.c)
+j1939_add_test(test_id unit/test_id.c)
