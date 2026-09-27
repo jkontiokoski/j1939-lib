@@ -15,6 +15,9 @@
 #define CLEAR_DM3      0U /* index of the DM3 request in j1939_dm_t::clear */
 #define CLEAR_DM11     1U /* index of the DM11 request */
 #define CLEAR_KINDS    2U
+#define ANSWER_DM1     0U /* index of the DM1 answer in j1939_dm_t::answer */
+#define ANSWER_DM2     1U /* index of the DM2 answer */
+#define ANSWER_KINDS   2U
 #define DM_PRIO        J1939_DIAG_PRIO_DEFAULT
 #define ACK_PRIO       6U
 #define ACK_PAD        0xFFU
@@ -201,15 +204,16 @@ static bool send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
 	return done;
 }
 
-/* Sends a DM1 or DM2 to the global address. */
+/* Sends a DM1 or DM2; a single frame always to the global address, a PDU2 PGN. */
 static j1939_ret_t dm_send(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, const j1939_diag_dtc_t *dtcs,
-                           uint16_t count) {
+                           uint16_t count, uint8_t da) {
 	j1939_dm_t *dm = s->dm[ca];
 	uint16_t len = 0U;
 	j1939_ret_t ret = j1939_diag_dm_build(&dm->lamps, dtcs, count, dm->buf, dm->buf_len, &len);
 
 	if (ret == J1939_RET_OK) {
-		const j1939_msg_t msg = {pgn, DM_PRIO, 0U, J1939_ADDR_GLOBAL, len, dm->buf};
+		const j1939_msg_t msg = {
+		        pgn, DM_PRIO, 0U, (len > FRAME_LEN) ? da : J1939_ADDR_GLOBAL, len, dm->buf};
 
 		ret = j1939_send(s, ca, &msg);
 	}
@@ -307,9 +311,11 @@ static void dm_stop(j1939_t *s, j1939_dm_t *dm) {
 
 	dm->started = false;
 	dm->dm1_due = false;
-	if (dm->dm2_due) {
-		dm->dm2_due = false;
-		s->stats.dm_tx_dropped++;
+	for (k = 0U; k < ANSWER_KINDS; k++) {
+		if (dm->answer[k].due) {
+			dm->answer[k].due = false;
+			s->stats.dm_tx_dropped++;
+		}
 	}
 	for (k = 0U; k < CLEAR_KINDS; k++) {
 		j1939_dm_clear_t *c = &dm->clear[k];
@@ -343,6 +349,31 @@ static void dm1_tick(j1939_t *s, j1939_dm_t *dm, uint32_t elapsed_us) {
 	}
 }
 
+/* Sends a pending answer to a Request, retried at most J1939_DM_RESPONSE_US. */
+static void answer_tick(j1939_t *s, j1939_ca_id_t ca, j1939_dm_answer_t *a, uint32_t pgn,
+                        const j1939_diag_dtc_t *dtcs, uint16_t count, uint32_t elapsed_us) {
+	if (a->due) {
+		timer_advance(&a->timer_us, &a->fresh, elapsed_us);
+		if (send_done(s, dm_send(s, ca, pgn, dtcs, count, a->da), a->timer_us)) {
+			a->due = false;
+		}
+	}
+}
+
+/* Records a Request for an answer; requests of several nodes are answered once, globally. */
+static void answer_request(j1939_dm_answer_t *a, uint8_t requester) {
+	if (!a->due) {
+		a->due = true;
+		a->timer_us = 0U;
+		a->fresh = true;
+		a->da = requester;
+	} else if (a->da != requester) {
+		a->da = J1939_ADDR_GLOBAL;
+	} else {
+		/* Same requester again. */
+	}
+}
+
 static void ca_process(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_t elapsed_us) {
 	dm_hold_tick(dm, elapsed_us);
 	if (!j1939_addr_tx_allowed(&s->ca[ca])) {
@@ -354,18 +385,16 @@ static void ca_process(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_t el
 		for (k = 0U; k < CLEAR_KINDS; k++) {
 			clear_tick(s, ca, &dm->clear[k], CLEAR_PGN(k), elapsed_us);
 		}
-		if (dm->dm1_due &&
-		    send_done(s, dm_send(s, ca, J1939_PGN_DM1, dm->active, dm->active_count),
-		              NO_EXPIRY)) {
+		if (dm->dm1_due && send_done(s,
+		                             dm_send(s, ca, J1939_PGN_DM1, dm->active,
+		                                     dm->active_count, J1939_ADDR_GLOBAL),
+		                             NO_EXPIRY)) {
 			dm->dm1_due = false;
 		}
-		if (dm->dm2_due) {
-			timer_advance(&dm->dm2_timer_us, &dm->dm2_fresh, elapsed_us);
-			if (send_done(s, dm_send(s, ca, J1939_PGN_DM2, dm->prev, dm->prev_count),
-			              dm->dm2_timer_us)) {
-				dm->dm2_due = false;
-			}
-		}
+		answer_tick(s, ca, &dm->answer[ANSWER_DM1], J1939_PGN_DM1, dm->active,
+		            dm->active_count, elapsed_us);
+		answer_tick(s, ca, &dm->answer[ANSWER_DM2], J1939_PGN_DM2, dm->prev, dm->prev_count,
+		            elapsed_us);
 	}
 }
 
@@ -404,13 +433,14 @@ static void request_accept(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_
 	uint32_t k = 0U;
 
 	if (pgn == J1939_PGN_DM1) {
-		dm->dm1_due = true;
-	} else if (pgn == J1939_PGN_DM2) {
-		if (!dm->dm2_due) {
-			dm->dm2_due = true;
-			dm->dm2_timer_us = 0U;
-			dm->dm2_fresh = true;
+		if ((requester == J1939_ADDR_GLOBAL) || (dm->active_count <= 1U)) {
+			/* A broadcast DM1 answers it. */
+			dm->dm1_due = true;
+		} else {
+			answer_request(&dm->answer[ANSWER_DM1], requester);
 		}
+	} else if (pgn == J1939_PGN_DM2) {
+		answer_request(&dm->answer[ANSWER_DM2], requester);
 	} else if (clear_index(pgn, &k)) {
 		clear_request(s, ca, &dm->clear[k], pgn, requester);
 	} else {

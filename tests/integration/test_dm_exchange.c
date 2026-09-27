@@ -56,6 +56,7 @@ static uint32_t dm1_count;
 static uint32_t dm2_count;
 static uint32_t ack_count;
 static uint8_t ack_ctrl;
+static uint8_t dm2_da;
 static uint32_t ack_pgn;
 
 static void node_init(node_t *n, uint8_t address, uint64_t name, const uint32_t *pgns,
@@ -102,6 +103,7 @@ static void tool_poll(void) {
 				dm1_count++;
 			} else {
 				dm2_count++;
+				dm2_da = msg->da;
 			}
 		}
 		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_msg_pop(&tool.s));
@@ -201,11 +203,12 @@ static void test_tool_requests_dm2_and_clears_with_dm11(void) {
 	steps(2U); /* sent by the ECU, then handled by the tool */
 	expect_got(&dtc_a, 1U);
 
-	/* DM2 with two DTCs, answered with BAM. */
+	/* DM2 with two DTCs to a destination specific Request: RTS/CTS to the tool. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_request_send(&tool.s, tool.ca, J1939_PGN_DM2, ADDR_ECU));
 	steps(20U);
 	TEST_ASSERT_EQUAL_UINT32(1U, dm2_count);
+	TEST_ASSERT_EQUAL_HEX8(ADDR_TOOL, dm2_da);
 	expect_got(two, 2U);
 
 	/* DM11: the ECU application decides, the tool gets the acknowledgement. */
@@ -226,11 +229,12 @@ static void test_tool_requests_dm2_and_clears_with_dm11(void) {
 	steps(100U);
 	expect_got(NULL, 0U);
 
-	/* DM2 is not affected by DM11. */
+	/* DM2 is not affected by DM11. A global Request is answered with BAM. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_request_send(&tool.s, tool.ca, J1939_PGN_DM2, J1939_ADDR_GLOBAL));
 	steps(20U);
 	TEST_ASSERT_EQUAL_UINT32(2U, dm2_count);
+	TEST_ASSERT_EQUAL_HEX8(J1939_ADDR_GLOBAL, dm2_da);
 	expect_got(two, 2U);
 }
 

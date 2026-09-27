@@ -24,8 +24,12 @@
  *   triggers no DM1 and waits for the periodic one. Changes of the lamp
  *   status or of an occurrence count trigger no DM1.
  * - A Request (PGN 59904) for DM1 or DM2, global or to the CA's address, is
- *   answered by the stack to the global address (both are PDU2 PGNs). It is
- *   not delivered to the application.
+ *   answered by the stack and not delivered to the application. Both are
+ *   PDU2 PGNs: a single frame answer goes to the global address. A
+ *   multi-packet answer goes with BAM to the global address for a global
+ *   Request, and with RTS/CTS to the requester for a destination specific
+ *   one. Requests from several requesters while an answer is pending are
+ *   answered once, to the global address.
  * - A Request for DM3 (clear previously active DTCs) or DM11 (clear active
  *   DTCs) is accepted only if enabled in j1939_dm_cfg_t. The stack does not
  *   clear anything by itself: it reports the request through
@@ -101,26 +105,32 @@ typedef struct j1939_dm_clear {
 	bool fresh;                   /**< Timer started since the last j1939_process(). */
 } j1939_dm_clear_t;
 
+/** Pending answer to a Request for DM1 or DM2. Members are private. */
+typedef struct j1939_dm_answer {
+	uint32_t timer_us; /**< Age of the answer. */
+	uint8_t da;        /**< Destination of a multi-packet answer; J1939_ADDR_GLOBAL for BAM. */
+	bool due;          /**< The answer is to be sent. */
+	bool fresh;        /**< Requested since the last j1939_process(). */
+} j1939_dm_answer_t;
+
 /** Diagnostic state of a CA. Allocated by the integrator, members are private. */
 typedef struct j1939_dm {
-	j1939_diag_dtc_t *active;  /**< Active DTCs. */
-	j1939_diag_dtc_t *prev;    /**< Previously active DTCs. */
-	j1939_dm_hold_t *hold;     /**< Change hold records. */
-	uint8_t *buf;              /**< Payload buffer. */
-	uint16_t active_len;       /**< Capacity of active. */
-	uint16_t active_count;     /**< DTCs in active. */
-	uint16_t prev_len;         /**< Capacity of prev. */
-	uint16_t prev_count;       /**< DTCs in prev. */
-	uint16_t hold_len;         /**< Entries in hold. */
-	uint16_t buf_len;          /**< Size of buf. */
-	j1939_diag_lamps_t lamps;  /**< Lamp status sent with DM1 and DM2. */
-	uint32_t dm1_timer_us;     /**< Time since the periodic DM1 was last due. */
-	uint32_t dm2_timer_us;     /**< Age of the pending DM2 answer. */
-	j1939_dm_clear_t clear[2]; /**< DM3 and DM11 requests. */
-	bool started;              /**< The CA has claimed its address and sent its first DM1. */
-	bool dm1_due;              /**< A DM1 is to be sent. */
-	bool dm2_due;              /**< A DM2 answer is to be sent. */
-	bool dm2_fresh;            /**< DM2 answer requested since the last j1939_process(). */
+	j1939_diag_dtc_t *active;    /**< Active DTCs. */
+	j1939_diag_dtc_t *prev;      /**< Previously active DTCs. */
+	j1939_dm_hold_t *hold;       /**< Change hold records. */
+	uint8_t *buf;                /**< Payload buffer. */
+	uint16_t active_len;         /**< Capacity of active. */
+	uint16_t active_count;       /**< DTCs in active. */
+	uint16_t prev_len;           /**< Capacity of prev. */
+	uint16_t prev_count;         /**< DTCs in prev. */
+	uint16_t hold_len;           /**< Entries in hold. */
+	uint16_t buf_len;            /**< Size of buf. */
+	j1939_diag_lamps_t lamps;    /**< Lamp status sent with DM1 and DM2. */
+	uint32_t dm1_timer_us;       /**< Time since the periodic DM1 was last due. */
+	j1939_dm_answer_t answer[2]; /**< Answers to Requests for DM1 and DM2. */
+	j1939_dm_clear_t clear[2];   /**< DM3 and DM11 requests. */
+	bool started;                /**< The CA has claimed its address and sent its first DM1. */
+	bool dm1_due;                /**< A DM1 is to be sent. */
 } j1939_dm_t;
 
 /**

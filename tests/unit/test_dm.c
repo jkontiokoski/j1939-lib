@@ -145,6 +145,55 @@ static void expect_dm(uint32_t pgn, const j1939_diag_dtc_t *dtcs, uint16_t n) {
 	}
 }
 
+/* Expects a multi-packet DM to da with RTS/CTS; the peer asks for all packets at once. */
+static void expect_dm_rts(uint32_t pgn, const j1939_diag_dtc_t *dtcs, uint16_t n, uint8_t da) {
+	uint8_t ref[J1939_DM_BUF_LEN(DTC_LEN)];
+	uint8_t got[J1939_DM_BUF_LEN(DTC_LEN) + 7U];
+	uint16_t len = 0U;
+	uint8_t packets;
+	uint8_t i;
+
+	TEST_ASSERT_EQUAL(J1939_RET_OK,
+	                  j1939_diag_dm_build(&lamps, dtcs, n, ref, sizeof(ref), &len));
+	TEST_ASSERT_GREATER_THAN_UINT16(8U, len);
+	packets = (uint8_t)((len + 6U) / 7U);
+	{
+		const uint8_t rts[8] = {
+		        0x10U, (uint8_t)len, (uint8_t)(len >> 8), packets,
+		        0xFFU, (uint8_t)pgn, (uint8_t)(pgn >> 8), (uint8_t)(pgn >> 16)};
+		const uint8_t cts[8] = {0x11U,
+		                        packets,
+		                        1U,
+		                        0xFFU,
+		                        0xFFU,
+		                        (uint8_t)pgn,
+		                        (uint8_t)(pgn >> 8),
+		                        (uint8_t)(pgn >> 16)};
+
+		expect_frame(make_id(6U, J1939_PGN_TP_CM, da, own), rts, 8U);
+		rx_raw(make_id(7U, J1939_PGN_TP_CM, own, da), cts, 8U);
+	}
+	process(0U);
+	for (i = 1U; i <= packets; i++) {
+		const j1939_port_frame_t *f = j1939_queue_peek(j1939_tx_queue(&s));
+
+		TEST_ASSERT_NOT_NULL(f);
+		TEST_ASSERT_EQUAL_HEX32(make_id(6U, J1939_PGN_TP_DT, da, own),
+		                        j1939_port_frame_id_get(f));
+		TEST_ASSERT_EQUAL_UINT8(i, j1939_port_frame_data(f)[0]);
+		(void)memcpy(&got[(i - 1U) * 7U], &j1939_port_frame_data(f)[1], 7U);
+		(void)j1939_queue_pop(j1939_tx_queue(&s));
+	}
+	TEST_ASSERT_EQUAL_HEX8_ARRAY(ref, got, len);
+	{
+		const uint8_t eoma[8] = {
+		        0x13U, (uint8_t)len, (uint8_t)(len >> 8), packets,
+		        0xFFU, (uint8_t)pgn, (uint8_t)(pgn >> 8), (uint8_t)(pgn >> 16)};
+
+		rx_raw(make_id(7U, J1939_PGN_TP_CM, own, da), eoma, 8U);
+	}
+}
+
 static void expect_dm1(const j1939_diag_dtc_t *dtcs, uint16_t n) {
 	expect_dm(J1939_PGN_DM1, dtcs, n);
 }
@@ -401,11 +450,44 @@ static void test_request_for_dm2_is_answered_globally(void) {
 	expect_dm(J1939_PGN_DM2, &dtc_c, 1U);
 	expect_none();
 	set_prev(list, 2U);
-	rx_request(OTHER, OWN, J1939_PGN_DM2);
+	rx_request(OTHER, J1939_ADDR_GLOBAL, J1939_PGN_DM2);
 	process(0U);
 	expect_dm(J1939_PGN_DM2, list, 2U);
 	expect_none();
 	TEST_ASSERT_NULL(j1939_msg_peek(&s));
+}
+
+static void test_multi_packet_answer_goes_to_the_requester(void) {
+	const j1939_diag_dtc_t list[2] = {dtc_b, dtc_d};
+
+	start();
+	set_prev(list, 2U);
+	set_active(list, 2U);
+	process(0U);
+	expect_dm1(list, 2U); /* the change DM1, with BAM */
+	/* Destination specific: RTS/CTS to the requester. */
+	rx_request(OTHER, OWN, J1939_PGN_DM2);
+	process(0U);
+	expect_dm_rts(J1939_PGN_DM2, list, 2U, OTHER);
+	rx_request(OTHER2, OWN, J1939_PGN_DM1);
+	process(0U);
+	expect_dm_rts(J1939_PGN_DM1, list, 2U, OTHER2);
+	process(0U);
+	expect_none();
+	/* Requests of two nodes while the answer is pending: one BAM. */
+	rx_request(OTHER, OWN, J1939_PGN_DM2);
+	rx_request(OTHER2, OWN, J1939_PGN_DM2);
+	rx_request(OTHER2, OWN, J1939_PGN_DM2);
+	process(0U);
+	expect_dm(J1939_PGN_DM2, list, 2U);
+	expect_none();
+	/* One DTC is a single frame, which a PDU2 PGN sends globally. */
+	set_prev(&dtc_b, 1U);
+	rx_request(OTHER, OWN, J1939_PGN_DM2);
+	process(0U);
+	expect_dm(J1939_PGN_DM2, &dtc_b, 1U);
+	expect_none();
+	TEST_ASSERT_EQUAL_UINT32(0U, j1939_stats_get(&s)->tp_tx_aborted);
 }
 
 static void test_requests_for_other_nodes_or_cas_without_diagnostics(void) {
@@ -638,7 +720,7 @@ static void test_busy_broadcast_is_retried(void) {
 	set_prev(list, 2U);
 	set_active(list, 2U);
 	process(0U); /* DM1 BAM starts */
-	rx_request(OTHER, OWN, J1939_PGN_DM2);
+	rx_request(OTHER, J1939_ADDR_GLOBAL, J1939_PGN_DM2);
 	process(0U);
 	TEST_ASSERT_EQUAL_UINT32(1U, j1939_stats_get(&s)->dm_tx_retry);
 	expect_dm1(list, 2U); /* collects the DM1 packets; the DM2 waits */
@@ -791,6 +873,7 @@ int main(void) {
 	RUN_TEST(test_occurrence_count_and_lamps_trigger_nothing);
 	RUN_TEST(test_request_for_dm1_is_answered_globally);
 	RUN_TEST(test_request_for_dm2_is_answered_globally);
+	RUN_TEST(test_multi_packet_answer_goes_to_the_requester);
 	RUN_TEST(test_requests_for_other_nodes_or_cas_without_diagnostics);
 	RUN_TEST(test_dm3_accepted_clears_previously_active);
 	RUN_TEST(test_dm11_global_accepted_clears_active_without_ack);

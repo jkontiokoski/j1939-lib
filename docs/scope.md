@@ -30,7 +30,7 @@
 | M4        | J1939/81 network management: NAME codec, address claiming, Cannot Claim, Request for Address Claimed, arbitrary address capability, Commanded Address     | Done    |
 | M5        | SocketCAN example applications, porting guide worked examples                                                                                             | Done    |
 | M6        | Signals / database layer (J1939/71 + DA schema): SPN descriptors, bit extraction and insertion, scaling, validity ranges                                  | Done    |
-| M7        | Diagnostics (J1939/73): DTC codec, lamp status, DM1/DM2 payload codec; per CA in the stack: periodic and change-triggered DM1, DM1/DM2 on Request over single frame or BAM, DM3/DM11 clearing decided by the application. Not planned yet: RTS/CTS answers to destination specific Requests, DM4 and higher | Done    |
+| M7        | Diagnostics (J1939/73): DTC codec, lamp status, DM1/DM2 payload codec; per CA in the stack: periodic and change-triggered DM1, DM1/DM2 on Request (single frame, BAM, RTS/CTS to the requester), DM3/DM11 clearing decided by the application. Not planned yet: DM4 and higher | Done    |
 
 J1939/31, /74 and /75 are opt-in modules implemented on demand.
 J1939/76 and the J1939/91 series are outside the scope unless a product requires them.
