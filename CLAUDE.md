@@ -35,3 +35,14 @@ It will serve this purpose after the library is published, but also for the auth
 
 - This section of this file is for you to upkeep your knowledge about the project.
 - When you are corrected after making a mistake, update this knowledge base with this known mistake and the solution.
+
+### Design constraints (set by the owner)
+
+- The library targets ISO 13849 safety-rated systems: no function pointers or runtime dispatch anywhere, including application callbacks. Bind at compile time.
+- Do not define a library-owned CAN frame struct. Operate on the integrator's native frame type through `static inline` accessors in the port's `j1939_target.h`.
+- The integrator allocates and supplies all buffers (CAN rx/tx queues, TP memory). No dynamic memory.
+- The library never calls out: tx frames and received messages are pulled by the integrator.
+
+### Tooling notes
+
+- cppcheck (2.13) suppressions lists accept `//` comments only; `#` lines fail with "Failed to add suppression. No id". An unmatched suppression fails `make lint`, so add suppressions only when they match something.
