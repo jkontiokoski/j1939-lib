@@ -62,6 +62,7 @@ port/<name>/          one directory per port
 port/mock/            test port with a deliberately unusual frame layout
 port/socketcan/       Linux SocketCAN (CAN_RAW) port, plus j1939_socketcan.[ch] socket helpers
 examples/             example applications (SocketCAN)
+examples/signals/     illustrative signal table: invented Proprietary B signals
 tests/port/           port conformance tests, compiled once per port; SocketCAN loopback test
 tests/unit/           unit tests per module (mock port)
 tests/integration/    multi-node scenarios (mock port)
@@ -175,6 +176,7 @@ Receive filtering in `j1939_process()`:
 The J1939DA content is copyrighted by SAE.
 The library provides the database engine in `j1939_signal.h`: the SPN descriptor schema, bit extraction and insertion, scaling and the J1939/71 value ranges.
 Integrators supply their licensed DA content as `const` tables of `j1939_signal_t`.
+The illustrative table in `examples/signals/` uses invented signals in the Proprietary B PGN range (0xFF00–0xFFFF), not DA definitions.
 
 A descriptor is plain data:
 
@@ -202,7 +204,7 @@ int64_t rpm;
 j1939_signal_class_t cls;
 
 if ((msg != NULL) &&
-    (j1939_signal_msg_decode(&pump_speed, msg, &rpm, &cls) == J1939_RET_OK) &&
+    (j1939_signal_msg_decode(&example_signals[EXAMPLE_PUMP_SPEED], msg, &rpm, &cls) == J1939_RET_OK) &&
     (cls == J1939_SIGNAL_VALID)) {
 	/* use rpm */
 }
@@ -249,7 +251,7 @@ if ((msg != NULL) &&
 - `test_socketcan_vcan` exchanges frames over a real SocketCAN interface, `vcan0` by default or `J1939_TEST_CANIF`. It reports "skipped" when the interface does not exist.
 - Unit and integration tests link a library variant built with `tests/config/j1939_test_config.h` through `J1939_CONFIG_FILE`, which also exercises the configuration override.
 - Integration tests run several `j1939_t` instances in one process; `tests/support/test_bus.c` moves every frame from one stack's tx queue to the rx queues of all others.
-- `test_signal` compares bit extraction and insertion against a bit-by-bit reference model for every offset and length in payloads of 1 to 8 bytes.
+- `test_signal` compares bit extraction and insertion against a bit-by-bit reference model for every offset and length in payloads of 1 to 8 bytes. `test_signal_example` builds and decodes messages with the example table from `examples/signals/`.
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Coverage with gcov/gcovr; target ≥ 90 % line coverage on the protocol core, branch coverage reported. Defensive checks against states the design rules out remain as uncovered branches.
 
