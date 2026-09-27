@@ -10,6 +10,7 @@
 #include "j1939/j1939_name.h"
 #include "j1939_addr_priv.h"
 #include "j1939_stack_priv.h"
+#include "j1939_tp_priv.h"
 
 #define CLAIM_PRIO     6U
 #define CA_ADDRESS_MAX 0xFDU
@@ -106,10 +107,18 @@ static void claim_start(j1939_t *s, j1939_ca_t *ca) {
 	}
 }
 
-/* Gives up the address and schedules a Cannot Claim. */
-static void cannot_claim_enter(j1939_ca_t *ca) {
-	ca->state = J1939_ADDR_STATE_CANNOT_CLAIM;
+/* The CA gives up its address: the transport protocol sessions of that address end. */
+static void address_release(j1939_t *s, j1939_ca_t *ca) {
+	if (ca->address != J1939_ADDR_NULL) {
+		j1939_tp_address_lost(s, ca->address);
+	}
 	ca->address = J1939_ADDR_NULL;
+}
+
+/* Gives up the address and schedules a Cannot Claim. */
+static void cannot_claim_enter(j1939_t *s, j1939_ca_t *ca) {
+	address_release(s, ca);
+	ca->state = J1939_ADDR_STATE_CANNOT_CLAIM;
 	ca->cannot_claim_pending = true;
 	ca->timer_us = cannot_claim_delay(ca->name);
 }
@@ -122,11 +131,12 @@ static void address_lost(j1939_t *s, j1939_ca_t *ca) {
 		next = address_select(s);
 	}
 	if (next != J1939_ADDR_NULL) {
+		address_release(s, ca);
 		ca->address = next;
 		ca->state = J1939_ADDR_STATE_UNCLAIMED;
 		claim_start(s, ca);
 	} else {
-		cannot_claim_enter(ca);
+		cannot_claim_enter(s, ca);
 	}
 }
 
@@ -175,7 +185,7 @@ void j1939_addr_process(j1939_t *s, uint32_t elapsed_us) {
 			break;
 		default:
 			/* Corrupted state: stop transmitting and announce it. */
-			cannot_claim_enter(ca);
+			cannot_claim_enter(s, ca);
 			break;
 		}
 	}
@@ -258,7 +268,7 @@ void j1939_addr_request_handle(j1939_t *s, uint8_t da) {
 				}
 				break;
 			default:
-				cannot_claim_enter(ca);
+				cannot_claim_enter(s, ca);
 				break;
 			}
 		}

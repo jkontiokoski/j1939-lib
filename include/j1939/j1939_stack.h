@@ -29,11 +29,13 @@
 #include "j1939/j1939_queue.h"
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_ring.h"
+#include "j1939/j1939_tp.h"
 
 /** Storage for one received message. Allocated by the integrator, members are private. */
 typedef struct j1939_msg_slot {
 	j1939_msg_t msg; /**< Message header; data points into this slot. */
 	uint8_t data[J1939_MSG_SINGLE_FRAME_MAX]; /**< Payload of single frame messages. */
+	j1939_tp_buf_t *tp_buf; /**< Buffer holding a transport protocol message, else NULL. */
 } j1939_msg_slot_t;
 
 /** Stack configuration. All buffers and lists must outlive the stack instance. */
@@ -49,6 +51,11 @@ typedef struct j1939_cfg {
 	const uint32_t
 	        *req_pgns; /**< PGNs the application answers Requests for. May be NULL if empty. */
 	uint16_t req_pgns_len; /**< Entries in req_pgns. */
+
+	j1939_tp_buf_t *tp_tx_buf; /**< Multi-packet transmit buffers. May be NULL if empty. */
+	uint16_t tp_tx_buf_len;    /**< Entries in tp_tx_buf. */
+	j1939_tp_buf_t *tp_rx_buf; /**< Multi-packet reassembly buffers. May be NULL if empty. */
+	uint16_t tp_rx_buf_len;    /**< Entries in tp_rx_buf. */
 } j1939_cfg_t;
 
 /** Controller Application configuration. */
@@ -85,6 +92,9 @@ typedef struct j1939_ca {
 typedef struct j1939_stats {
 	uint32_t rx_msg_overflow; /**< Application messages dropped: all message slots in use. */
 	uint32_t tx_overflow;     /**< Stack generated frames dropped: tx queue full. */
+	uint32_t tp_tx_aborted;   /**< Multi-packet sends ended by an abort or a timeout. */
+	uint32_t tp_rx_aborted;   /**< Multi-packet receptions ended without delivery. */
+	uint32_t tp_rx_refused;   /**< RTS or BAM refused: no free session or reassembly buffer. */
 } j1939_stats_t;
 
 /** Message slot queue. Members are private. */
@@ -107,6 +117,7 @@ typedef struct j1939 {
 	j1939_stats_t stats;             /**< Event counters. */
 	/** Self-configurable addresses claimed by other nodes, one bit each. */
 	uint8_t addr_taken[J1939_ADDR_TAKEN_LEN];
+	j1939_tp_t tp; /**< Transport protocol sessions and buffers. */
 } j1939_t;
 
 /**
@@ -164,6 +175,9 @@ const j1939_msg_t *j1939_msg_peek(j1939_t *s);
 /**
  * @brief Releases the message returned by j1939_msg_peek().
  *
+ * The reassembly buffer of a multi-packet message becomes free for the next
+ * transport protocol session.
+ *
  * @return J1939_RET_OK, J1939_RET_ERR_EMPTY, or J1939_RET_ERR_ARG if @p s is NULL.
  */
 j1939_ret_t j1939_msg_pop(j1939_t *s);
@@ -171,17 +185,25 @@ j1939_ret_t j1939_msg_pop(j1939_t *s);
 /**
  * @brief Queues a message for transmission from a Controller Application.
  *
- * The frame is built immediately; @p msg and its data may be reused after
- * the call. The payload is sent as given; J1939 PGNs of 8 bytes or less
+ * A payload of up to 8 bytes is sent as one frame, built immediately. A
+ * longer payload is copied into a transport protocol transmit buffer and
+ * sent with BAM when msg->da is J1939_ADDR_GLOBAL, with RTS/CTS otherwise;
+ * the BAM or RTS frame is queued immediately, the data packets by
+ * j1939_process(). Either way @p msg and its data may be reused after the
+ * call. The payload is sent as given; J1939 PGNs of 8 bytes or less
  * normally fill unused bytes with 0xFF.
  *
  * @param s    Stack.
  * @param ca   Sending Controller Application.
  * @param msg  Message. msg->sa is ignored.
- * @return J1939_RET_OK, J1939_RET_ERR_FULL if the tx queue is full,
- *         J1939_RET_ERR_NO_ADDRESS while the CA has not claimed an address, or
+ * @return J1939_RET_OK;
+ *         J1939_RET_ERR_FULL if the tx queue is full, or for a multi-packet
+ *         message if no transport protocol session or transmit buffer is free;
+ *         J1939_RET_ERR_BUSY if this CA already sends a multi-packet message
+ *         to the same destination;
+ *         J1939_RET_ERR_NO_ADDRESS while the CA has not claimed an address;
  *         J1939_RET_ERR_ARG on a NULL pointer, an unknown CA, a payload
- *         longer than J1939_MSG_SINGLE_FRAME_MAX or an invalid identifier.
+ *         longer than J1939_CFG_TP_BUF_SIZE or an invalid identifier.
  */
 j1939_ret_t j1939_send(j1939_t *s, j1939_ca_id_t ca, const j1939_msg_t *msg);
 
