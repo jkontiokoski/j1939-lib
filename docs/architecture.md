@@ -159,6 +159,7 @@ PGNs in the lists must be valid PGNs: at most 0x3FFFF, lowest byte 0 for PDU1 fo
 | Application rx      | `j1939_msg_peek(&stack)`, application switches on `msg->pgn`, then `j1939_msg_pop(&stack)` | Main loop / task                   |
 | Application tx      | `j1939_send(&stack, ca, &msg)`, `j1939_request_send(&stack, ca, pgn, da)`                 | Main loop / task                   |
 | Address claim state | `j1939_addr_get(&stack, ca, &address, &state)`                                            | Main loop / task                   |
+| Commanded Address   | `j1939_addr_command_send(&stack, ca, name, address, da)`                                  | Main loop / task                   |
 
 - The rx and tx queues are `j1939_queue_t` instances over the integrator's buffers, reached through `j1939_rx_queue()` and `j1939_tx_queue()`. Each has one producer and one consumer, which may run in different contexts; index updates run inside the port lock, frame contents are written and read outside it. Every slot of the buffer is usable.
 - `j1939_process()` handles the frames present in the rx queue when it starts; frames arriving meanwhile wait for the next call. It stores application messages in the message slots and queues frames the stack generates into the tx queue.
@@ -172,6 +173,7 @@ Transport protocol (J1939/21, `src/j1939_tp.c`):
 - Address claiming: a multi-packet send needs a `CLAIMED` CA like a single frame, else `J1939_RET_ERR_NO_ADDRESS`. CTS, EndOfMsgAck and Connection Abort go out only from a claimed address: an RTS to a CA in `CLAIMING` is not answered and the originator times out. BAM reception transmits nothing and is independent of the claim. When a CA loses its address, or moves to another one, the sessions of its old address end without Connection Abort, since the address is no longer the stack's, and are counted in `tp_tx_aborted` / `tp_rx_aborted`.
 - Received multi-packet messages reach the application through the message slots like single frames; `msg->data` points into the TP reassembly buffer. The buffer stays reserved until `j1939_msg_pop()` releases the slot. Only the stack's own context changes buffer state: a delivered buffer becomes free when its slot has been released or reused, checked when a new session needs a buffer.
 - `rx_pgns` filters the reassembled PGN. An RTS for another PGN is answered with Connection Abort (reason 250), a BAM for it is ignored.
+  Commanded Address (PGN 65240) is also received while a CA of the stack accepts commands; the completed message goes to address claiming, and to the application only if listed. Unlisted, it needs no message slot, so the responder never holds for it.
 - `msg->prio` of a received message is the priority of the RTS or BAM frame. The originator sends RTS, BAM and data packets with the message priority; CTS, EndOfMsgAck and Connection Abort use priority 7. `msg->da` is the responder's address for RTS/CTS and `J1939_ADDR_GLOBAL` for BAM.
 - Timers (T1 750 ms, T2 1250 ms, T3 1250 ms, T4 1050 ms, Tr 200 ms, Th 500 ms) advance only through `elapsed_us` of `j1939_process()`. A timer started by an event counts from the next call, so a timeout expires between its nominal value and one call period later.
 - BAM data packets go out one per `j1939_process()` call, `J1939_CFG_TP_BAM_GAP_US` (50–200 ms, default 50 ms) apart at the least. The integrator calls `j1939_process()` often enough to keep the gap under 200 ms.
@@ -204,8 +206,8 @@ The procedure runs inside `j1939_process()`; its only clock is `elapsed_us`.
 | -------------- | ------------ | -------------------------------------- | -------------------------------------------------------------- |
 | `UNCLAIMED`    | No           | Only a Request for Address Claimed     | Address Claimed queued (retried while the tx queue is full)   |
 | `CLAIMING`     | Yes          | Only a Request for Address Claimed     | 250 ms without losing the address                              |
-| `CLAIMED`      | Yes          | Yes                                    | Losing the address                                             |
-| `CANNOT_CLAIM` | No           | Only a Request for Address Claimed     | Not left                                                       |
+| `CLAIMED`      | Yes          | Yes                                    | Losing the address; an accepted Commanded Address              |
+| `CANNOT_CLAIM` | No           | Only a Request for Address Claimed     | An accepted Commanded Address                                  |
 
 - Address Claimed (PGN 60928) is sent to the global address from the claimed address with the NAME as data; Cannot Claim is the same message from the NULL address 254.
 - Transmission start: a CA claiming an address in 0–127 or 248–253 goes to `CLAIMED` as soon as its Address Claimed is queued. A CA claiming a self-configurable address (128–247) stays in `CLAIMING` for 250 ms after queuing it, so that a contending CA can answer first.
@@ -216,8 +218,20 @@ The procedure runs inside `j1939_process()`; its only clock is `elapsed_us`.
 - Each stack records the self-configurable addresses that other nodes have claimed (a 120-bit table in `j1939_t`) to choose a free address. Entries are never cleared: J1939/81 has no message that releases an address.
 - An Address Claimed carrying a CA's own NAME is ignored, so a driver that loops back transmitted frames does no harm.
 - A corrupted claim state sends the CA to `CANNOT_CLAIM`.
-- Losing an address, to arbitration or through a corrupted claim state, ends the transport protocol sessions of that address without Connection Abort.
-- Not implemented: Commanded Address (PGN 65240) needs the transport protocol; retrying a claim after `CANNOT_CLAIM`.
+- Losing an address, to arbitration, to a Commanded Address or through a corrupted claim state, ends the transport protocol sessions of that address without Connection Abort.
+- Not implemented: retrying a claim after `CANNOT_CLAIM` other than by Commanded Address.
+
+Commanded Address (PGN 65240, 9 bytes: the target's NAME, then the new address) moves a CA to another address.
+It travels with the transport protocol: BAM to the global address, or RTS/CTS to the target's address, which then needs a `CLAIMED` target.
+
+- Accepting is opt-in per CA: `j1939_ca_cfg_t::accept_commanded`, false by default. Commands for a CA that refuses, for a NAME the stack does not have, or with the new address 254 or 255 are ignored and nothing is sent. The stack receives the message only while one of its CAs accepts commands.
+- The reception is recorded in the CA and applied by the next `j1939_process()`, so that the transport protocol session carrying it ends first: an RTS/CTS command is acknowledged with EndOfMsgAck from the old address, then Address Claimed goes out from the new one.
+- The CA gives up its old address, from any claim state, as when it loses it, and claims the new one with the normal rules: immediately `CLAIMED` outside 128–247, 250 ms in `CLAIMING` inside; arbitration on the NAME if another node claims the address; a pending Cannot Claim is dropped. A command during the contention wait abandons the address being claimed.
+- A command to the address the CA holds repeats its Address Claimed without restarting the wait. A command to an address another CA of the stack uses is ignored.
+- The new address is not written back to the configuration. The application reads it with `j1939_addr_get()` and may keep it as the preferred address, e.g. in non-volatile memory.
+- Commanded Address messages are also delivered to the application if PGN 65240 is in `rx_pgns`, whether or not a CA acts on them. A listed command that finds no free message slot is lost as a whole and not acted on.
+- A corrupted claim state drops a pending command as it sends the CA to `CANNOT_CLAIM`.
+- `j1939_addr_command_send()` sends a command from a `CLAIMED` CA, as `j1939_send()` does, and rejects the new addresses 254 and 255.
 
 ### Configuration
 
@@ -319,6 +333,7 @@ A received payload is decoded in place from the message slot with `j1939_diag_dm
 - Integration tests run several `j1939_t` instances in one process; `tests/support/test_bus.c` moves every frame from one stack's tx queue to the rx queues of all others.
 - `test_signal` compares bit extraction and insertion against a bit-by-bit reference model for every offset and length in payloads of 1 to 8 bytes. `test_signal_example` builds and decodes messages with the example table from `examples/signals/`.
 - Timers are tested by passing the elapsed time to `j1939_process()`, for example one call 1 µs before and one at a deadline.
+- `test_addr_command` drives Commanded Address on one stack with injected BAM and RTS/CTS transfers; `test_addr_command_exchange` lets a tool node move a target with BAM and with RTS/CTS while a monitor node watches the Address Claimed messages.
 - `test_tp` drives the transport protocol of one stack with injected peer frames and checks every sent frame and timer boundary; `test_tp_exchange` runs BAM and RTS/CTS transfers of up to 1785 bytes between three stacks, with a lost packet, aborts, concurrent sessions and exhausted reassembly memory.
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Coverage with gcov/gcovr; target ≥ 90 % line coverage on the protocol core, branch coverage reported. Defensive checks against states the design rules out remain as uncovered branches.

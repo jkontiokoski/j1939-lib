@@ -62,6 +62,8 @@ typedef struct j1939_cfg {
 typedef struct j1939_ca_cfg {
 	uint8_t address; /**< Preferred address, 0..253. */
 	uint64_t name;   /**< NAME, see j1939_name.h. Must be unique on the network. */
+	/** true: another node may move the CA with Commanded Address, see j1939_addr.h. */
+	bool accept_commanded;
 } j1939_ca_cfg_t;
 
 /** Handle of a Controller Application within its stack. */
@@ -86,6 +88,8 @@ typedef struct j1939_ca {
 	uint32_t timer_us;         /**< Contention wait or Cannot Claim delay left. */
 	uint8_t address;           /**< Address held or being claimed; J1939_ADDR_NULL if none. */
 	bool cannot_claim_pending; /**< A Cannot Claim is sent when timer_us expires. */
+	bool accept_commanded;     /**< See j1939_ca_cfg_t. */
+	uint8_t commanded;         /**< Commanded Address to apply; J1939_ADDR_NULL if none. */
 } j1939_ca_t;
 
 /** Event counters. */

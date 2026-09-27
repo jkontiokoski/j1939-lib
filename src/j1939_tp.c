@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "j1939/j1939_addr.h"
 #include "j1939/j1939_id.h"
 #include "j1939_addr_priv.h"
 #include "j1939_ring_priv.h"
@@ -230,18 +231,29 @@ static void session_abort(j1939_t *s, j1939_tp_session_t *se, uint8_t reason) {
 	session_drop(s, se);
 }
 
-static bool tp_msg_slot_free(j1939_t *s) {
-	uint16_t index;
-
-	return j1939_ring_head(&s->msgs.ring, &index);
+/* Returns true if pgn goes to the application; Commanded Address may be for the stack only. */
+static bool tp_for_app(const j1939_t *s, uint32_t pgn) {
+	return j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, pgn);
 }
 
-/* Hands the completed message to the application; its buffer stays reserved until the pop. */
+/* Returns true if the completed message of the session finds a message slot, or needs none. */
+static bool tp_msg_slot_free(j1939_t *s, const j1939_tp_session_t *se) {
+	uint16_t index;
+
+	return !tp_for_app(s, se->pgn) || j1939_ring_head(&s->msgs.ring, &index);
+}
+
+/*
+ * Hands the completed message to the application; its buffer stays reserved
+ * until the pop. A Commanded Address also goes to address management.
+ */
 static bool tp_deliver(j1939_t *s, j1939_tp_session_t *se) {
 	uint16_t index;
-	bool ok = j1939_ring_head(&s->msgs.ring, &index);
+	bool ok = true;
 
-	if (ok) {
+	if (!tp_for_app(s, se->pgn)) {
+		/* For the stack only; the buffer is freed with the session. */
+	} else if (j1939_ring_head(&s->msgs.ring, &index)) {
 		j1939_msg_slot_t *slot = &s->msgs.buf[index];
 
 		slot->msg.pgn = se->pgn;
@@ -256,6 +268,10 @@ static bool tp_deliver(j1939_t *s, j1939_tp_session_t *se) {
 		(void)j1939_ring_push(&s->msgs.ring);
 	} else {
 		s->stats.rx_msg_overflow++;
+		ok = false;
+	}
+	if (ok && (se->pgn == J1939_PGN_COMMANDED_ADDRESS)) {
+		j1939_addr_command_handle(s, se->buf->data, se->len);
 	}
 	return ok;
 }
@@ -271,7 +287,8 @@ static uint8_t announce_check(j1939_t *s, uint16_t len, uint8_t packets, uint32_
 		reason = J1939_TP_ABORT_TOO_LARGE;
 	} else if ((len < J1939_TP_MSG_MIN) || ((uint16_t)packets != packets_for(len))) {
 		reason = J1939_TP_ABORT_OTHER;
-	} else if (!j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, pgn)) {
+	} else if (!tp_for_app(s, pgn) &&
+	           !((pgn == J1939_PGN_COMMANDED_ADDRESS) && j1939_addr_command_accepted(s))) {
 		reason = J1939_TP_ABORT_OTHER;
 	} else if (len > BUF_SIZE) {
 		s->stats.tp_rx_refused++;
@@ -300,7 +317,7 @@ static void window_request(j1939_t *s, j1939_tp_session_t *se, bool fresh) {
 	if (n > se->limit) {
 		n = se->limit;
 	}
-	if ((((se->next + n) - 1U) == se->packets) && !tp_msg_slot_free(s)) {
+	if ((((se->next + n) - 1U) == se->packets) && !tp_msg_slot_free(s, se)) {
 		se->state = J1939_TP_RX_HOLD;
 		se->holds = 1U;
 		hold_send(s, se);
@@ -589,7 +606,7 @@ static void data_tick(j1939_t *s, j1939_tp_session_t *se) {
 }
 
 static void hold_tick(j1939_t *s, j1939_tp_session_t *se) {
-	if (tp_msg_slot_free(s)) {
+	if (tp_msg_slot_free(s, se)) {
 		window_request(s, se, false);
 	} else if (tp_timer_expired(se)) {
 		if (se->holds >= J1939_TP_HOLD_MAX) {

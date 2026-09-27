@@ -33,6 +33,17 @@ bool j1939_addr_tx_allowed(const j1939_ca_t *ca);
 /* Handles a received Address Claimed or Cannot Claim, whatever its destination. */
 void j1939_addr_claim_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t len);
 
+/* Returns true if a CA of the stack accepts Commanded Address. */
+bool j1939_addr_command_accepted(const j1939_t *s);
+
+/*
+ * Handles a received Commanded Address of len bytes: records the new address
+ * for the CA it concerns, if that CA accepts commands. Applied by the next
+ * j1939_addr_process(), so the transport protocol session that carried it
+ * ends first.
+ */
+void j1939_addr_command_handle(j1939_t *s, const uint8_t *data, uint16_t len);
+
 /* Answers a Request for Address Claimed sent to da for every CA it concerns. */
 void j1939_addr_request_handle(j1939_t *s, uint8_t da);
 
