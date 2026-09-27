@@ -969,6 +969,47 @@ static void test_address_loss_ends_sessions_without_abort(void) {
 	TEST_ASSERT_NULL(j1939_msg_peek(&s));
 }
 
+/* Sessions in both directions on OWN: a send to PEER and a reception from PEER2. */
+static void open_both_directions(void) {
+	TEST_ASSERT_EQUAL(J1939_RET_OK, send(PEER, PGN_B, LEN_20));
+	rx_rts(PEER2, LEN_20, 3U, NA, PGN_B);
+	run(0U);
+	expect_tx(6U, J1939_PGN_TP_CM, PEER);
+	expect_cm(PEER2, CTS, 3U, 1U, NA, NA, PGN_B);
+	TEST_ASSERT_EQUAL_UINT8(2U, sessions_open());
+}
+
+static void test_corrupted_claim_state_ends_sessions_without_abort(void) {
+	/* Found by the claim procedure of j1939_process(). */
+	open_both_directions();
+	s.ca[ca].state = (j1939_addr_state_t)0x55;
+	run(0U);
+	expect_no_tp();
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
+	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_tx_aborted);
+	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_rx_aborted);
+	TEST_ASSERT_EQUAL_UINT8(0U, tp_tx[0].state);
+	TEST_ASSERT_EQUAL_UINT8(0U, tp_rx[0].state);
+
+	/* Corrupted again without an address: nothing left to end. */
+	s.ca[ca].state = (j1939_addr_state_t)0x55;
+	run(0U);
+	TEST_ASSERT_EQUAL(J1939_ADDR_STATE_CANNOT_CLAIM, s.ca[ca].state);
+
+	/* Found while answering a Request for Address Claimed. */
+	init(BUF_LEN, BUF_LEN);
+	open_both_directions();
+	s.ca[ca].state = (j1939_addr_state_t)0x55;
+	TEST_ASSERT_EQUAL(J1939_RET_OK,
+	                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL));
+	TEST_ASSERT_EQUAL(J1939_ADDR_STATE_CANNOT_CLAIM, s.ca[ca].state);
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
+	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_tx_aborted);
+	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_rx_aborted);
+	run(0U);
+	expect_no_tp();
+}
+
 int main(void) {
 	UNITY_BEGIN();
 	RUN_TEST(test_init_validates_tp_buffers);
@@ -1009,5 +1050,6 @@ int main(void) {
 	RUN_TEST(test_unclaimed_ca_cannot_send_multi_packet);
 	RUN_TEST(test_rts_to_claiming_ca_is_not_answered);
 	RUN_TEST(test_address_loss_ends_sessions_without_abort);
+	RUN_TEST(test_corrupted_claim_state_ends_sessions_without_abort);
 	return UNITY_END();
 }

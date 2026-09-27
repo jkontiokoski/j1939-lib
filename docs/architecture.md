@@ -216,7 +216,7 @@ The procedure runs inside `j1939_process()`; its only clock is `elapsed_us`.
 - Each stack records the self-configurable addresses that other nodes have claimed (a 120-bit table in `j1939_t`) to choose a free address. Entries are never cleared: J1939/81 has no message that releases an address.
 - An Address Claimed carrying a CA's own NAME is ignored, so a driver that loops back transmitted frames does no harm.
 - A corrupted claim state sends the CA to `CANNOT_CLAIM`.
-- Losing an address to arbitration ends the transport protocol sessions of that address without Connection Abort.
+- Losing an address, to arbitration or through a corrupted claim state, ends the transport protocol sessions of that address without Connection Abort.
 - Not implemented: Commanded Address (PGN 65240) needs the transport protocol; retrying a claim after `CANNOT_CLAIM`.
 
 ### Configuration
