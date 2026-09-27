@@ -49,4 +49,5 @@ It will serve this purpose after the library is published, but also for the auth
 
 ### Commit messages
 
+- Never add a `Co-Authored-By` trailer or any other AI attribution to commits or PR descriptions. The owner is responsible for the commits.
 - Never put roadmap identifiers (M0, M1, ...) in commit messages or branch names. Scope commits by module or feature and keep the body to a short what-and-why. The full policy is in docs/architecture.md.

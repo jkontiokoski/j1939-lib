@@ -250,6 +250,7 @@ Make targets:
   - The summary says what changed, in the imperative mood.
   - The body is a few lines on what was done and why. Short enough to read at a glance.
   - Roadmap milestone identifiers do not appear in commit messages or branch names.
+  - No `Co-Authored-By` or other tool attribution trailers. The committer is responsible for every commit.
 
   ```
   feat(queue): add frame queue over integrator-supplied storage
