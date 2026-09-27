@@ -15,3 +15,6 @@ preprocessorErrorDirective:include/j1939/j1939_config.h
 
 // MISRA 2.5: public headers define macros for the integrator's use.
 misra-c2012-2.5:include/j1939/*
+
+// MISRA 8.7: every non-static function in src/ is public API, called from integrator code.
+misra-c2012-8.7:src/*

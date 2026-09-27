@@ -61,7 +61,8 @@ static inline void j1939_port_lock(j1939_port_lock_t *lock);
 static inline void j1939_port_unlock(j1939_port_lock_t *lock);
 ```
 
-The library holds a lock only for short critical sections and never nests them.
+Every library queue embeds one lock object and holds it only while updating its indices.
+Critical sections are short and never nested.
 
 - Lock and unlock must act as compiler and memory barriers, so that a frame written before a queue update is visible to the other execution context.
 - On a single-core microcontroller where an ISR produces into the rx queue, disabling that interrupt (or all interrupts) is sufficient.
@@ -77,10 +78,10 @@ A definition with a different signature fails with "conflicting types"; a missin
 Receiving, zero copy:
 
 ```c
-j1939_port_frame_t *slot = j1939_rx_acquire(&stack);
+j1939_port_frame_t *slot = j1939_queue_acquire(&rx_q);
 if (slot != NULL) {
 	driver_read(slot);
-	j1939_rx_commit(&stack);
+	j1939_queue_commit(&rx_q);
 }
 ```
 
@@ -88,13 +89,15 @@ Transmitting:
 
 ```c
 const j1939_port_frame_t *f;
-while ((f = j1939_tx_peek(&stack)) != NULL) {
+while ((f = j1939_queue_peek(&tx_q)) != NULL) {
 	if (driver_write(f) != DRIVER_OK) {
 		break;
 	}
-	j1939_tx_pop(&stack);
+	j1939_queue_pop(&tx_q);
 }
 ```
+
+A full rx queue leaves frames in the driver; a failed write leaves the frame in the tx queue.
 
 ## Verifying a port
 

@@ -32,6 +32,7 @@ set(MOCK_PORT_DIR "${PROJECT_SOURCE_DIR}/port/mock")
 j1939_add_library(j1939_test_mock "${MOCK_PORT_DIR}")
 j1939_add_test(test_version j1939_test_mock unit/test_version.c)
 j1939_add_test(test_id j1939_test_mock unit/test_id.c)
+j1939_add_test(test_queue j1939_test_mock unit/test_queue.c)
 
 # Port conformance: the mock port, plus the configured port if it is another one.
 j1939_add_port_conformance(test_port_mock j1939_test_mock)

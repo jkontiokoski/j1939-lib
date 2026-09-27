@@ -28,6 +28,7 @@ Each layer depends only on the layers below it.
  j1939_stack: j1939_t, rx/tx queues, CA objects, DA/PGN filtering, Request/ACK
  ──────────────────────────────────────────────────────────────────────────────
  j1939_id / j1939_name: pure codecs on uint32_t / uint64_t                no state, no I/O
+ j1939_queue: frame FIFO over integrator storage                         port lock only
  ──────────────────────────────────────────────────────────────────────────────
  PORT BOUNDARY (compile time): j1939_target.h, supplied by the port
  ──────────────────────────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ include/j1939/        public headers
                         j1939_stack.h           stack object, queues, process
                         j1939_tp.h              transport protocol
                         j1939_addr.h            address claiming
+                        j1939_queue.h           CAN frame queue over integrator storage
                         j1939_config.h          compile-time configuration and defaults
                         j1939_port_contract.h   required target API, compile-time checks
 src/                  implementation (*.c) and private headers (*_priv.h)
@@ -80,6 +82,7 @@ The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
 | ---------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | Native frame           | `j1939_port_frame_t` (typedef by the port)       | The only type crossing the port boundary. Accessed only through the port accessors    |
 | Lock                   | `j1939_port_lock_t` (typedef by the port)        | Critical-section object embedded in each queue                                        |
+| Frame queue            | `j1939_queue_t`                                  | FIFO of native frames over integrator storage; one producer, one consumer            |
 | ID codec               | `j1939_id_*()` pure functions on `uint32_t`      | Priority, EDP, DP, PF, PS, SA; PDU1 (PF < 240, PS = DA) / PDU2 rules; PGN handling    |
 | NAME codec             | `j1939_name_*()` pure functions on `uint64_t`    | J1939/81 NAME fields                                                                  |
 | Message                | `j1939_msg_t {pgn, prio, sa, da, len, data}`     | Logical message, 0–1785 bytes; `data` points to integrator memory                     |
@@ -126,7 +129,7 @@ j1939_init(&stack, &cfg);
 | Application rx      | `j1939_msg_get(&stack, &msg)`, application switches on `msg.pgn` | Main loop / task                 |
 | Application tx      | `j1939_send(&ca, &msg)`                                          | Main loop / task                 |
 
-- The rx queue is a single-producer single-consumer ring over the integrator's `rx_buf`.
+- The rx and tx queues are `j1939_queue_t` instances over the integrator's buffers. Each has one producer and one consumer, which may run in different contexts; index updates run inside the port lock, frame contents are written and read outside it. Every slot of the buffer is usable.
 - `j1939_process()` drains the rx ring, runs the TP and address-claim state machines and queues outgoing frames into `tx_buf`.
 - Only messages whose PGN is in the integrator's constant PGN accept list, and whose destination is one of the stack's addresses or global, reach the application.
 - A Request (PGN 59904) for a PGN outside the accept list is answered with a NACK (PGN 59392) by the stack. Requests for accepted PGNs are delivered to the application, which answers with `j1939_send()`.
@@ -178,6 +181,7 @@ Integrators supply their licensed DA content as `const` tables.
 - Unity (vendored in `tests/vendor/unity/`), run through `ctest`.
 - The test build compiles the library once per port with `j1939_add_library()`. Unit tests link the mock port variant, whatever port the main `j1939` target uses.
 - The port conformance test `tests/port/test_port_conformance.c` runs against the mock port and the configured `J1939_PORT_DIR` port if it is another one. Frames the port API cannot build (standard, remote, raw DLC above 8) come from the port's `j1939_port_fixture.c`.
+- The mock lock records nesting depth and call count; unit tests check that every critical section is left and none is nested.
 - Integration tests run several `j1939_t` instances in one process; the test harness moves frames from one stack's tx queue to the others' rx queues.
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Coverage with gcov/gcovr; target ≥ 90 % line coverage on the protocol core, branch coverage reported.
@@ -192,6 +196,7 @@ Port test fixtures are test code and are not linted.
 | `unusedFunction`                               | All                  | Public API functions have no callers inside the library                    |
 | `preprocessorErrorDirective`                   | `j1939_config.h`     | The optional `J1939_CONFIG_FILE` include is resolved only in integrator builds |
 | MISRA 2.5 (unused macro)                       | `include/j1939/`     | Public headers define macros for the integrator's use                     |
+| MISRA 8.7 (external linkage used in one unit)  | `src/`               | Every non-static function in `src/` is public API, called from integrator code |
 
 ### Tooling
 
