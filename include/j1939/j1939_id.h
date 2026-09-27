@@ -34,11 +34,12 @@
 
 #define J1939_ID_MASK      0x1FFFFFFFU /**< Valid bits of a 29-bit identifier. */
 #define J1939_PGN_MAX      0x3FFFFU    /**< Largest 18-bit PGN. */
-#define J1939_PRIO_MAX     7U          /**< Lowest priority. */
-#define J1939_PRIO_DEFAULT 6U          /**< Default priority of most messages. */
-#define J1939_PF_PDU2_MIN  240U        /**< First PDU2 PDU format. */
-#define J1939_ADDR_NULL    0xFEU       /**< Null address, used before a successful claim. */
-#define J1939_ADDR_GLOBAL  0xFFU       /**< Global (broadcast) destination address. */
+#define J1939_PGN_EDP      0x20000U /**< Extended data page bit; set PGNs are not J1939 messages. */
+#define J1939_PRIO_MAX     7U       /**< Lowest priority. */
+#define J1939_PRIO_DEFAULT 6U       /**< Default priority of most messages. */
+#define J1939_PF_PDU2_MIN  240U     /**< First PDU2 PDU format. */
+#define J1939_ADDR_NULL    0xFEU    /**< Null address, used before a successful claim. */
+#define J1939_ADDR_GLOBAL  0xFFU    /**< Global (broadcast) destination address. */
 
 /** @return Priority, 0 (highest) .. 7. */
 uint8_t j1939_id_prio_get(uint32_t id);

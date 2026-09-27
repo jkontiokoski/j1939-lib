@@ -78,22 +78,24 @@ A definition with a different signature fails with "conflicting types"; a missin
 Receiving, zero copy:
 
 ```c
-j1939_port_frame_t *slot = j1939_queue_acquire(&rx_q);
+j1939_queue_t *rx_q = j1939_rx_queue(&stack);
+j1939_port_frame_t *slot = j1939_queue_acquire(rx_q);
 if (slot != NULL) {
 	driver_read(slot);
-	j1939_queue_commit(&rx_q);
+	j1939_queue_commit(rx_q);
 }
 ```
 
 Transmitting:
 
 ```c
+j1939_queue_t *tx_q = j1939_tx_queue(&stack);
 const j1939_port_frame_t *f;
-while ((f = j1939_queue_peek(&tx_q)) != NULL) {
+while ((f = j1939_queue_peek(tx_q)) != NULL) {
 	if (driver_write(f) != DRIVER_OK) {
 		break;
 	}
-	j1939_queue_pop(&tx_q);
+	j1939_queue_pop(tx_q);
 }
 ```
 

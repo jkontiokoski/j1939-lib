@@ -29,11 +29,23 @@ endfunction()
 set(MOCK_PORT_DIR "${PROJECT_SOURCE_DIR}/port/mock")
 set(SOCKETCAN_PORT_DIR "${PROJECT_SOURCE_DIR}/port/socketcan")
 
-# Unit tests always run against the mock port.
+# Unit and integration tests run against the mock port, with the test configuration.
 j1939_add_library(j1939_test_mock "${MOCK_PORT_DIR}")
-j1939_add_test(test_version j1939_test_mock unit/test_version.c)
-j1939_add_test(test_id j1939_test_mock unit/test_id.c)
-j1939_add_test(test_queue j1939_test_mock unit/test_queue.c)
+target_include_directories(j1939_test_mock PUBLIC config)
+target_compile_definitions(j1939_test_mock PUBLIC J1939_CONFIG_FILE="j1939_test_config.h")
+
+add_library(test_support STATIC support/test_bus.c "${MOCK_PORT_DIR}/j1939_port_fixture.c")
+set_target_properties(test_support PROPERTIES C_STANDARD 99 C_EXTENSIONS OFF)
+target_include_directories(test_support PUBLIC support port)
+target_link_libraries(test_support PUBLIC j1939_test_mock unity)
+j1939_set_warnings(test_support)
+
+j1939_add_test(test_version test_support unit/test_version.c)
+j1939_add_test(test_id test_support unit/test_id.c)
+j1939_add_test(test_queue test_support unit/test_queue.c)
+j1939_add_test(test_stack test_support unit/test_stack.c)
+j1939_add_test(test_request test_support unit/test_request.c)
+j1939_add_test(test_request_exchange test_support integration/test_request_exchange.c)
 
 # Port conformance: the bundled ports, plus the configured port if it is another one.
 j1939_add_port_conformance(test_port_mock j1939_test_mock)
