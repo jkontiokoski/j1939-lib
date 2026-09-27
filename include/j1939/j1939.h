@@ -17,6 +17,7 @@
 #include "j1939/j1939_queue.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_ret.h"
+#include "j1939/j1939_signal.h"
 #include "j1939/j1939_stack.h"
 
 #define J1939_VERSION_MAJOR 0
