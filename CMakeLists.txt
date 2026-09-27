@@ -20,6 +20,7 @@ option(J1939_BUILD_TESTS "Build the test suite" ${PROJECT_IS_TOP_LEVEL})
 option(J1939_WERROR "Treat compiler warnings as errors" ${PROJECT_IS_TOP_LEVEL})
 option(J1939_SANITIZE "Instrument with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(J1939_COVERAGE "Instrument for gcov coverage" OFF)
+set(J1939_PORT_DIR "" CACHE PATH "Port directory containing j1939_target.h")
 option(J1939_COMPILE_COMMANDS "Generate compile_commands.json for tooling such as clangd"
 	${PROJECT_IS_TOP_LEVEL})
 
@@ -29,19 +30,22 @@ endif()
 
 include(cmake/warnings.cmake)
 include(cmake/instrumentation.cmake)
+include(cmake/library.cmake)
 
-add_library(j1939 STATIC
-	src/j1939_id.c
-	src/j1939_version.c
-)
+# Development builds of this repository default to the mock port; an
+# integrator always selects a port explicitly.
+if(J1939_PORT_DIR STREQUAL "")
+	if(PROJECT_IS_TOP_LEVEL)
+		set(J1939_PORT_DIR "${PROJECT_SOURCE_DIR}/port/mock")
+	else()
+		message(FATAL_ERROR "j1939: set J1939_PORT_DIR to the directory of your port's j1939_target.h")
+	endif()
+endif()
+cmake_path(ABSOLUTE_PATH J1939_PORT_DIR BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" NORMALIZE)
+string(REGEX REPLACE "/$" "" J1939_PORT_DIR "${J1939_PORT_DIR}")
+
+j1939_add_library(j1939 "${J1939_PORT_DIR}")
 add_library(j1939::j1939 ALIAS j1939)
-set_target_properties(j1939 PROPERTIES
-	C_STANDARD 99
-	C_STANDARD_REQUIRED ON
-	C_EXTENSIONS OFF
-)
-target_include_directories(j1939 PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-j1939_set_warnings(j1939)
 
 if(J1939_BUILD_TESTS)
 	enable_testing()

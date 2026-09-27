@@ -49,6 +49,10 @@ include/j1939/        public headers
                         j1939_config.h          compile-time configuration and defaults
                         j1939_port_contract.h   required target API, compile-time checks
 src/                  implementation (*.c) and private headers (*_priv.h)
+port/<name>/          one directory per port
+                        j1939_target.h          native frame type, accessors, lock
+                        port.cmake              optional: port sources, libraries, test fixture
+                        j1939_port_fixture.c    optional: conformance test fixture
 port/mock/            test port with a deliberately unusual frame layout
 port/socketcan/       Linux SocketCAN (CAN_RAW) port
 examples/             example applications (SocketCAN)
@@ -57,6 +61,7 @@ tests/unit/           unit tests per module (mock port)
 tests/integration/    multi-node scenarios (mock port)
 tests/vendor/unity/   vendored Unity test framework
 cmake/                build helpers
+                        library.cmake           j1939_add_library(): builds the library for a port
                         warnings.cmake          project warning set, j1939_set_warnings()
                         instrumentation.cmake   sanitizer and coverage options
                         arm-none-eabi.cmake     Cortex-M0+ toolchain for the portability check
@@ -74,6 +79,7 @@ The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
 | Abstraction            | Type                                             | Role                                                                                  |
 | ---------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | Native frame           | `j1939_port_frame_t` (typedef by the port)       | The only type crossing the port boundary. Accessed only through the port accessors    |
+| Lock                   | `j1939_port_lock_t` (typedef by the port)        | Critical-section object embedded in each queue                                        |
 | ID codec               | `j1939_id_*()` pure functions on `uint32_t`      | Priority, EDP, DP, PF, PS, SA; PDU1 (PF < 240, PS = DA) / PDU2 rules; PGN handling    |
 | NAME codec             | `j1939_name_*()` pure functions on `uint64_t`    | J1939/81 NAME fields                                                                  |
 | Message                | `j1939_msg_t {pgn, prio, sa, da, len, data}`     | Logical message, 0–1785 bytes; `data` points to integrator memory                     |
@@ -86,7 +92,8 @@ The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
 ### Port boundary
 
 The library includes `j1939_target.h`, found through the include path selected by the build (`J1939_PORT_DIR`).
-The port typedefs its native frame type as `j1939_port_frame_t` and provides `static inline` accessors for it, plus critical-section macros.
+The port typedefs its native frame type as `j1939_port_frame_t` and provides `static inline` accessors for it, plus a lock type with `static inline` lock functions.
+The library includes the target header only through `j1939_port_contract.h`, which repeats the required declarations: a port whose definitions differ fails to compile, and a missing definition is reported as declared but never defined.
 The library is compiled against exactly one port.
 The full contract is described in [porting.md](porting.md).
 
@@ -169,13 +176,16 @@ Integrators supply their licensed DA content as `const` tables.
 ### Testing
 
 - Unity (vendored in `tests/vendor/unity/`), run through `ctest`.
-- Unit tests per module use the mock port.
-- Port conformance tests in `tests/port/` are compiled and run against every port.
+- The test build compiles the library once per port with `j1939_add_library()`. Unit tests link the mock port variant, whatever port the main `j1939` target uses.
+- The port conformance test `tests/port/test_port_conformance.c` runs against the mock port and the configured `J1939_PORT_DIR` port if it is another one. Frames the port API cannot build (standard, remote, raw DLC above 8) come from the port's `j1939_port_fixture.c`.
 - Integration tests run several `j1939_t` instances in one process; the test harness moves frames from one stack's tx queue to the others' rx queues.
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Coverage with gcov/gcovr; target ≥ 90 % line coverage on the protocol core, branch coverage reported.
 
 ### Static analysis deviations
+
+The MISRA checks apply to the library core (`src/`, `include/`) and the mock port.
+Port test fixtures are test code and are not linted.
 
 | Suppression                                    | Scope                | Reason                                                                     |
 | ---------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
@@ -200,6 +210,7 @@ CMake options:
 
 | Option              | Default               | Effect                                               |
 | ------------------- | --------------------- | ---------------------------------------------------- |
+| `J1939_PORT_DIR`    | `port/mock` when top level, required otherwise | Port directory; relative paths are resolved against the top-level source directory |
 | `J1939_BUILD_TESTS` | ON when top level     | Builds the test suite                                |
 | `J1939_WERROR`      | ON when top level     | Treats warnings as errors                            |
 | `J1939_SANITIZE`    | OFF                   | AddressSanitizer + UndefinedBehaviorSanitizer        |

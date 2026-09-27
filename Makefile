@@ -15,7 +15,6 @@ COVERAGE_MIN := 90
 
 FORMAT_FILES = $(shell find include src tests port examples \
 	-path tests/vendor -prune -o -type f \( -name '*.c' -o -name '*.h' \) -print 2>/dev/null)
-LINT_DIRS = $(wildcard src include port)
 
 .PHONY: all lib test coverage cross format format-check lint clean
 
@@ -49,7 +48,8 @@ format-check:
 
 lint:
 	cppcheck --std=c99 --enable=all --inconclusive --error-exitcode=1 --inline-suppr \
-		--addon=misra --suppressions-list=cppcheck-suppressions.txt -I include $(LINT_DIRS)
+		--addon=misra --suppressions-list=cppcheck-suppressions.txt \
+		-I include -I port/mock -i port/mock/j1939_port_fixture.c src include port/mock
 
 clean:
 	rm -rf $(BUILD_DIR) $(TEST_DIR) $(COV_DIR) $(ARM_DIR)
