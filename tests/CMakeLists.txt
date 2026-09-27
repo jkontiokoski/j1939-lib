@@ -42,6 +42,7 @@ j1939_set_warnings(test_support)
 
 j1939_add_test(test_version test_support unit/test_version.c)
 j1939_add_test(test_id test_support unit/test_id.c)
+j1939_add_test(test_name test_support unit/test_name.c)
 j1939_add_test(test_queue test_support unit/test_queue.c)
 j1939_add_test(test_stack test_support unit/test_stack.c)
 j1939_add_test(test_request test_support unit/test_request.c)
