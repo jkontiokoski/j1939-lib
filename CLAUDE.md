@@ -50,6 +50,7 @@ It will serve this purpose after the library is published, but also for the auth
 ### Workflow
 
 - When several tasks can be worked on simultaneously, act as an orchestrator: spawn one subagent per task, each in its own git worktree and feature branch. Every task is delivered as a pull request from its feature branch; never commit or push to `main` directly.
+- Update a feature branch that is behind `main` by rebasing it onto `origin/main` and pushing with `--force-with-lease`; do not merge `main` into feature branches.
 - Concurrent agents share `vcan0`. Agents run `make test` with `J1939_TEST_CANIF` set to a missing interface so the SocketCAN loopback test is skipped; the orchestrator runs it after merging.
 
 ### Commit messages

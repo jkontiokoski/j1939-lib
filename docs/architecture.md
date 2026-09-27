@@ -354,6 +354,7 @@ Make targets:
 - Semantic versioning, exposed as `J1939_VERSION_MAJOR`, `J1939_VERSION_MINOR`, `J1939_VERSION_PATCH` in `j1939.h`.
 - One branch per task, named after the feature or module (`stack-core`, `tp-bam`). Documentation is updated in the same commit as the code it describes.
 - Work reaches `main` only through a pull request from its feature branch.
+- A feature branch is kept current by rebasing it onto `main` and force-pushing it with `--force-with-lease`. `main` itself is never rewritten.
 - Tasks that do not depend on each other are developed in parallel, each in its own git worktree and branch.
 - Commit messages follow Conventional Commits: `<type>(<scope>): <summary>`.
   - Types: `feat`, `fix`, `docs`, `test`, `build`, `refactor`.
