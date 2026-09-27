@@ -99,6 +99,8 @@ typedef struct j1939_stats {
 	uint32_t tp_tx_aborted;   /**< Multi-packet sends ended by an abort or a timeout. */
 	uint32_t tp_rx_aborted;   /**< Multi-packet receptions ended without delivery. */
 	uint32_t tp_rx_refused;   /**< RTS or BAM refused: no free session or reassembly buffer. */
+	uint32_t dm_tx_retry;   /**< DM1, DM2 or acknowledgement sends deferred, see j1939_dm.h. */
+	uint32_t dm_tx_dropped; /**< DM1, DM2 or acknowledgement sends given up, see j1939_dm.h. */
 } j1939_stats_t;
 
 /** Message slot queue. Members are private. */
@@ -106,6 +108,8 @@ typedef struct j1939_msg_queue {
 	j1939_msg_slot_t *buf; /**< Integrator storage. */
 	j1939_ring_t ring;     /**< Indices into buf. */
 } j1939_msg_queue_t;
+
+struct j1939_dm; /* Diagnostic state of a CA, see j1939_dm.h. */
 
 /** Stack instance. Allocated by the integrator, members are private. */
 typedef struct j1939 {
@@ -122,6 +126,8 @@ typedef struct j1939 {
 	/** Self-configurable addresses claimed by other nodes, one bit each. */
 	uint8_t addr_taken[J1939_ADDR_TAKEN_LEN];
 	j1939_tp_t tp; /**< Transport protocol sessions and buffers. */
+	/** Diagnostic state of each CA; NULL while diagnostics are not enabled. */
+	struct j1939_dm *dm[J1939_CFG_CA_MAX];
 } j1939_t;
 
 /**
