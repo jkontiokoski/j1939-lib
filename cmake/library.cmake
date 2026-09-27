@@ -3,6 +3,7 @@
 
 set(J1939_CORE_SOURCES
 	"${PROJECT_SOURCE_DIR}/src/j1939_diag.c"
+	"${PROJECT_SOURCE_DIR}/src/j1939_addr.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_id.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_name.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_queue.c"

@@ -136,7 +136,7 @@ const j1939_cfg_t cfg = {
 	.req_pgns = req_pgns, .req_pgns_len = 1,
 };
 j1939_init(&stack, &cfg);
-j1939_ca_add(&stack, &(j1939_ca_cfg_t){.address = 0x80}, &ca);
+j1939_ca_add(&stack, &(j1939_ca_cfg_t){.address = 0x80, .name = MY_NAME}, &ca);
 ```
 
 `j1939_init()` validates the whole configuration before it changes the stack object.
@@ -152,6 +152,7 @@ PGNs in the lists must be valid PGNs: at most 0x3FFFF, lowest byte 0 for PDU1 fo
 | CAN tx              | `j1939_queue_peek(j1939_tx_queue(&stack))` → driver writes the frame → `j1939_queue_pop()` | Main loop, tx-complete ISR, DMA    |
 | Application rx      | `j1939_msg_peek(&stack)`, application switches on `msg->pgn`, then `j1939_msg_pop(&stack)` | Main loop / task                   |
 | Application tx      | `j1939_send(&stack, ca, &msg)`, `j1939_request_send(&stack, ca, pgn, da)`                 | Main loop / task                   |
+| Address claim state | `j1939_addr_get(&stack, ca, &address, &state)`                                            | Main loop / task                   |
 
 - The rx and tx queues are `j1939_queue_t` instances over the integrator's buffers, reached through `j1939_rx_queue()` and `j1939_tx_queue()`. Each has one producer and one consumer, which may run in different contexts; index updates run inside the port lock, frame contents are written and read outside it. Every slot of the buffer is usable.
 - `j1939_process()` handles the frames present in the rx queue when it starts; frames arriving meanwhile wait for the next call. It stores application messages in the message slots and queues frames the stack generates into the tx queue.
@@ -162,12 +163,37 @@ PGNs in the lists must be valid PGNs: at most 0x3FFFF, lowest byte 0 for PDU1 fo
 Receive filtering in `j1939_process()`:
 
 1. Standard (11-bit) frames, remote frames and frames with the extended data page bit set are dropped.
-2. Frames addressed to a node other than one of the stack's CAs are dropped; global frames pass.
+2. Frames addressed to an address none of the stack's CAs holds are dropped; global frames pass. Address Claimed (PGN 60928) is handled by address claiming whatever its destination, and is also delivered to the application if it is in `rx_pgns`.
 3. A Request (PGN 59904) is handled by the Request module:
+   - a Request for Address Claimed (PGN 60928) is answered by the stack for every CA it concerns and is never delivered;
    - for a PGN in `req_pgns` it is delivered to the application, which reads the PGN with `j1939_request_pgn_get()` and answers with `j1939_send()`;
    - a destination-specific Request for any other PGN is answered by the stack with a NACK (PGN 59392), sent to the global address with the requester in byte 5, as J1939/21 specifies;
    - a global Request for any other PGN, and a Request shorter than 3 bytes, are ignored.
 4. Any other PGN in `rx_pgns` is delivered to the application; the rest are dropped.
+
+### Address claiming (J1939/81)
+
+Every CA claims an address before it transmits; `j1939_ca_cfg_t` gives its NAME and preferred address.
+The procedure runs inside `j1939_process()`; its only clock is `elapsed_us`.
+`j1939_addr_get()` reports the CA's address and `j1939_addr_state_t`, which can change at runtime.
+
+| State          | Address held | May transmit                           | Left by                                                        |
+| -------------- | ------------ | -------------------------------------- | -------------------------------------------------------------- |
+| `UNCLAIMED`    | No           | Only a Request for Address Claimed     | Address Claimed queued (retried while the tx queue is full)   |
+| `CLAIMING`     | Yes          | Only a Request for Address Claimed     | 250 ms without losing the address                              |
+| `CLAIMED`      | Yes          | Yes                                    | Losing the address                                             |
+| `CANNOT_CLAIM` | No           | Only a Request for Address Claimed     | Not left                                                       |
+
+- Address Claimed (PGN 60928) is sent to the global address from the claimed address with the NAME as data; Cannot Claim is the same message from the NULL address 254.
+- Transmission start: a CA claiming an address in 0–127 or 248–253 goes to `CLAIMED` as soon as its Address Claimed is queued. A CA claiming a self-configurable address (128–247) stays in `CLAIMING` for 250 ms after queuing it, so that a contending CA can answer first.
+- An Address Claimed from another node for an address a CA holds is arbitrated on the NAME; the numerically lower NAME wins. The winner sends its Address Claimed again. The loser, if its NAME is arbitrary address capable, claims the lowest self-configurable address that no other node has claimed and no CA of the stack uses; otherwise, or if none is free, it goes to `CANNOT_CLAIM`.
+- A CA in `CANNOT_CLAIM` sends Cannot Claim after a pseudo-random delay of 0–153 ms (0–255 steps of 0.6 ms), on entering the state and on every Request for Address Claimed that concerns it. The step count is the XOR of the NAME's eight bytes, so no random source is needed and CAs with different NAMEs usually differ.
+- A Request for Address Claimed to the global address or to a held address is answered for every CA it concerns: Address Claimed from `CLAIMING` or `CLAIMED`, Cannot Claim from `CANNOT_CLAIM`. A CA in `UNCLAIMED` sends its claim with the next `j1939_process()` anyway.
+- `j1939_request_send()` for PGN 60928 works in every state and uses the NULL address unless the CA is `CLAIMED`. The stack answers such a Request for its own CAs too, as J1939/21 requires of a node that sends a global Request.
+- Each stack records the self-configurable addresses that other nodes have claimed (a 120-bit table in `j1939_t`) to choose a free address. Entries are never cleared: J1939/81 has no message that releases an address.
+- An Address Claimed carrying a CA's own NAME is ignored, so a driver that loops back transmitted frames does no harm.
+- A corrupted claim state sends the CA to `CANNOT_CLAIM`.
+- Not implemented: Commanded Address (PGN 65240) needs the transport protocol; retrying a claim after `CANNOT_CLAIM`.
 
 ### Configuration
 
@@ -268,6 +294,7 @@ A received payload is decoded in place from the message slot with `j1939_diag_dm
 - Unit and integration tests link a library variant built with `tests/config/j1939_test_config.h` through `J1939_CONFIG_FILE`, which also exercises the configuration override.
 - Integration tests run several `j1939_t` instances in one process; `tests/support/test_bus.c` moves every frame from one stack's tx queue to the rx queues of all others.
 - `test_signal` compares bit extraction and insertion against a bit-by-bit reference model for every offset and length in payloads of 1 to 8 bytes. `test_signal_example` builds and decodes messages with the example table from `examples/signals/`.
+- Timers are tested by passing the elapsed time to `j1939_process()`, for example one call 1 µs before and one at a deadline.
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Coverage with gcov/gcovr; target ≥ 90 % line coverage on the protocol core, branch coverage reported. Defensive checks against states the design rules out remain as uncovered branches.
 
