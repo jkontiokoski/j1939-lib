@@ -713,11 +713,13 @@ void j1939_tp_process(j1939_t *s, uint32_t elapsed_us) {
 
 j1939_ret_t j1939_tp_send(j1939_t *s, uint8_t sa, const j1939_msg_t *msg) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
+	/* The TP.CM frames carry the destination, so a PDU2 PGN may go to a single node. */
+	uint8_t id_da = j1939_pgn_is_pdu1(msg->pgn) ? msg->da : J1939_ADDR_GLOBAL;
 	uint8_t reason;
 	uint32_t id;
 
 	if ((msg->len > BUF_SIZE) ||
-	    (j1939_id_build(msg->prio, msg->pgn, msg->da, sa, &id) != J1939_RET_OK)) {
+	    (j1939_id_build(msg->prio, msg->pgn, id_da, sa, &id) != J1939_RET_OK)) {
 		/* Too long for a transmit buffer, or an invalid identifier. */
 	} else if (session_find(s, true, sa, msg->da) != NULL) {
 		ret = J1939_RET_ERR_BUSY;

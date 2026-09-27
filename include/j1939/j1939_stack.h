@@ -187,8 +187,9 @@ j1939_ret_t j1939_msg_pop(j1939_t *s);
  *
  * A payload of up to 8 bytes is sent as one frame, built immediately. A
  * longer payload is copied into a transport protocol transmit buffer and
- * sent with BAM when msg->da is J1939_ADDR_GLOBAL, with RTS/CTS otherwise;
- * the BAM or RTS frame is queued immediately, the data packets by
+ * sent with BAM when msg->da is J1939_ADDR_GLOBAL, with RTS/CTS otherwise,
+ * also for a PDU2 PGN: the transport protocol frames carry the destination.
+ * The BAM or RTS frame is queued immediately, the data packets by
  * j1939_process(). Either way @p msg and its data may be reused after the
  * call. The payload is sent as given; J1939 PGNs of 8 bytes or less
  * normally fill unused bytes with 0xFF.

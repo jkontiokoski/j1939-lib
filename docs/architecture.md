@@ -163,7 +163,7 @@ PGNs in the lists must be valid PGNs: at most 0x3FFFF, lowest byte 0 for PDU1 fo
 - The rx and tx queues are `j1939_queue_t` instances over the integrator's buffers, reached through `j1939_rx_queue()` and `j1939_tx_queue()`. Each has one producer and one consumer, which may run in different contexts; index updates run inside the port lock, frame contents are written and read outside it. Every slot of the buffer is usable.
 - `j1939_process()` handles the frames present in the rx queue when it starts; frames arriving meanwhile wait for the next call. It stores application messages in the message slots and queues frames the stack generates into the tx queue.
 - A received message and its data stay valid in its slot until `j1939_msg_pop()`.
-- `j1939_send()` builds a single frame immediately. A payload of 9 to `J1939_CFG_TP_BUF_SIZE` bytes is copied into a free TP transmit buffer and sent with BAM to the global address, with RTS/CTS to a specific one; the BAM or RTS frame is queued at once, the data packets by `j1939_process()`. Either way the message and its data may be reused after the call.
+- `j1939_send()` builds a single frame immediately. A payload of 9 to `J1939_CFG_TP_BUF_SIZE` bytes is copied into a free TP transmit buffer and sent with BAM to the global address, with RTS/CTS to a specific one, PDU2 PGNs included; the BAM or RTS frame is queued at once, the data packets by `j1939_process()`. Either way the message and its data may be reused after the call.
 - When the message slots or the tx queue are full, the stack drops the message or frame it generated and counts it in `j1939_stats_t`. Application sends report `J1939_RET_ERR_FULL` instead.
 
 Transport protocol (J1939/21, `src/j1939_tp.c`):

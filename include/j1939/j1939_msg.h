@@ -18,7 +18,7 @@ typedef struct j1939_msg {
 	uint32_t pgn;        /**< Parameter group number. */
 	uint8_t prio;        /**< Priority, 0 (highest) .. 7. */
 	uint8_t sa;          /**< Source address. Ignored when sending: the CA's address is used. */
-	uint8_t da;          /**< Destination address; J1939_ADDR_GLOBAL for PDU2 formats. */
+	uint8_t da;          /**< Destination address; J1939_ADDR_GLOBAL for PDU2 in one frame. */
 	uint16_t len;        /**< Payload length in bytes. */
 	const uint8_t *data; /**< Payload; may be NULL when len is 0. */
 } j1939_msg_t;

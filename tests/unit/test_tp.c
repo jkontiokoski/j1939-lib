@@ -751,6 +751,29 @@ static void test_rts_cts_send(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK, send(PEER, PGN_B, LEN_20));
 }
 
+/* The TP.CM frames carry the destination: a PDU2 PGN may also go to a single node. */
+static void test_pdu2_pgn_is_sent_with_rts_cts(void) {
+	TEST_ASSERT_EQUAL(J1939_RET_OK, send(PEER, PGN_A, LEN_20));
+	expect_tx(6U, J1939_PGN_TP_CM, PEER);
+	TEST_ASSERT_EQUAL_HEX8(RTS, sent[0]);
+	TEST_ASSERT_EQUAL_HEX8(0xCAU, sent[5]);
+	TEST_ASSERT_EQUAL_HEX8(0xFEU, sent[6]);
+	rx_cts(PEER, 3U, 1U, PGN_A);
+	run(0U);
+	expect_tx(6U, J1939_PGN_TP_DT, PEER);
+	expect_tx(6U, J1939_PGN_TP_DT, PEER);
+	expect_tx(6U, J1939_PGN_TP_DT, PEER);
+	TEST_ASSERT_EQUAL_UINT8(3U, sent[0]);
+	rx_cm_to(PEER, OWN, EOMA, LEN_20, 0U, 3U, NA, PGN_A);
+	run(0U);
+	expect_none();
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
+	TEST_ASSERT_EQUAL_UINT32(0U, s.stats.tp_tx_aborted);
+
+	/* A single frame of a PDU2 PGN still goes to all nodes only. */
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, send(PEER, PGN_A, 8U));
+}
+
 static void test_originator_times_out_with_t3(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK, send(PEER, PGN_B, LEN_20));
 	expect_tx(6U, J1939_PGN_TP_CM, PEER);
@@ -1040,6 +1063,7 @@ int main(void) {
 	RUN_TEST(test_bam_send_paces_packets);
 	RUN_TEST(test_bam_send_waits_for_tx_queue_then_gives_up);
 	RUN_TEST(test_rts_cts_send);
+	RUN_TEST(test_pdu2_pgn_is_sent_with_rts_cts);
 	RUN_TEST(test_originator_times_out_with_t3);
 	RUN_TEST(test_originator_hold_and_t4);
 	RUN_TEST(test_invalid_cts_aborts);
