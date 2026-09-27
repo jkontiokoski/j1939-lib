@@ -165,6 +165,7 @@ PGNs in the lists must be valid PGNs: at most 0x3FFFF, lowest byte 0 for PDU1 fo
 | Address claim state | `j1939_addr_get(&stack, ca, &address, &state)`                                            | Main loop / task                   |
 | Commanded Address   | `j1939_addr_command_send(&stack, ca, name, address, da)`                                  | Main loop / task                   |
 
+- Execution contexts: the frame queue functions and `j1939_msg_peek()` / `j1939_msg_pop()` are protected by the port lock and may run in a context other than `j1939_process()`, one producer and one consumer per queue. Every other stack function (initialisation, `j1939_process()`, sending, and the address and diagnostic calls) reads or changes unlocked stack state: call them all from the context that runs `j1939_process()`, or serialise them with a lock of the integrator's own.
 - The rx and tx queues are `j1939_queue_t` instances over the integrator's buffers, reached through `j1939_rx_queue()` and `j1939_tx_queue()`. Each has one producer and one consumer, which may run in different contexts; index updates run inside the port lock, frame contents are written and read outside it. Every slot of the buffer is usable.
 - `j1939_process()` handles the frames present in the rx queue when it starts; frames arriving meanwhile wait for the next call. It stores application messages in the message slots and queues frames the stack generates into the tx queue.
 - A received message and its data stay valid in its slot until `j1939_msg_pop()`.
