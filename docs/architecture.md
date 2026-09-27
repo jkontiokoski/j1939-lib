@@ -22,7 +22,7 @@ Each layer depends only on the layers below it.
 ```
  Application: pulls received messages, queues messages to send, signal access, DM1
  ──────────────────────────────────────────────────────────────────────────────
- j1939_diag (J1939/73)   j1939_db / signals (J1939/71 + DA schema)        optional modules
+ j1939_diag (J1939/73)   j1939_signal (J1939/71 + DA schema)              optional modules
  ──────────────────────────────────────────────────────────────────────────────
  j1939_addr (J1939/81)   j1939_tp (J1939/21 TP.BAM / TP.CM)               protocol core
  j1939_stack: j1939_t, rx/tx queues, CA objects, DA/PGN filtering, message slots
@@ -47,6 +47,7 @@ include/j1939/        public headers
                         j1939_msg.h             logical message type
                         j1939_stack.h           stack object, configuration, process, send, message pull
                         j1939_request.h         Request and Acknowledgement
+                        j1939_signal.h          signal (SPN) descriptors, extraction, scaling, validity
                         j1939_tp.h              transport protocol
                         j1939_addr.h            address claiming
                         j1939_diag.h            J1939/73 DTC, lamp status and DM1/DM2 payload codec
@@ -62,6 +63,7 @@ port/<name>/          one directory per port
 port/mock/            test port with a deliberately unusual frame layout
 port/socketcan/       Linux SocketCAN (CAN_RAW) port, plus j1939_socketcan.[ch] socket helpers
 examples/             example applications (SocketCAN)
+examples/signals/     illustrative signal table: invented Proprietary B signals
 tests/port/           port conformance tests, compiled once per port; SocketCAN loopback test
 tests/unit/           unit tests per module (mock port)
 tests/integration/    multi-node scenarios (mock port)
@@ -94,6 +96,7 @@ The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
 | NAME codec             | `j1939_name_*()` pure functions on `uint64_t`    | J1939/81 NAME fields                                                                  |
 | Message                | `j1939_msg_t {pgn, prio, sa, da, len, data}`     | Logical message, 0–1785 bytes; `data` points to integrator memory                     |
 | Message slot           | `j1939_msg_slot_t`                               | Integrator storage for one received message; the application reads it in place        |
+| Signal descriptor      | `j1939_signal_t`, `j1939_signal_*()` functions   | SPN position, length, scaling and J1939/71 range type; `const` integrator data        |
 | Stack                  | `j1939_t`, configured by `j1939_cfg_t`           | One per CAN bus. Queues, message slots, PGN lists, CAs, event counters                |
 | Controller Application | `j1939_ca_t`, configured by `j1939_ca_cfg_t`     | Source address; NAME and address-claim state with J1939/81. Referenced by `j1939_ca_id_t` |
 | Event counters         | `j1939_stats_t`                                  | Messages and frames dropped because integrator storage was full                       |
@@ -175,8 +178,43 @@ Receive filtering in `j1939_process()`:
 ### J1939DA
 
 The J1939DA content is copyrighted by SAE.
-The library provides the database engine (SPN descriptor schema, bit extraction, scaling, J1939/71 not-available/error ranges) and a small illustrative table.
-Integrators supply their licensed DA content as `const` tables.
+The library provides the database engine in `j1939_signal.h`: the SPN descriptor schema, bit extraction and insertion, scaling and the J1939/71 value ranges.
+Integrators supply their licensed DA content as `const` tables of `j1939_signal_t`.
+The illustrative table in `examples/signals/` uses invented signals in the Proprietary B PGN range (0xFF00–0xFFFF), not DA definitions.
+
+A descriptor is plain data:
+
+| Field                | Content                                                                                   |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| `spn`, `pgn`         | SPN (19 bits) and the PGN the signal is transmitted in                                    |
+| `start`              | Bit offset in the payload. The DA start position "B.b" (byte and bit from 1) is `J1939_SIGNAL_POS(B, b)` |
+| `bits`               | Length, 1–32 bits                                                                         |
+| `type`               | Range convention: `PLAIN`, `CONTINUOUS` (8, 16, 32 bits) or `DISCRETE` (2 bits)           |
+| `res_num`, `res_den` | Resolution as a fraction: engineering units per bit                                       |
+| `offset`             | Offset in engineering units (`int64_t`)                                                   |
+| `unit`, `name`       | Optional strings for display                                                              |
+
+- Payload bit `n` is bit `n % 8` of byte `n / 8`; multi-byte values are little endian. Insertion leaves all other payload bits unchanged.
+- Engineering value = raw × `res_num` / `res_den` + `offset`, in 64-bit integer arithmetic without floating point, rounded to nearest with halves up. The integrator chooses the integer engineering unit and with it the precision: 0.125 rpm/bit is `1/8` in rpm or `125/1` in millirpm.
+- `j1939_signal_check()` rejects descriptors whose largest raw value would scale beyond `INT64_MAX`, so decoding cannot overflow. Every function taking a descriptor validates it first.
+- Encoding rejects values that round to a raw value below 0, beyond the field or outside the J1939/71 valid range. Indicators are written with `j1939_signal_indicator_set()`.
+- J1939/71 ranges: continuous parameters of 1, 2 and 4 bytes are classified by their most significant byte: 0x00–0xFA valid, 0xFB parameter specific, 0xFC–0xFD reserved, 0xFE error, 0xFF not available. 2-bit discrete parameters: 00 and 01 valid, 10 error, 11 not available. Plain signals have no reserved values.
+
+Decoding a received message:
+
+```c
+const j1939_msg_t *msg = j1939_msg_peek(&stack);
+int64_t rpm;
+j1939_signal_class_t cls;
+
+if ((msg != NULL) &&
+    (j1939_signal_msg_decode(&example_signals[EXAMPLE_PUMP_SPEED], msg, &rpm, &cls) == J1939_RET_OK) &&
+    (cls == J1939_SIGNAL_VALID)) {
+	/* use rpm */
+}
+```
+
+`j1939_signal_msg_decode()` fails if the message's PGN differs from the descriptor's or the message is too short to contain the signal.
 
 ### Diagnostics (J1939/73)
 
@@ -229,6 +267,7 @@ A received payload is decoded in place from the message slot with `j1939_diag_dm
 - `test_socketcan_vcan` exchanges frames over a real SocketCAN interface, `vcan0` by default or `J1939_TEST_CANIF`. It reports "skipped" when the interface does not exist.
 - Unit and integration tests link a library variant built with `tests/config/j1939_test_config.h` through `J1939_CONFIG_FILE`, which also exercises the configuration override.
 - Integration tests run several `j1939_t` instances in one process; `tests/support/test_bus.c` moves every frame from one stack's tx queue to the rx queues of all others.
+- `test_signal` compares bit extraction and insertion against a bit-by-bit reference model for every offset and length in payloads of 1 to 8 bytes. `test_signal_example` builds and decodes messages with the example table from `examples/signals/`.
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Coverage with gcov/gcovr; target ≥ 90 % line coverage on the protocol core, branch coverage reported. Defensive checks against states the design rules out remain as uncovered branches.
 
@@ -287,6 +326,8 @@ Make targets:
 
 - Semantic versioning, exposed as `J1939_VERSION_MAJOR`, `J1939_VERSION_MINOR`, `J1939_VERSION_PATCH` in `j1939.h`.
 - One branch per task, named after the feature or module (`stack-core`, `tp-bam`). Documentation is updated in the same commit as the code it describes.
+- Work reaches `main` only through a pull request from its feature branch.
+- Tasks that do not depend on each other are developed in parallel, each in its own git worktree and branch.
 - Commit messages follow Conventional Commits: `<type>(<scope>): <summary>`.
   - Types: `feat`, `fix`, `docs`, `test`, `build`, `refactor`.
   - The scope names the module or feature: `id`, `queue`, `port`, `socketcan`, `stack`, `tp`, `addr`, `build`.
