@@ -243,5 +243,18 @@ Make targets:
 ### Versioning and version control
 
 - Semantic versioning, exposed as `J1939_VERSION_MAJOR`, `J1939_VERSION_MINOR`, `J1939_VERSION_PATCH` in `j1939.h`.
-- Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `build:`, `refactor:`).
-- One branch per task. Documentation is updated in the same commit as the code it describes.
+- One branch per task, named after the feature or module (`stack-core`, `tp-bam`). Documentation is updated in the same commit as the code it describes.
+- Commit messages follow Conventional Commits: `<type>(<scope>): <summary>`.
+  - Types: `feat`, `fix`, `docs`, `test`, `build`, `refactor`.
+  - The scope names the module or feature: `id`, `queue`, `port`, `socketcan`, `stack`, `tp`, `addr`, `build`.
+  - The summary says what changed, in the imperative mood.
+  - The body is a few lines on what was done and why. Short enough to read at a glance.
+  - Roadmap milestone identifiers do not appear in commit messages or branch names.
+
+  ```
+  feat(queue): add frame queue over integrator-supplied storage
+
+  Rx and tx frames need a FIFO that an ISR and the main loop can share
+  without the library allocating memory. Index updates run inside the
+  port lock; frames are written in place.
+  ```

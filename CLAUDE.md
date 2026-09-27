@@ -46,3 +46,7 @@ It will serve this purpose after the library is published, but also for the auth
 ### Tooling notes
 
 - cppcheck (2.13) suppressions lists accept `//` comments only; `#` lines fail with "Failed to add suppression. No id". An unmatched suppression fails `make lint`, so add suppressions only when they match something.
+
+### Commit messages
+
+- Never put roadmap identifiers (M0, M1, ...) in commit messages or branch names. Scope commits by module or feature and keep the body to a short what-and-why. The full policy is in docs/architecture.md.
