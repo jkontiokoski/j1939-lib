@@ -19,6 +19,10 @@
 #define ADDR_A 0x01U
 #define ADDR_B 0x02U
 #define ADDR_C 0x03U
+#define NAME_A 0x10U
+#define NAME_B 0x20U
+#define NAME_C 0x30U
+#define NAME_D 0x05U   /* wins against NAME_B */
 #define PGN_BC 0xFECAU /* PDU2, received by every node */
 #define PGN_DS 0xEF00U /* PDU1, received by every node */
 #define PGN_NO 0xE100U /* PDU1, received by nobody */
@@ -40,6 +44,7 @@ static const uint32_t rx_pgns[] = {PGN_BC, PGN_DS};
 static node_t a;
 static node_t b;
 static node_t c;
+static node_t d;
 static test_bus_t bus;
 static uint8_t data[J1939_TP_MSG_MAX];
 
@@ -47,7 +52,7 @@ static uint8_t pat(uint32_t i, uint8_t seed) {
 	return (uint8_t)((i * 31U) + seed);
 }
 
-static void node_init(node_t *n, uint8_t address) {
+static void node_init(node_t *n, uint8_t address, uint64_t name) {
 	const j1939_cfg_t cfg = {
 	        .rx_buf = n->rx,
 	        .rx_len = RX_LEN,
@@ -64,8 +69,9 @@ static void node_init(node_t *n, uint8_t address) {
 	};
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&n->s, &(j1939_ca_cfg_t){.address = address}, &n->ca));
+	TEST_ASSERT_EQUAL(
+	        J1939_RET_OK,
+	        j1939_ca_add(&n->s, &(j1939_ca_cfg_t){.address = address, .name = name}, &n->ca));
 	test_bus_attach(&bus, &n->s);
 }
 
@@ -150,9 +156,9 @@ static void carry_dropping(node_t *from, uint8_t seq) {
 
 void setUp(void) {
 	test_bus_init(&bus);
-	node_init(&a, ADDR_A);
-	node_init(&b, ADDR_B);
-	node_init(&c, ADDR_C);
+	node_init(&a, ADDR_A, NAME_A);
+	node_init(&b, ADDR_B, NAME_B);
+	node_init(&c, ADDR_C, NAME_C);
 	/* Every node claims its address; the claims are not counted. */
 	process_all(0U);
 	(void)test_bus_run(&bus);
@@ -304,6 +310,33 @@ static void test_message_slot_holds_buffer_until_pop(void) {
 	TEST_ASSERT_EQUAL_PTR(held_data, j1939_msg_peek(&b.s)->data);
 }
 
+static void test_responder_losing_its_address_ends_the_transfer_silently(void) {
+	uint8_t address = 0U;
+	j1939_addr_state_t state = J1939_ADDR_STATE_UNCLAIMED;
+
+	TEST_ASSERT_EQUAL(J1939_RET_OK, send(&a, ADDR_B, PGN_DS, J1939_TP_MSG_MAX, 15U));
+	steps(4U);
+	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open(&b));
+
+	/* D claims B's address with a NAME of higher priority. */
+	node_init(&d, ADDR_B, NAME_D);
+	steps(3U);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_addr_get(&b.s, b.ca, &address, &state));
+	TEST_ASSERT_EQUAL(J1939_ADDR_STATE_CANNOT_CLAIM, state);
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open(&b));
+	TEST_ASSERT_EQUAL_UINT32(1U, b.s.stats.tp_rx_aborted);
+	/* B sent no abort from the lost address: A goes on until T3 expires. */
+	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open(&a));
+	TEST_ASSERT_EQUAL_UINT32(0U, a.s.stats.tp_tx_aborted);
+
+	steps(J1939_TP_T3_US / STEP_US + 20U);
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open(&a));
+	TEST_ASSERT_EQUAL_UINT32(1U, a.s.stats.tp_tx_aborted);
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open(&d));
+	TEST_ASSERT_NULL(j1939_msg_peek(&b.s));
+	TEST_ASSERT_NULL(j1939_msg_peek(&d.s));
+}
+
 int main(void) {
 	UNITY_BEGIN();
 	RUN_TEST(test_bam_of_maximum_size_reaches_every_node);
@@ -315,5 +348,6 @@ int main(void) {
 	RUN_TEST(test_broadcasts_from_two_senders);
 	RUN_TEST(test_out_of_reassembly_memory_aborts_rts);
 	RUN_TEST(test_message_slot_holds_buffer_until_pop);
+	RUN_TEST(test_responder_losing_its_address_ends_the_transfer_silently);
 	return UNITY_END();
 }

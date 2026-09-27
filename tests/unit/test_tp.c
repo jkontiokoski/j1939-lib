@@ -21,6 +21,7 @@
 #define PGN_A  0xFECAU /* PDU2 */
 #define PGN_B  0xEF00U /* PDU1 */
 #define PGN_X  0xFF55U /* not received */
+#define SELF   0x80U   /* self-configurable: claimed after the contention wait */
 #define LEN_20 20U     /* 3 packets, the last one with 6 bytes */
 
 #define RTS   0x10U
@@ -43,6 +44,7 @@ static j1939_t s;
 static j1939_ca_id_t ca;
 static uint8_t data[J1939_TP_MSG_MAX];
 static uint8_t sent[8];
+static uint8_t own = OWN; /* source address of the frames the stack sends */
 
 static uint8_t pat(uint32_t i) {
 	return (uint8_t)((i * 13U) + 1U);
@@ -109,7 +111,7 @@ static void expect_tx(uint8_t prio, uint32_t pgn, uint8_t da) {
 	uint32_t i;
 
 	TEST_ASSERT_NOT_NULL_MESSAGE(f, "no frame sent");
-	TEST_ASSERT_EQUAL_HEX32(make_id(prio, pgn, da, OWN), j1939_port_frame_id_get(f));
+	TEST_ASSERT_EQUAL_HEX32(make_id(prio, pgn, da, own), j1939_port_frame_id_get(f));
 	TEST_ASSERT_EQUAL_UINT8(8U, j1939_port_frame_len_get(f));
 	for (i = 0U; i < 8U; i++) {
 		sent[i] = j1939_port_frame_data(f)[i];
@@ -132,6 +134,19 @@ static void expect_abort(uint8_t da, uint8_t reason, uint32_t pgn) {
 
 static void expect_none(void) {
 	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_tx_queue(&s)));
+}
+
+/* Drains the tx queue; none of the frames may belong to the transport protocol. */
+static void expect_no_tp(void) {
+	const j1939_port_frame_t *f;
+
+	while ((f = j1939_queue_peek(j1939_tx_queue(&s))) != NULL) {
+		uint32_t pgn = j1939_id_pgn_get(j1939_port_frame_id_get(f));
+
+		TEST_ASSERT_NOT_EQUAL_HEX32(J1939_PGN_TP_CM, pgn);
+		TEST_ASSERT_NOT_EQUAL_HEX32(J1939_PGN_TP_DT, pgn);
+		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	}
 }
 
 static uint8_t sessions_open(void) {
@@ -179,11 +194,19 @@ static j1939_ret_t send(uint8_t da, uint32_t pgn, uint16_t len) {
 	return j1939_send(&s, ca, &msg);
 }
 
-static void init(uint16_t tx_bufs, uint16_t rx_bufs) {
+/* Re-initialises the stack with one CA that has not sent its Address Claimed yet. */
+static void init_unclaimed(uint16_t tx_bufs, uint16_t rx_bufs, uint8_t address, uint64_t name) {
+	const j1939_ca_cfg_t ca_cfg = {.address = address, .name = name};
+
 	cfg.tp_tx_buf_len = tx_bufs;
 	cfg.tp_rx_buf_len = rx_bufs;
+	own = address;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN}, &ca));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_ca_add(&s, &ca_cfg, &ca));
+}
+
+static void init(uint16_t tx_bufs, uint16_t rx_bufs) {
+	init_unclaimed(tx_bufs, rx_bufs, OWN, 0x100000U);
 	/* Claim the address; the CA may transmit right after its Address Claimed. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
@@ -862,6 +885,90 @@ static void test_timer_saturates(void) {
 	expect_abort(PEER, J1939_TP_ABORT_TIMEOUT, PGN_B);
 }
 
+/* ---- Address claiming ---- */
+
+static void test_unclaimed_ca_cannot_send_multi_packet(void) {
+	init_unclaimed(BUF_LEN, BUF_LEN, OWN, 0U);
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_NO_ADDRESS, send(J1939_ADDR_GLOBAL, PGN_A, LEN_20));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_NO_ADDRESS, send(PEER, PGN_B, LEN_20));
+	expect_none();
+
+	/* Still in the contention wait. */
+	init_unclaimed(BUF_LEN, BUF_LEN, SELF, 0U);
+	run(0U);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_NO_ADDRESS, send(J1939_ADDR_GLOBAL, PGN_A, LEN_20));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_NO_ADDRESS, send(PEER, PGN_B, LEN_20));
+	expect_none();
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
+	TEST_ASSERT_EQUAL_UINT8(0U, tp_tx[0].state);
+}
+
+static void test_rts_to_claiming_ca_is_not_answered(void) {
+	init_unclaimed(BUF_LEN, BUF_LEN, SELF, 0U);
+	run(0U);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	rx_cm_to(PEER, SELF, RTS, LEN_20, 0U, 3U, NA, PGN_B);
+	rx_cm_to(PEER, SELF, RTS, 8U, 0U, 2U, NA, PGN_B); /* invalid: no abort either */
+	/* A broadcast needs no transmission and is received. */
+	rx_bam(PEER2, LEN_20, 3U, PGN_A);
+	rx_dt(PEER2, J1939_ADDR_GLOBAL, 1U);
+	rx_dt(PEER2, J1939_ADDR_GLOBAL, 2U);
+	rx_dt(PEER2, J1939_ADDR_GLOBAL, 3U);
+	run(0U);
+	expect_none();
+	expect_msg(PGN_A, PEER2, J1939_ADDR_GLOBAL, LEN_20);
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
+
+	run(J1939_ADDR_CLAIM_WAIT_US);
+	rx_cm_to(PEER, SELF, RTS, LEN_20, 0U, 3U, NA, PGN_B);
+	run(0U);
+	expect_cm(PEER, CTS, 3U, 1U, NA, NA, PGN_B);
+}
+
+/* Another node claims OWN with a NAME of higher priority; the CA cannot claim another address. */
+static void rx_competing_claim(void) {
+	const uint8_t name[8] = {1U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
+
+	rx_raw(make_id(6U, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL, OWN), name, 8U);
+}
+
+static void test_address_loss_ends_sessions_without_abort(void) {
+	/* Sending: the connection to PEER ends, the broadcast from PEER3 goes on. */
+	TEST_ASSERT_EQUAL(J1939_RET_OK, send(PEER, PGN_B, LEN_20));
+	expect_tx(6U, J1939_PGN_TP_CM, PEER);
+	rx_bam(PEER3, LEN_20, 3U, PGN_A);
+	rx_competing_claim();
+	rx_cts(PEER, 3U, 1U, PGN_B); /* no longer addressed to this stack */
+	rx_dt(PEER3, J1939_ADDR_GLOBAL, 1U);
+	rx_dt(PEER3, J1939_ADDR_GLOBAL, 2U);
+	run(0U);
+	expect_no_tp();
+	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_tx_aborted);
+	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open());
+	TEST_ASSERT_EQUAL_UINT8(0U, tp_tx[0].state);
+	rx_dt(PEER3, J1939_ADDR_GLOBAL, 3U);
+	run(0U);
+	expect_msg(PGN_A, PEER3, J1939_ADDR_GLOBAL, LEN_20);
+
+	/* Receiving: the connection from PEER ends; its later packets are not for this stack. */
+	init(BUF_LEN, BUF_LEN);
+	rx_rts(PEER, LEN_20, 3U, NA, PGN_B);
+	rx_dt(PEER, OWN, 1U);
+	run(0U);
+	expect_cm(PEER, CTS, 3U, 1U, NA, NA, PGN_B);
+	rx_competing_claim();
+	rx_dt(PEER, OWN, 2U);
+	rx_dt(PEER, OWN, 3U);
+	run(0U);
+	run(J1939_TP_T1_US);
+	expect_no_tp();
+	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_rx_aborted);
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
+	TEST_ASSERT_EQUAL_UINT8(0U, tp_rx[0].state);
+	TEST_ASSERT_NULL(j1939_msg_peek(&s));
+}
+
 int main(void) {
 	UNITY_BEGIN();
 	RUN_TEST(test_init_validates_tp_buffers);
@@ -899,5 +1006,8 @@ int main(void) {
 	RUN_TEST(test_data_waits_for_tx_queue_then_aborts);
 	RUN_TEST(test_send_resource_errors);
 	RUN_TEST(test_timer_saturates);
+	RUN_TEST(test_unclaimed_ca_cannot_send_multi_packet);
+	RUN_TEST(test_rts_to_claiming_ca_is_not_answered);
+	RUN_TEST(test_address_loss_ends_sessions_without_abort);
 	return UNITY_END();
 }

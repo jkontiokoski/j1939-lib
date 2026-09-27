@@ -10,6 +10,7 @@
 #include "j1939/j1939_name.h"
 #include "j1939_addr_priv.h"
 #include "j1939_stack_priv.h"
+#include "j1939_tp_priv.h"
 
 #define CLAIM_PRIO     6U
 #define CA_ADDRESS_MAX 0xFDU
@@ -118,6 +119,7 @@ static void cannot_claim_enter(j1939_ca_t *ca) {
 static void address_lost(j1939_t *s, j1939_ca_t *ca) {
 	uint8_t next = J1939_ADDR_NULL;
 
+	j1939_tp_address_lost(s, ca->address);
 	if (j1939_name_arbitrary_address(ca->name)) {
 		next = address_select(s);
 	}

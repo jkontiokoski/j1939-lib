@@ -22,6 +22,12 @@ void j1939_tp_init(j1939_t *s, const j1939_cfg_t *cfg);
 /* Handles a received TP.CM or TP.DT frame addressed to this stack or to all nodes. */
 void j1939_tp_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t len);
 
+/*
+ * Ends the sessions of a CA that lost address, without a Connection Abort:
+ * the address is no longer the stack's. Counted as aborted.
+ */
+void j1939_tp_address_lost(j1939_t *s, uint8_t address);
+
 /* Advances the session timers and sends due data packets. */
 void j1939_tp_process(j1939_t *s, uint32_t elapsed_us);
 

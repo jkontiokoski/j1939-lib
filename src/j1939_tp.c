@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "j1939/j1939_id.h"
+#include "j1939_addr_priv.h"
 #include "j1939_ring_priv.h"
 #include "j1939_stack_priv.h"
 #include "j1939_tp_priv.h"
@@ -428,7 +429,9 @@ static void cm_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 
 	switch (d[CM_CTRL]) {
 	case CTRL_RTS:
-		if (!global) {
+		/* A responder answers only from a claimed address; else the originator times out.
+		 */
+		if (!global && j1939_addr_claimed(s, own)) {
 			rts_handle(s, id, d);
 		}
 		break;
@@ -672,6 +675,18 @@ void j1939_tp_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t len) 
 			cm_handle(s, id, data);
 		} else {
 			dt_handle(s, id, data);
+		}
+	}
+}
+
+void j1939_tp_address_lost(j1939_t *s, uint8_t address) {
+	uint8_t i;
+
+	for (i = 0U; i < SESSIONS; i++) {
+		j1939_tp_session_t *se = &s->tp.sessions[i];
+
+		if ((se->state != J1939_TP_IDLE) && (se->local == address)) {
+			session_drop(s, se);
 		}
 	}
 }
