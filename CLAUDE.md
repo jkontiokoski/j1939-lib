@@ -47,6 +47,11 @@ It will serve this purpose after the library is published, but also for the auth
 
 - cppcheck (2.13) suppressions lists accept `//` comments only; `#` lines fail with "Failed to add suppression. No id". An unmatched suppression fails `make lint`, so add suppressions only when they match something.
 
+### Workflow
+
+- When several tasks can be worked on simultaneously, act as an orchestrator: spawn one subagent per task, each in its own git worktree and feature branch. Every task is delivered as a pull request from its feature branch; never commit or push to `main` directly.
+- Concurrent agents share `vcan0`. Agents run `make test` with `J1939_TEST_CANIF` set to a missing interface so the SocketCAN loopback test is skipped; the orchestrator runs it after merging.
+
 ### Commit messages
 
 - Never add a `Co-Authored-By` trailer or any other AI attribution to commits or PR descriptions. The owner is responsible for the commits.
