@@ -56,9 +56,9 @@ port/<name>/          one directory per port
                         port.cmake              optional: port sources, libraries, test fixture
                         j1939_port_fixture.c    optional: conformance test fixture
 port/mock/            test port with a deliberately unusual frame layout
-port/socketcan/       Linux SocketCAN (CAN_RAW) port
+port/socketcan/       Linux SocketCAN (CAN_RAW) port, plus j1939_socketcan.[ch] socket helpers
 examples/             example applications (SocketCAN)
-tests/port/           port conformance tests, compiled once per port
+tests/port/           port conformance tests, compiled once per port; SocketCAN loopback test
 tests/unit/           unit tests per module (mock port)
 tests/integration/    multi-node scenarios (mock port)
 tests/vendor/unity/   vendored Unity test framework
@@ -70,7 +70,8 @@ cmake/                build helpers
 docs/                 project documentation
 CMakeLists.txt        build definition
 Makefile              convenience wrapper around CMake
-cppcheck-suppressions.txt  static analysis deviations
+cppcheck-suppressions.txt        general static analysis deviations
+cppcheck-misra-suppressions.txt  MISRA deviations
 .clang-format         formatting rules
 ```
 
@@ -180,8 +181,9 @@ Integrators supply their licensed DA content as `const` tables.
 
 - Unity (vendored in `tests/vendor/unity/`), run through `ctest`.
 - The test build compiles the library once per port with `j1939_add_library()`. Unit tests link the mock port variant, whatever port the main `j1939` target uses.
-- The port conformance test `tests/port/test_port_conformance.c` runs against the mock port and the configured `J1939_PORT_DIR` port if it is another one. Frames the port API cannot build (standard, remote, raw DLC above 8) come from the port's `j1939_port_fixture.c`.
+- The port conformance test `tests/port/test_port_conformance.c` runs against the mock port, the SocketCAN port (on Linux) and the configured `J1939_PORT_DIR` port if it is another one. Frames the port API cannot build (standard, remote, raw DLC above 8) come from the port's `j1939_port_fixture.c`.
 - The mock lock records nesting depth and call count; unit tests check that every critical section is left and none is nested.
+- `test_socketcan_vcan` exchanges frames over a real SocketCAN interface, `vcan0` by default or `J1939_TEST_CANIF`. It reports "skipped" when the interface does not exist.
 - Integration tests run several `j1939_t` instances in one process; the test harness moves frames from one stack's tx queue to the others' rx queues.
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Coverage with gcov/gcovr; target ≥ 90 % line coverage on the protocol core, branch coverage reported.
@@ -189,6 +191,7 @@ Integrators supply their licensed DA content as `const` tables.
 ### Static analysis deviations
 
 The MISRA checks apply to the library core (`src/`, `include/`) and the mock port.
+The SocketCAN port is operating system glue built on POSIX interfaces; it gets the general cppcheck checks only.
 Port test fixtures are test code and are not linted.
 
 | Suppression                                    | Scope                | Reason                                                                     |
@@ -232,7 +235,7 @@ Make targets:
 | `make test`         | Builds with sanitizers in `build-test/` and runs `ctest`                 |
 | `make coverage`     | Builds with coverage in `build-coverage/`, runs tests, fails under 90 % line coverage |
 | `make cross`        | Compiles the library for Cortex-M0+ in `build-arm/`                      |
-| `make lint`         | cppcheck with the MISRA addon                                            |
+| `make lint`         | cppcheck: core and mock port with the MISRA addon, SocketCAN port with the general checks |
 | `make format`       | Formats all project sources                                              |
 | `make format-check` | Fails if any project source is not formatted                             |
 | `make clean`        | Removes all build directories                                            |

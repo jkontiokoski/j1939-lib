@@ -15,6 +15,8 @@ COVERAGE_MIN := 90
 
 FORMAT_FILES = $(shell find include src tests port examples \
 	-path tests/vendor -prune -o -type f \( -name '*.c' -o -name '*.h' \) -print 2>/dev/null)
+CPPCHECK_FLAGS = --std=c99 --enable=all --inconclusive --error-exitcode=1 --inline-suppr \
+	--suppressions-list=cppcheck-suppressions.txt
 
 .PHONY: all lib test coverage cross format format-check lint clean
 
@@ -47,9 +49,10 @@ format-check:
 	clang-format --dry-run --Werror $(FORMAT_FILES)
 
 lint:
-	cppcheck --std=c99 --enable=all --inconclusive --error-exitcode=1 --inline-suppr \
-		--addon=misra --suppressions-list=cppcheck-suppressions.txt \
+	cppcheck $(CPPCHECK_FLAGS) --addon=misra --suppressions-list=cppcheck-misra-suppressions.txt \
 		-I include -I port/mock -i port/mock/j1939_port_fixture.c src include port/mock
+	cppcheck $(CPPCHECK_FLAGS) \
+		-I include -I port/socketcan -i port/socketcan/j1939_port_fixture.c port/socketcan
 
 clean:
 	rm -rf $(BUILD_DIR) $(TEST_DIR) $(COV_DIR) $(ARM_DIR)

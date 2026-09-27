@@ -24,7 +24,7 @@
 | Milestone | Content                                                                                                                                                   | Status  |
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | M0        | Foundations: source tree, CMake + Makefile wrapper, LICENSE, formatting, Unity, documentation                                                              | Done    |
-| M1        | Port boundary: port contract, mock port, SocketCAN port, ID/PGN codec, rx/tx queues over integrator buffers, port conformance tests                          | Planned |
+| M1        | Port boundary: port contract, mock port, SocketCAN port, ID/PGN codec, rx/tx queues over integrator buffers, port conformance tests                          | Done    |
 | M2        | J1939/21 core: stack init/process, DA and PGN filtering, message pull API, single-frame send, Request (PGN 59904), Acknowledgement (PGN 59392)             | Planned |
 | M3        | J1939/21 transport protocol: BAM and RTS/CTS tx/rx, timers T1–T4/Tr/Th, aborts, session pool with integrator-supplied reassembly memory                   | Planned |
 | M4        | J1939/81 network management: NAME codec, address claiming, Cannot Claim, Request for Address Claimed, arbitrary address capability, Commanded Address     | Planned |

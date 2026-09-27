@@ -5,7 +5,7 @@ It is a directory containing a header named `j1939_target.h`, selected with the 
 The library is built against exactly one port.
 
 The library never calls into the port at runtime except through the `static inline` functions of the target header.
-A port may ship helper code that moves frames between the driver and the library's queues.
+A port may ship helper code that moves frames between the driver and the library's queues, see `port/socketcan/j1939_socketcan.c`.
 
 ## Port directory
 
@@ -111,3 +111,13 @@ A full rx queue leaves frames in the driver; a failed write leaves the frame in 
 | Port             | Frame type                  | Purpose                                                              |
 | ---------------- | --------------------------- | -------------------------------------------------------------------- |
 | `port/mock`      | `struct j1939_mock_frame`   | Unit tests. Layout of a bxCAN style mailbox: identifier left-aligned in a 32-bit word with IDE and RTR flags in the low bits, raw 4-bit DLC. It differs from SocketCAN so that tests catch any layout assumption. The lock records nesting depth and call count |
+| `port/socketcan` | `struct can_frame`          | Linux SocketCAN (CAN_RAW). Uses `can_dlc` so that kernel headers before 5.11 work. Pthread mutex lock. `j1939_socketcan.h` opens a non-blocking socket that receives extended data frames only, and moves frames between the socket and library queues |
+
+### SocketCAN on a virtual interface
+
+```sh
+sudo ip link add dev vcan0 type vcan
+sudo ip link set up vcan0
+```
+
+The loopback test `test_socketcan_vcan` then runs as part of `make test`.

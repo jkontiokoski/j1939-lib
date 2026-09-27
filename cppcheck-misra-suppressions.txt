@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 jkontiokoski
+//
+// MISRA C:2012 deviations for the library core and the mock port.
+// Each entry is a documented deviation, see docs/architecture.md.
+
+// 2.5: public headers define macros for the integrator's use.
+misra-c2012-2.5:include/j1939/*
+
+// 8.7: every non-static function in src/ is public API, called from integrator code.
+misra-c2012-8.7:src/*

@@ -27,6 +27,7 @@ function(j1939_add_port_conformance name library)
 endfunction()
 
 set(MOCK_PORT_DIR "${PROJECT_SOURCE_DIR}/port/mock")
+set(SOCKETCAN_PORT_DIR "${PROJECT_SOURCE_DIR}/port/socketcan")
 
 # Unit tests always run against the mock port.
 j1939_add_library(j1939_test_mock "${MOCK_PORT_DIR}")
@@ -34,9 +35,16 @@ j1939_add_test(test_version j1939_test_mock unit/test_version.c)
 j1939_add_test(test_id j1939_test_mock unit/test_id.c)
 j1939_add_test(test_queue j1939_test_mock unit/test_queue.c)
 
-# Port conformance: the mock port, plus the configured port if it is another one.
+# Port conformance: the bundled ports, plus the configured port if it is another one.
 j1939_add_port_conformance(test_port_mock j1939_test_mock)
 
-if(NOT J1939_PORT_DIR STREQUAL MOCK_PORT_DIR)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	j1939_add_library(j1939_test_socketcan "${SOCKETCAN_PORT_DIR}")
+	j1939_add_port_conformance(test_port_socketcan j1939_test_socketcan)
+	j1939_add_test(test_socketcan_vcan j1939_test_socketcan port/test_socketcan_vcan.c)
+	set_tests_properties(test_socketcan_vcan PROPERTIES SKIP_RETURN_CODE 77)
+endif()
+
+if(NOT J1939_PORT_DIR STREQUAL MOCK_PORT_DIR AND NOT J1939_PORT_DIR STREQUAL SOCKETCAN_PORT_DIR)
 	j1939_add_port_conformance(test_port_configured j1939)
 endif()

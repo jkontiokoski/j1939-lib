@@ -19,6 +19,7 @@ typedef enum j1939_ret {
 	J1939_RET_ERR_BUSY,       /**< Resource temporarily in use, retry later. */
 	J1939_RET_ERR_TIMEOUT,    /**< Protocol timeout expired. */
 	J1939_RET_ERR_NO_ADDRESS, /**< No source address claimed. */
+	J1939_RET_ERR_IO,         /**< CAN driver reported an error (port helpers). */
 } j1939_ret_t;
 
 #endif /* J1939_RET_H */
