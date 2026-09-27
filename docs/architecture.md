@@ -66,6 +66,7 @@ examples/             example applications on Linux SocketCAN, built with J1939_
                         common/                 clock, Ctrl-C and printing helpers of the examples
                         addr_claim_demo/        address claiming and arbitration between instances
                         pgn_listener/           receives PGNs (single frame and TP), answers a Request
+                        bam_sender/             DM1 with BAM, proprietary message with RTS/CTS
 examples/signals/     illustrative signal table: invented Proprietary B signals
 tests/port/           port conformance tests, compiled once per port; SocketCAN loopback test
 tests/unit/           unit tests per module (mock port)

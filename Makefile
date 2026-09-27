@@ -59,7 +59,7 @@ lint:
 	cppcheck $(CPPCHECK_FLAGS) \
 		-I include -I port/socketcan -i port/socketcan/j1939_port_fixture.c port/socketcan
 	cppcheck $(CPPCHECK_FLAGS) -I include -I port/socketcan -I examples/common \
-		examples/common examples/addr_claim_demo examples/pgn_listener
+		examples/common examples/addr_claim_demo examples/pgn_listener examples/bam_sender
 
 clean:
 	rm -rf $(BUILD_DIR) $(TEST_DIR) $(COV_DIR) $(ARM_DIR) $(EX_DIR)
