@@ -53,15 +53,32 @@ typedef struct j1939_cfg {
 
 /** Controller Application configuration. */
 typedef struct j1939_ca_cfg {
-	uint8_t address; /**< Source address, 0..253. */
+	uint8_t address; /**< Preferred address, 0..253. */
+	uint64_t name;   /**< NAME, see j1939_name.h. Must be unique on the network. */
 } j1939_ca_cfg_t;
 
 /** Handle of a Controller Application within its stack. */
 typedef uint8_t j1939_ca_id_t;
 
+#define J1939_ADDR_SELF_CFG_MIN 128U /**< First self-configurable address. */
+#define J1939_ADDR_SELF_CFG_MAX 247U /**< Last self-configurable address. */
+#define J1939_ADDR_TAKEN_LEN    15U  /**< Bytes of the self-configurable address bitmap. */
+
+/** Address claim state of a Controller Application (J1939/81). */
+typedef enum j1939_addr_state {
+	J1939_ADDR_STATE_UNCLAIMED = 0, /**< Address Claimed not sent yet; no address. */
+	J1939_ADDR_STATE_CLAIMING,      /**< Address Claimed sent, contention wait running. */
+	J1939_ADDR_STATE_CLAIMED,       /**< Address claimed; the CA may transmit. */
+	J1939_ADDR_STATE_CANNOT_CLAIM,  /**< No address; Cannot Claim sent or pending. */
+} j1939_addr_state_t;
+
 /** Controller Application state. Members are private. */
 typedef struct j1939_ca {
-	uint8_t address; /**< Current source address. */
+	uint64_t name;             /**< NAME. */
+	j1939_addr_state_t state;  /**< Address claim state. */
+	uint32_t timer_us;         /**< Contention wait or Cannot Claim delay left. */
+	uint8_t address;           /**< Address held or being claimed; J1939_ADDR_NULL if none. */
+	bool cannot_claim_pending; /**< A Cannot Claim is sent when timer_us expires. */
 } j1939_ca_t;
 
 /** Event counters. */
@@ -88,6 +105,8 @@ typedef struct j1939 {
 	j1939_ca_t ca[J1939_CFG_CA_MAX]; /**< Controller Applications. */
 	uint8_t ca_count;                /**< Controller Applications in use. */
 	j1939_stats_t stats;             /**< Event counters. */
+	/** Self-configurable addresses claimed by other nodes, one bit each. */
+	uint8_t addr_taken[J1939_ADDR_TAKEN_LEN];
 } j1939_t;
 
 /**
@@ -103,7 +122,8 @@ j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg);
 /**
  * @brief Adds a Controller Application.
  *
- * The CA uses the configured address immediately.
+ * The CA claims its preferred address with the next j1939_process() and may
+ * transmit once the claim succeeds, see j1939_addr.h.
  *
  * @param s    Stack.
  * @param cfg  CA configuration.
@@ -158,7 +178,8 @@ j1939_ret_t j1939_msg_pop(j1939_t *s);
  * @param s    Stack.
  * @param ca   Sending Controller Application.
  * @param msg  Message. msg->sa is ignored.
- * @return J1939_RET_OK, J1939_RET_ERR_FULL if the tx queue is full, or
+ * @return J1939_RET_OK, J1939_RET_ERR_FULL if the tx queue is full,
+ *         J1939_RET_ERR_NO_ADDRESS while the CA has not claimed an address, or
  *         J1939_RET_ERR_ARG on a NULL pointer, an unknown CA, a payload
  *         longer than J1939_MSG_SINGLE_FRAME_MAX or an invalid identifier.
  */

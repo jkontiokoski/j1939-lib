@@ -6,8 +6,10 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "j1939/j1939_addr.h"
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
+#include "j1939_addr_priv.h"
 #include "j1939_ring_priv.h"
 #include "j1939_stack_priv.h"
 
@@ -46,8 +48,11 @@ static void frame_handle(j1939_t *s, const j1939_port_frame_t *f) {
 		const uint8_t *data = j1939_port_frame_data(f);
 		uint8_t len = j1939_port_frame_len_get(f);
 
-		if (((pgn & J1939_PGN_EDP) == 0U) &&
-		    ((da == J1939_ADDR_GLOBAL) || ca_find(s, da))) {
+		if ((pgn & J1939_PGN_EDP) != 0U) {
+			/* Not a J1939 message. */
+		} else if (pgn == J1939_PGN_ADDRESS_CLAIMED) {
+			j1939_addr_claim_handle(s, id, data, len);
+		} else if ((da == J1939_ADDR_GLOBAL) || j1939_addr_held(s, da)) {
 			if (pgn == J1939_PGN_REQUEST) {
 				j1939_request_handle(s, id, data, len);
 			} else if (j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, pgn)) {
@@ -55,6 +60,8 @@ static void frame_handle(j1939_t *s, const j1939_port_frame_t *f) {
 			} else {
 				/* Not of interest to this node. */
 			}
+		} else {
+			/* Addressed to another node. */
 		}
 	}
 }
@@ -88,6 +95,16 @@ void j1939_stack_deliver(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t l
 	} else {
 		s->stats.rx_msg_overflow++;
 	}
+}
+
+j1939_ret_t j1939_stack_send(j1939_t *s, const j1939_msg_t *msg, uint8_t sa) {
+	uint32_t id;
+	j1939_ret_t ret = j1939_id_build(msg->prio, msg->pgn, msg->da, sa, &id);
+
+	if (ret == J1939_RET_OK) {
+		ret = j1939_stack_tx(s, id, msg->data, (uint8_t)msg->len);
+	}
+	return ret;
 }
 
 j1939_ret_t j1939_stack_tx(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t len) {
@@ -127,6 +144,7 @@ j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg) {
 		s->ca_count = 0U;
 		s->stats.rx_msg_overflow = 0U;
 		s->stats.tx_overflow = 0U;
+		j1939_addr_init(s);
 		ret = J1939_RET_OK;
 	}
 	return ret;
@@ -138,7 +156,7 @@ j1939_ret_t j1939_ca_add(j1939_t *s, const j1939_ca_cfg_t *cfg, j1939_ca_id_t *i
 	if ((s != NULL) && (cfg != NULL) && (id != NULL) && (cfg->address <= CA_ADDRESS_MAX) &&
 	    !ca_find(s, cfg->address)) {
 		if (s->ca_count < (uint8_t)J1939_CFG_CA_MAX) {
-			s->ca[s->ca_count].address = cfg->address;
+			j1939_addr_ca_init(&s->ca[s->ca_count], cfg);
 			*id = s->ca_count;
 			s->ca_count++;
 			ret = J1939_RET_OK;
@@ -160,12 +178,12 @@ j1939_queue_t *j1939_tx_queue(j1939_t *s) {
 j1939_ret_t j1939_process(j1939_t *s, uint32_t elapsed_us) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	(void)elapsed_us; /* No timers yet. */
 	if (s != NULL) {
 		/* Bounded by the rx queue length. */
 		uint16_t n = j1939_queue_count(&s->rx);
 		uint16_t i;
 
+		j1939_addr_process(s, elapsed_us);
 		for (i = 0U; i < n; i++) {
 			const j1939_port_frame_t *f = j1939_queue_peek(&s->rx);
 
@@ -200,13 +218,13 @@ j1939_ret_t j1939_msg_pop(j1939_t *s) {
 
 j1939_ret_t j1939_send(j1939_t *s, j1939_ca_id_t ca, const j1939_msg_t *msg) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
-	uint32_t id;
 
 	if ((s != NULL) && (msg != NULL) && (ca < s->ca_count) &&
 	    (msg->len <= J1939_MSG_SINGLE_FRAME_MAX) && ((msg->data != NULL) || (msg->len == 0U))) {
-		ret = j1939_id_build(msg->prio, msg->pgn, msg->da, s->ca[ca].address, &id);
-		if (ret == J1939_RET_OK) {
-			ret = j1939_stack_tx(s, id, msg->data, (uint8_t)msg->len);
+		if (j1939_addr_tx_allowed(&s->ca[ca])) {
+			ret = j1939_stack_send(s, msg, s->ca[ca].address);
+		} else {
+			ret = J1939_RET_ERR_NO_ADDRESS;
 		}
 	}
 	return ret;

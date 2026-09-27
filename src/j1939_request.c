@@ -5,7 +5,9 @@
 
 #include <stddef.h>
 
+#include "j1939/j1939_addr.h"
 #include "j1939/j1939_id.h"
+#include "j1939_addr_priv.h"
 #include "j1939_stack_priv.h"
 
 #define BYTE_MASK         0xFFU
@@ -53,12 +55,15 @@ void j1939_request_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t 
 
 		if (pgn > J1939_PGN_MAX) {
 			/* Malformed Request. */
+		} else if (pgn == J1939_PGN_ADDRESS_CLAIMED) {
+			j1939_addr_request_handle(s, da);
 		} else if (j1939_stack_pgn_listed(s->req_pgns, s->req_pgns_len, pgn)) {
 			j1939_stack_deliver(s, id, data, len);
-		} else if (da != J1939_ADDR_GLOBAL) {
+		} else if ((da != J1939_ADDR_GLOBAL) && j1939_addr_claimed(s, da)) {
 			nack_send(s, da, j1939_id_sa_get(id), pgn);
 		} else {
-			/* Global Requests for unsupported PGNs are not answered. */
+			/* Global Requests for unsupported PGNs are not answered, nor are
+			 * Requests to a CA whose claim is not complete. */
 		}
 	}
 }
@@ -76,7 +81,11 @@ j1939_ret_t j1939_request_send(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, uint8
 		msg.da = da;
 		msg.len = (uint16_t)J1939_REQUEST_LEN;
 		msg.data = data;
-		ret = j1939_send(s, ca, &msg);
+		if (pgn == J1939_PGN_ADDRESS_CLAIMED) {
+			ret = j1939_addr_request_send(s, ca, &msg);
+		} else {
+			ret = j1939_send(s, ca, &msg);
+		}
 	}
 	return ret;
 }

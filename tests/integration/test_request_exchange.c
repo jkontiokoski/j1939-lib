@@ -79,6 +79,9 @@ void setUp(void) {
 	test_bus_init(&bus);
 	node_init(&a, ADDR_A, a_rx_pgns, 2U, NULL, 0U);
 	node_init(&b, ADDR_B, NULL, 0U, b_req_pgns, 1U);
+	/* Both nodes claim their addresses before the exchange. */
+	test_bus_settle(&bus, 4U);
+	bus.frames = 0U;
 }
 
 void tearDown(void) {

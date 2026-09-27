@@ -58,6 +58,9 @@ void setUp(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN_A}, &ca_a));
+	/* Claim the address; the CA may transmit right after its Address Claimed. */
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
 }
 
 void tearDown(void) {

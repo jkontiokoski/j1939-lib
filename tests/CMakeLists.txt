@@ -42,6 +42,7 @@ j1939_set_warnings(test_support)
 
 j1939_add_test(test_version test_support unit/test_version.c)
 j1939_add_test(test_id test_support unit/test_id.c)
+j1939_add_test(test_name test_support unit/test_name.c)
 j1939_add_test(test_queue test_support unit/test_queue.c)
 j1939_add_test(test_stack test_support unit/test_stack.c)
 j1939_add_test(test_request test_support unit/test_request.c)
@@ -50,7 +51,9 @@ j1939_add_test(test_signal test_support unit/test_signal.c)
 j1939_add_test(test_signal_example test_support unit/test_signal_example.c
 	"${PROJECT_SOURCE_DIR}/examples/signals/example_signals.c")
 target_include_directories(test_signal_example PRIVATE "${PROJECT_SOURCE_DIR}/examples/signals")
+j1939_add_test(test_addr test_support unit/test_addr.c)
 j1939_add_test(test_request_exchange test_support integration/test_request_exchange.c)
+j1939_add_test(test_addr_claim test_support integration/test_addr_claim.c)
 
 # Port conformance: the bundled ports, plus the configured port if it is another one.
 j1939_add_port_conformance(test_port_mock j1939_test_mock)
