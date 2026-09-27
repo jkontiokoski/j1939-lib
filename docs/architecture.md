@@ -62,7 +62,11 @@ port/<name>/          one directory per port
                         j1939_port_fixture.c    optional: conformance test fixture
 port/mock/            test port with a deliberately unusual frame layout
 port/socketcan/       Linux SocketCAN (CAN_RAW) port, plus j1939_socketcan.[ch] socket helpers
-examples/             example applications (SocketCAN)
+examples/             example applications on Linux SocketCAN, built with J1939_BUILD_EXAMPLES
+                        common/                 clock, Ctrl-C and printing helpers of the examples
+                        addr_claim_demo/        address claiming and arbitration between instances
+                        pgn_listener/           receives PGNs (single frame and TP), answers a Request
+                        bam_sender/             DM1 with BAM, proprietary message with RTS/CTS
 examples/signals/     illustrative signal table: invented Proprietary B signals
 tests/port/           port conformance tests, compiled once per port; SocketCAN loopback test
 tests/unit/           unit tests per module (mock port)
@@ -341,7 +345,7 @@ A received payload is decoded in place from the message slot with `j1939_diag_dm
 ### Static analysis deviations
 
 The MISRA checks apply to the library core (`src/`, `include/`) and the mock port.
-The SocketCAN port is operating system glue built on POSIX interfaces; it gets the general cppcheck checks only.
+The SocketCAN port and the example applications are operating system glue built on POSIX interfaces; they get the general cppcheck checks only.
 Port test fixtures are test code and are not linted.
 
 | Suppression                                    | Scope                | Reason                                                                     |
@@ -373,6 +377,7 @@ CMake options:
 | `J1939_SANITIZE`    | OFF                   | AddressSanitizer + UndefinedBehaviorSanitizer        |
 | `J1939_COVERAGE`    | OFF                   | gcov instrumentation                                 |
 | `J1939_COMPILE_COMMANDS` | ON when top level | Writes `compile_commands.json` into the build directory |
+| `J1939_BUILD_EXAMPLES` | OFF                 | Builds the example applications (Linux only) against a SocketCAN build of the library, whatever `J1939_PORT_DIR` selects |
 
 clangd finds the compilation database of the `make` build in `build/` without further configuration.
 
@@ -384,7 +389,8 @@ Make targets:
 | `make test`         | Builds with sanitizers in `build-test/` and runs `ctest`                 |
 | `make coverage`     | Builds with coverage in `build-coverage/`, runs tests, fails under 90 % line coverage |
 | `make cross`        | Compiles the library for Cortex-M0+ in `build-arm/`                      |
-| `make lint`         | cppcheck: core and mock port with the MISRA addon, SocketCAN port with the general checks |
+| `make examples`     | Builds the SocketCAN example applications in `build-examples/`           |
+| `make lint`         | cppcheck: core and mock port with the MISRA addon, SocketCAN port and examples with the general checks |
 | `make format`       | Formats all project sources                                              |
 | `make format-check` | Fails if any project source is not formatted                             |
 | `make clean`        | Removes all build directories                                            |
