@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 #include "j1939/j1939_config.h"
+#include "j1939/j1939_diag.h"
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_msg.h"
 #include "j1939/j1939_queue.h"

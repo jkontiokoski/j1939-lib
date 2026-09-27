@@ -45,6 +45,7 @@ j1939_add_test(test_id test_support unit/test_id.c)
 j1939_add_test(test_queue test_support unit/test_queue.c)
 j1939_add_test(test_stack test_support unit/test_stack.c)
 j1939_add_test(test_request test_support unit/test_request.c)
+j1939_add_test(test_diag test_support unit/test_diag.c)
 j1939_add_test(test_signal test_support unit/test_signal.c)
 j1939_add_test(test_signal_example test_support unit/test_signal_example.c
 	"${PROJECT_SOURCE_DIR}/examples/signals/example_signals.c")
