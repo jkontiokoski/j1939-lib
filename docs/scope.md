@@ -31,6 +31,9 @@
 | M5        | SocketCAN example applications, porting guide worked examples                                                                                             | Done    |
 | M6        | Signals / database layer (J1939/71 + DA schema): SPN descriptors, bit extraction and insertion, scaling, validity ranges                                  | Done    |
 | M7        | Diagnostics (J1939/73): DTC codec, lamp status, DM1/DM2 payload codec; per CA in the stack: periodic and change-triggered DM1, DM1/DM2 on Request (single frame, BAM, RTS/CTS to the requester), DM3/DM11 clearing decided by the application. Not planned yet: DM4 and higher | Done    |
+| M8        | Message objects: per-PGN transmit objects sent periodically or on change by `j1939_process()`; receive objects with timeout supervision per PGN and sender | Planned |
+| M9        | Table of the NAMEs of other nodes from their address claims, so the application can tie a source address to a NAME | Planned |
 
 J1939/31, /74 and /75 are opt-in modules implemented on demand.
+End-to-end protection of safety-related messages (message counters, checksums) is the application's: the library carries those signals and does not compute or check them.
 J1939/76 and the J1939/91 series are outside the scope unless a product requires them.
