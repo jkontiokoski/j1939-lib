@@ -14,15 +14,12 @@
 
 #include <stdint.h>
 
-#include "j1939/j1939_port_contract.h"
-
 /** Ring indices of a queue with one producer and one consumer. */
 typedef struct j1939_ring {
-	uint16_t len;           /**< Number of slots. */
-	uint16_t head;          /**< Next slot to be written. */
-	uint16_t tail;          /**< Oldest written slot. */
-	uint16_t count;         /**< Number of written slots. */
-	j1939_port_lock_t lock; /**< Protects head, tail and count. */
+	uint16_t len;   /**< Number of slots. */
+	uint16_t head;  /**< Next slot to be written. */
+	uint16_t tail;  /**< Oldest written slot. */
+	uint16_t count; /**< Number of written slots. */
 } j1939_ring_t;
 
 #endif /* J1939_RING_H */

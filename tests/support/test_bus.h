@@ -3,8 +3,8 @@
 
 /*
  * Virtual CAN bus for tests: several stack instances in one process. The
- * harness moves each transmitted frame into the rx queue of every other
- * stack, as a real bus would.
+ * harness passes each transmitted frame to j1939_rx() of every other stack,
+ * as a real bus would.
  */
 
 #ifndef TEST_BUS_H
@@ -25,7 +25,11 @@ typedef struct test_bus {
 void test_bus_init(test_bus_t *bus);
 void test_bus_attach(test_bus_t *bus, j1939_t *node);
 
-/* Transmits every queued frame of every node. Returns the number of frames carried. */
+/*
+ * Transmits the frames every node has queued when the call starts. Answers the
+ * receivers queue meanwhile wait for the next call. Returns the number of
+ * frames carried.
+ */
 uint32_t test_bus_run(test_bus_t *bus);
 
 /* Runs process on every node and the bus until no frame is carried, at most rounds times. */

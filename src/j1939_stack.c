@@ -114,19 +114,19 @@ j1939_ret_t j1939_stack_send(j1939_t *s, const j1939_msg_t *msg, uint8_t sa) {
 
 j1939_ret_t j1939_stack_tx(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t len) {
 	j1939_ret_t ret = J1939_RET_ERR_FULL;
-	j1939_port_frame_t *slot = j1939_queue_acquire(&s->tx);
+	uint16_t index;
 
-	if (slot != NULL) {
-		j1939_port_frame_build(slot, id, data, len);
-		ret = j1939_queue_commit(&s->tx);
+	if (j1939_ring_head(&s->tx.ring, &index)) {
+		j1939_port_frame_build(&s->tx.buf[index], id, data, len);
+		(void)j1939_ring_push(&s->tx.ring);
+		ret = J1939_RET_OK;
 	}
 	return ret;
 }
 
 static bool cfg_valid(const j1939_cfg_t *cfg) {
-	return (cfg->rx_buf != NULL) && (cfg->rx_len > 0U) && (cfg->tx_buf != NULL) &&
-	       (cfg->tx_len > 0U) && (cfg->msg_buf != NULL) && (cfg->msg_len > 0U) &&
-	       pgn_list_valid(cfg->rx_pgns, cfg->rx_pgns_len) &&
+	return (cfg->tx_buf != NULL) && (cfg->tx_len > 0U) && (cfg->msg_buf != NULL) &&
+	       (cfg->msg_len > 0U) && pgn_list_valid(cfg->rx_pgns, cfg->rx_pgns_len) &&
 	       pgn_list_valid(cfg->req_pgns, cfg->req_pgns_len) && j1939_tp_cfg_valid(cfg);
 }
 
@@ -134,12 +134,8 @@ j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((s != NULL) && (cfg != NULL) && cfg_valid(cfg)) {
-		/* Locals keep cppcheck's MISRA 11.8 check from treating the frames as const. */
-		j1939_port_frame_t *rx_buf = cfg->rx_buf;
-		j1939_port_frame_t *tx_buf = cfg->tx_buf;
-
-		(void)j1939_queue_init(&s->rx, rx_buf, cfg->rx_len);
-		(void)j1939_queue_init(&s->tx, tx_buf, cfg->tx_len);
+		s->tx.buf = cfg->tx_buf;
+		j1939_ring_init(&s->tx.ring, cfg->tx_len);
 		s->msgs.buf = cfg->msg_buf;
 		j1939_ring_init(&s->msgs.ring, cfg->msg_len);
 		s->rx_pgns = cfg->rx_pgns;
@@ -174,31 +170,40 @@ j1939_ret_t j1939_ca_add(j1939_t *s, const j1939_ca_cfg_t *cfg, j1939_ca_id_t *i
 	return ret;
 }
 
-j1939_queue_t *j1939_rx_queue(j1939_t *s) {
-	return (s != NULL) ? &s->rx : NULL;
+j1939_ret_t j1939_rx(j1939_t *s, const j1939_port_frame_t *frame) {
+	j1939_ret_t ret = J1939_RET_ERR_ARG;
+
+	if ((s != NULL) && (frame != NULL)) {
+		frame_handle(s, frame);
+		ret = J1939_RET_OK;
+	}
+	return ret;
 }
 
-j1939_queue_t *j1939_tx_queue(j1939_t *s) {
-	return (s != NULL) ? &s->tx : NULL;
+const j1939_port_frame_t *j1939_tx_peek(j1939_t *s) {
+	const j1939_port_frame_t *frame = NULL;
+	uint16_t index;
+
+	if ((s != NULL) && j1939_ring_tail(&s->tx.ring, &index)) {
+		frame = &s->tx.buf[index];
+	}
+	return frame;
+}
+
+j1939_ret_t j1939_tx_pop(j1939_t *s) {
+	j1939_ret_t ret = J1939_RET_ERR_ARG;
+
+	if (s != NULL) {
+		ret = j1939_ring_pop(&s->tx.ring) ? J1939_RET_OK : J1939_RET_ERR_EMPTY;
+	}
+	return ret;
 }
 
 j1939_ret_t j1939_process(j1939_t *s, uint32_t elapsed_us) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if (s != NULL) {
-		/* Bounded by the rx queue length. */
-		uint16_t n = j1939_queue_count(&s->rx);
-		uint16_t i;
-
 		j1939_addr_process(s, elapsed_us);
-		for (i = 0U; i < n; i++) {
-			const j1939_port_frame_t *f = j1939_queue_peek(&s->rx);
-
-			if (f != NULL) {
-				frame_handle(s, f);
-				(void)j1939_queue_pop(&s->rx);
-			}
-		}
 		j1939_tp_process(s, elapsed_us);
 		j1939_dm_process(s, elapsed_us);
 		ret = J1939_RET_OK;

@@ -44,7 +44,6 @@
 #define PGN_PROP_A 0xEF00U /* Proprietary A: PDU1, destination specific. */
 #define PROP_A_LEN 100U
 
-#define RX_LEN    32U
 #define TX_LEN    32U /* Room for a whole CTS window of data packets. */
 #define MSG_LEN   4U
 #define TP_TX_LEN 2U /* The BAM and the RTS/CTS transfer run at the same time. */
@@ -55,7 +54,6 @@
  */
 #define LINGER_US (J1939_TP_T3_US + 500000U)
 
-static j1939_port_frame_t rx_buf[RX_LEN];
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_tp_buf_t tp_tx_buf[TP_TX_LEN];
@@ -209,8 +207,6 @@ int main(int argc, char **argv) {
 	 * stack still handles address claiming and the CTS / EndOfMsgAck /
 	 * Connection Abort frames of its own RTS/CTS transfers. */
 	const j1939_cfg_t cfg = {
-	        .rx_buf = rx_buf,
-	        .rx_len = RX_LEN,
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
@@ -238,8 +234,6 @@ int main(int argc, char **argv) {
 		return EXIT_FAILURE;
 	}
 
-	j1939_queue_t *rx_q = j1939_rx_queue(&stack);
-	j1939_queue_t *tx_q = j1939_tx_queue(&stack);
 	const j1939_stats_t *stats = j1939_stats_get(&stack);
 	uint64_t last_us = example_now_us();
 	uint64_t next_round_us = 0U; /* 0: first round as soon as the address is claimed. */
@@ -253,13 +247,13 @@ int main(int argc, char **argv) {
 		/* a. Sleep until a frame arrives, at most one tick. The tick also
 		 *    paces the BAM data packets, see EXAMPLE_TICK_MS. */
 		struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
-		if (j1939_queue_count(tx_q) > 0U) {
+		if (j1939_tx_peek(&stack) != NULL) {
 			pfd.events = (short)(POLLIN | POLLOUT);
 		}
 		(void)poll(&pfd, 1, EXAMPLE_TICK_MS);
 
-		/* b. Socket -> rx queue. */
-		if (j1939_socketcan_rx(fd, rx_q, NULL) != J1939_RET_OK) {
+		/* b. Socket -> stack. Each frame is handled as it is read. */
+		if (j1939_socketcan_rx(fd, &stack, EXAMPLE_RX_PER_TICK, NULL) != J1939_RET_OK) {
 			(void)fprintf(stderr, "CAN receive error\n");
 			status = EXIT_FAILURE;
 			break;
@@ -300,7 +294,7 @@ int main(int argc, char **argv) {
 		}
 
 		/* e. tx queue -> socket. */
-		if (j1939_socketcan_tx(fd, tx_q, NULL) != J1939_RET_OK) {
+		if (j1939_socketcan_tx(fd, &stack, NULL) != J1939_RET_OK) {
 			(void)fprintf(stderr, "CAN transmit error\n");
 			status = EXIT_FAILURE;
 			break;

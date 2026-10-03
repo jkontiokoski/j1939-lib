@@ -7,15 +7,17 @@
  *
  * Data flow:
  *
- * 1. The driver puts received frames into the rx queue (j1939_rx_queue()).
- * 2. j1939_process() consumes the rx queue. Protocol frames are handled by
- *    the stack; application messages are stored in the message slots.
+ * 1. The integrator passes each received frame to j1939_rx(). Protocol frames
+ *    are handled by the stack; application messages are stored in the
+ *    message slots.
+ * 2. j1939_process() advances the stack's timers.
  * 3. The application reads messages with j1939_msg_peek() and releases them
  *    with j1939_msg_pop().
- * 4. j1939_send() and the stack itself put frames into the tx queue
- *    (j1939_tx_queue()), which the driver drains.
+ * 4. j1939_send() and the stack itself put frames into the tx queue, which
+ *    the integrator drains with j1939_tx_peek() and j1939_tx_pop().
  *
- * All memory is supplied by the integrator through j1939_cfg_t.
+ * All functions of a stack instance run in one execution context. All
+ * memory is supplied by the integrator through j1939_cfg_t.
  */
 
 #ifndef J1939_STACK_H
@@ -26,7 +28,7 @@
 
 #include "j1939/j1939_config.h"
 #include "j1939/j1939_msg.h"
-#include "j1939/j1939_queue.h"
+#include "j1939/j1939_port_contract.h"
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_ring.h"
 #include "j1939/j1939_tp.h"
@@ -40,8 +42,6 @@ typedef struct j1939_msg_slot {
 
 /** Stack configuration. All buffers and lists must outlive the stack instance. */
 typedef struct j1939_cfg {
-	j1939_port_frame_t *rx_buf; /**< Receive frame queue storage. */
-	uint16_t rx_len;            /**< Frames in rx_buf, at least 1. */
 	j1939_port_frame_t *tx_buf; /**< Transmit frame queue storage. */
 	uint16_t tx_len;            /**< Frames in tx_buf, at least 1. */
 	j1939_msg_slot_t *msg_buf;  /**< Received message storage. */
@@ -86,6 +86,7 @@ typedef struct j1939_ca {
 	uint64_t name;             /**< NAME. */
 	j1939_addr_state_t state;  /**< Address claim state. */
 	uint32_t timer_us;         /**< Contention wait or Cannot Claim delay left. */
+	bool timer_fresh;          /**< timer_us started since the last j1939_process(). */
 	uint8_t address;           /**< Address held or being claimed; J1939_ADDR_NULL if none. */
 	bool cannot_claim_pending; /**< A Cannot Claim is sent when timer_us expires. */
 	bool accept_commanded;     /**< See j1939_ca_cfg_t. */
@@ -103,6 +104,12 @@ typedef struct j1939_stats {
 	uint32_t dm_tx_dropped; /**< DM1, DM2 or acknowledgement sends given up, see j1939_dm.h. */
 } j1939_stats_t;
 
+/** Transmit frame queue. Members are private. */
+typedef struct j1939_tx_queue {
+	j1939_port_frame_t *buf; /**< Integrator storage. */
+	j1939_ring_t ring;       /**< Indices into buf. */
+} j1939_tx_queue_t;
+
 /** Message slot queue. Members are private. */
 typedef struct j1939_msg_queue {
 	j1939_msg_slot_t *buf; /**< Integrator storage. */
@@ -113,8 +120,7 @@ struct j1939_dm; /* Diagnostic state of a CA, see j1939_dm.h. */
 
 /** Stack instance. Allocated by the integrator, members are private. */
 typedef struct j1939 {
-	j1939_queue_t rx;                /**< Received frames. */
-	j1939_queue_t tx;                /**< Frames to transmit. */
+	j1939_tx_queue_t tx;             /**< Frames to transmit. */
 	j1939_msg_queue_t msgs;          /**< Messages for the application. */
 	const uint32_t *rx_pgns;         /**< See j1939_cfg_t. */
 	uint16_t rx_pgns_len;            /**< See j1939_cfg_t. */
@@ -155,17 +161,44 @@ j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg);
  */
 j1939_ret_t j1939_ca_add(j1939_t *s, const j1939_ca_cfg_t *cfg, j1939_ca_id_t *id);
 
-/** @return Receive frame queue; the driver is its producer. NULL if @p s is NULL. */
-j1939_queue_t *j1939_rx_queue(j1939_t *s);
-
-/** @return Transmit frame queue; the driver is its consumer. NULL if @p s is NULL. */
-j1939_queue_t *j1939_tx_queue(j1939_t *s);
+/**
+ * @brief Handles a received frame.
+ *
+ * The frame is read in place during the call and may be reused afterwards.
+ * Standard, remote and non-J1939 frames are ignored, so every frame of the
+ * bus may be passed. Answers the stack generates go into the tx queue,
+ * application messages into the message slots. Timers started by the frame
+ * count from the next j1939_process().
+ *
+ * @param s      Stack.
+ * @param frame  Received frame.
+ * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer.
+ */
+j1939_ret_t j1939_rx(j1939_t *s, const j1939_port_frame_t *frame);
 
 /**
- * @brief Runs the stack.
+ * @brief Returns the oldest frame of the tx queue without removing it.
  *
- * Handles the frames that are in the rx queue when the call starts. Frames
- * arriving meanwhile are handled by the next call.
+ * The integrator hands the frame to the CAN driver and removes it with
+ * j1939_tx_pop() once the driver has accepted it. A frame the driver
+ * refuses stays in the queue for the next attempt.
+ *
+ * @return Frame, or NULL if the tx queue is empty or @p s is NULL.
+ */
+const j1939_port_frame_t *j1939_tx_peek(j1939_t *s);
+
+/**
+ * @brief Removes the frame returned by j1939_tx_peek().
+ *
+ * @return J1939_RET_OK, J1939_RET_ERR_EMPTY, or J1939_RET_ERR_ARG if @p s is NULL.
+ */
+j1939_ret_t j1939_tx_pop(j1939_t *s);
+
+/**
+ * @brief Advances the stack's timers and queues the frames that are due.
+ *
+ * Runs address claiming, the transport protocol and diagnostics with the
+ * time passed since the previous call.
  *
  * @param s           Stack.
  * @param elapsed_us  Time since the previous call, in microseconds.

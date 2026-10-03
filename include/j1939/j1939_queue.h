@@ -3,16 +3,40 @@
 
 /**
  * @file j1939_queue.h
- * @brief CAN frame queue over integrator-supplied storage.
+ * @brief Optional helper: CAN frame queue between two execution contexts.
  *
- * A first-in first-out queue of native frames for exactly one producer and
- * one consumer, which may run in different execution contexts (ISR, thread).
- * Index updates are protected by the port lock.
+ * The stack does not use this queue. It is for integrators whose CAN driver
+ * has no frame FIFO of its own, typically bare metal, where a receive
+ * interrupt has to hand frames to the task that runs the stack:
  *
- * The producer either writes a frame directly into the next free slot
- * (j1939_queue_acquire(), then j1939_queue_commit()), or copies one in with
- * j1939_queue_put(). The consumer reads the oldest frame in place with
- * j1939_queue_peek() and releases it with j1939_queue_pop().
+ * @code
+ * static j1939_port_frame_t rx_storage[32];
+ * static j1939_queue_t rx_q;
+ *
+ * j1939_queue_init(&rx_q, rx_storage, 32);
+ *
+ * void can_rx_isr(void) {                         // producer
+ *     j1939_port_frame_t *slot = j1939_queue_acquire(&rx_q);
+ *     if (slot != NULL) {
+ *         driver_read(slot);
+ *         j1939_queue_commit(&rx_q);
+ *     }
+ * }
+ *
+ * const j1939_port_frame_t *f;                    // consumer: the stack's task
+ * while ((f = j1939_queue_peek(&rx_q)) != NULL) {
+ *     j1939_rx(&stack, f);
+ *     j1939_queue_pop(&rx_q);
+ * }
+ * @endcode
+ *
+ * The queue is a first-in first-out queue of native frames over integrator
+ * storage, for exactly one producer and one consumer. Index updates run
+ * inside the port lock; frame contents are written and read outside it.
+ *
+ * It is built as its own library target, j1939::queue, and needs the lock
+ * declared below in the port's j1939_target.h. A port that does not use the
+ * queue does not define the lock.
  */
 
 #ifndef J1939_QUEUE_H
@@ -24,10 +48,28 @@
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_ring.h"
 
-/** Frame queue. Members are private to the library. */
+/* j1939_port_lock_t: lock object embedded in each queue, typedef by the port. */
+
+/** @brief Initialises a lock object. Called once, before any other use. */
+static inline void j1939_port_lock_init(j1939_port_lock_t *lock);
+
+/**
+ * @brief Enters a critical section.
+ *
+ * Lock and unlock must also act as compiler and memory barriers, so that
+ * frame contents written before a queue update are visible to the other
+ * execution context. Critical sections are short and never nested.
+ */
+static inline void j1939_port_lock(j1939_port_lock_t *lock);
+
+/** @brief Leaves a critical section. */
+static inline void j1939_port_unlock(j1939_port_lock_t *lock);
+
+/** Frame queue. Members are private. */
 typedef struct j1939_queue {
 	j1939_port_frame_t *buf; /**< Integrator storage. */
 	j1939_ring_t ring;       /**< Indices into buf. */
+	j1939_port_lock_t lock;  /**< Protects ring. */
 } j1939_queue_t;
 
 /**

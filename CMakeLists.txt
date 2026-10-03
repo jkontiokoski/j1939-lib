@@ -48,6 +48,12 @@ string(REGEX REPLACE "/$" "" J1939_PORT_DIR "${J1939_PORT_DIR}")
 j1939_add_library(j1939 "${J1939_PORT_DIR}")
 add_library(j1939::j1939 ALIAS j1939)
 
+# Optional frame queue helper. Built only when something links j1939::queue,
+# so ports without a lock are not affected.
+j1939_add_queue(j1939_queue j1939)
+set_target_properties(j1939_queue PROPERTIES EXCLUDE_FROM_ALL ON)
+add_library(j1939::queue ALIAS j1939_queue)
+
 if(J1939_BUILD_TESTS)
 	enable_testing()
 	add_subdirectory(tests)

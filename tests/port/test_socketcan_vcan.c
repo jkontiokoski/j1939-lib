@@ -17,58 +17,100 @@
 #include <poll.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
+#include "j1939/j1939.h"
 #include "j1939_socketcan.h"
 
 #define SKIP_RETURN_CODE 77
-#define N_FRAMES         6U
-#define RX_LEN           4U
+#define N_MSGS           6U
+#define TX_LEN           (N_MSGS + 1U) /* the messages and the Address Claimed */
+#define SENDER           0x42U
+#define PGN_BASE         0xFF00U
 #define POLL_TIMEOUT_MS  1000
 
 static const char *ifname;
 static int fd_tx = -1;
 static int fd_rx = -1;
-static j1939_port_frame_t tx_buf[N_FRAMES];
-static j1939_port_frame_t rx_buf[RX_LEN];
-static j1939_queue_t tx_q;
-static j1939_queue_t rx_q;
 
-static uint32_t test_id(uint32_t i) {
-	return 0x18FF0000U | (i << 8) | 0x42U;
+static j1939_port_frame_t tx_buf[TX_LEN];
+static j1939_msg_slot_t sender_msgs[1];
+static j1939_t sender;
+static j1939_ca_id_t sender_ca;
+
+static uint32_t rx_pgns[N_MSGS];
+static j1939_port_frame_t receiver_tx_buf[1];
+static j1939_msg_slot_t receiver_msgs[N_MSGS];
+static j1939_t receiver;
+static uint16_t received;
+
+static uint8_t msg_len(uint32_t i) {
+	return (uint8_t)((i + 3U > 8U) ? 8U : (i + 3U));
 }
 
-static void fill_tx(void) {
-	j1939_port_frame_t f;
-	uint8_t payload[8];
-	uint32_t i;
+static void payload(uint32_t i, uint8_t *data) {
 	uint8_t b;
 
-	for (i = 0U; i < N_FRAMES; i++) {
-		for (b = 0U; b < 8U; b++) {
-			payload[b] = (uint8_t)(i * 16U + b);
-		}
-		j1939_port_frame_build(&f, test_id(i), payload,
-		                       (uint8_t)(i + 3U > 8U ? 8U : i + 3U));
-		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_put(&tx_q, &f));
+	for (b = 0U; b < 8U; b++) {
+		data[b] = (uint8_t)(i * 16U + b);
 	}
 }
 
-/* Receives until @p want frames are in the rx queue or the socket stays quiet. */
-static void receive(uint16_t want) {
-	struct pollfd pfd = {.fd = fd_rx, .events = POLLIN, .revents = 0};
-	uint16_t n;
+/* Queues N_MSGS broadcasts of different lengths in the sender's tx queue. */
+static void send_all(void) {
+	uint8_t data[8];
+	uint32_t i;
 
-	while (j1939_queue_count(&rx_q) < want) {
+	for (i = 0U; i < N_MSGS; i++) {
+		const j1939_msg_t msg = {.pgn = PGN_BASE + i,
+		                         .prio = 6U,
+		                         .sa = 0U,
+		                         .da = J1939_ADDR_GLOBAL,
+		                         .len = msg_len(i),
+		                         .data = data};
+
+		payload(i, data);
+		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_send(&sender, sender_ca, &msg));
+	}
+}
+
+/* Reads at most max frames per call until @p want frames arrived or the socket stays quiet. */
+static void receive(uint16_t want, uint16_t max) {
+	struct pollfd pfd = {.fd = fd_rx, .events = POLLIN, .revents = 0};
+	uint16_t n = 0U;
+
+	while (received < want) {
 		if (poll(&pfd, 1U, POLL_TIMEOUT_MS) <= 0) {
 			break;
 		}
-		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_rx(fd_rx, &rx_q, &n));
+		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_rx(fd_rx, &receiver, max, &n));
+		TEST_ASSERT_LESS_OR_EQUAL_UINT16(max, n);
+		received = (uint16_t)(received + n);
 	}
 }
 
 void setUp(void) {
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_init(&tx_q, tx_buf, N_FRAMES));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_init(&rx_q, rx_buf, RX_LEN));
+	uint32_t i;
+
+	for (i = 0U; i < N_MSGS; i++) {
+		rx_pgns[i] = PGN_BASE + i;
+	}
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&sender, &(j1939_cfg_t){.tx_buf = tx_buf,
+	                                                                   .tx_len = TX_LEN,
+	                                                                   .msg_buf = sender_msgs,
+	                                                                   .msg_len = 1U}));
+	TEST_ASSERT_EQUAL(J1939_RET_OK,
+	                  j1939_ca_add(&sender, &(j1939_ca_cfg_t){.address = SENDER}, &sender_ca));
+	/* An address outside 128-247 is claimed at once. */
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&sender, 0U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK,
+	                  j1939_init(&receiver, &(j1939_cfg_t){.tx_buf = receiver_tx_buf,
+	                                                       .tx_len = 1U,
+	                                                       .msg_buf = receiver_msgs,
+	                                                       .msg_len = N_MSGS,
+	                                                       .rx_pgns = rx_pgns,
+	                                                       .rx_pgns_len = N_MSGS}));
+	received = 0U;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_open(ifname, &fd_tx));
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_open(ifname, &fd_rx));
 }
@@ -78,43 +120,45 @@ void tearDown(void) {
 	j1939_socketcan_close(fd_rx);
 }
 
-static void test_frames_pass_unchanged_with_backpressure(void) {
+static void test_messages_pass_unchanged(void) {
 	uint16_t n_tx = 0U;
+	uint8_t data[8];
 	uint32_t i;
-	uint32_t expected_len;
 
-	fill_tx();
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_tx(fd_tx, &tx_q, &n_tx));
-	TEST_ASSERT_EQUAL_UINT16(N_FRAMES, n_tx);
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(&tx_q));
+	send_all();
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_tx(fd_tx, &sender, &n_tx));
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, n_tx);
+	TEST_ASSERT_NULL(j1939_tx_peek(&sender));
 
-	/* The rx queue holds fewer frames than were sent: the rest wait in the socket. */
-	for (i = 0U; i < N_FRAMES; i++) {
-		receive(1U);
-		TEST_ASSERT_NOT_NULL_MESSAGE(j1939_queue_peek(&rx_q), "frame not received");
-		expected_len = (i + 3U > 8U) ? 8U : i + 3U;
-		TEST_ASSERT_TRUE(j1939_port_frame_is_ext(j1939_queue_peek(&rx_q)));
-		TEST_ASSERT_EQUAL_HEX32(test_id(i),
-		                        j1939_port_frame_id_get(j1939_queue_peek(&rx_q)));
-		TEST_ASSERT_EQUAL_UINT8(expected_len,
-		                        j1939_port_frame_len_get(j1939_queue_peek(&rx_q)));
-		TEST_ASSERT_EQUAL_HEX8_ARRAY(tx_buf[i].data,
-		                             j1939_port_frame_data(j1939_queue_peek(&rx_q)),
-		                             expected_len);
-		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(&rx_q));
+	receive(TX_LEN, TX_LEN);
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, received);
+	for (i = 0U; i < N_MSGS; i++) {
+		const j1939_msg_t *msg = j1939_msg_peek(&receiver);
+
+		TEST_ASSERT_NOT_NULL_MESSAGE(msg, "message not received");
+		payload(i, data);
+		TEST_ASSERT_EQUAL_HEX32(PGN_BASE + i, msg->pgn);
+		TEST_ASSERT_EQUAL_HEX8(SENDER, msg->sa);
+		TEST_ASSERT_EQUAL_UINT16(msg_len(i), msg->len);
+		TEST_ASSERT_EQUAL_HEX8_ARRAY(data, msg->data, msg_len(i));
+		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_msg_pop(&receiver));
 	}
 }
 
-static void test_rx_stops_when_queue_is_full(void) {
-	uint16_t n_tx = 0U;
+static void test_rx_reads_at_most_max_frames(void) {
+	struct pollfd pfd = {.fd = fd_rx, .events = POLLIN, .revents = 0};
 	uint16_t n_rx = 0U;
 
-	fill_tx();
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_tx(fd_tx, &tx_q, &n_tx));
-	receive(RX_LEN);
-	TEST_ASSERT_EQUAL_UINT16(RX_LEN, j1939_queue_count(&rx_q));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_rx(fd_rx, &rx_q, &n_rx));
-	TEST_ASSERT_EQUAL_UINT16(0U, n_rx);
+	send_all();
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_tx(fd_tx, &sender, NULL));
+	TEST_ASSERT_GREATER_THAN(0, poll(&pfd, 1U, POLL_TIMEOUT_MS));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_rx(fd_rx, &receiver, 2U, &n_rx));
+	TEST_ASSERT_LESS_OR_EQUAL_UINT16(2U, n_rx);
+	received = n_rx;
+
+	/* The other frames waited in the socket. */
+	receive(TX_LEN, TX_LEN);
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, received);
 }
 
 static void test_standard_frames_are_filtered(void) {
@@ -122,18 +166,17 @@ static void test_standard_frames_are_filtered(void) {
 	uint16_t n_rx = 0U;
 	int fd_raw;
 
-	/* The raw fixture frame bypasses the port's builder: 11-bit identifier. */
+	/* An 11-bit frame written directly; the port's builder makes only extended frames. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_open(ifname, &fd_raw));
 	(void)memset(&f, 0, sizeof(f));
 	f.can_id = 0x123U;
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_put(&tx_q, &f));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_tx(fd_raw, &tx_q, NULL));
-	TEST_ASSERT_EQUAL_UINT16_MESSAGE(0U, j1939_queue_count(&tx_q), "standard frame not sent");
+	TEST_ASSERT_EQUAL((ssize_t)sizeof(f), write(fd_raw, &f, sizeof(f)));
 	j1939_socketcan_close(fd_raw);
 
-	receive(1U);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_rx(fd_rx, &rx_q, &n_rx));
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(&rx_q));
+	receive(1U, 1U);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_rx(fd_rx, &receiver, 1U, &n_rx));
+	TEST_ASSERT_EQUAL_UINT16(0U, received);
+	TEST_ASSERT_EQUAL_UINT16(0U, n_rx);
 }
 
 static void test_open_rejects_unknown_interface(void) {
@@ -141,7 +184,7 @@ static void test_open_rejects_unknown_interface(void) {
 
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_IO, j1939_socketcan_open("nosuchcan0", &fd));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_socketcan_open(NULL, &fd));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_socketcan_rx(fd_rx, NULL, NULL));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_socketcan_rx(fd_rx, NULL, 1U, NULL));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_socketcan_tx(fd_tx, NULL, NULL));
 }
 
@@ -158,8 +201,8 @@ int main(void) {
 	j1939_socketcan_close(probe);
 
 	UNITY_BEGIN();
-	RUN_TEST(test_frames_pass_unchanged_with_backpressure);
-	RUN_TEST(test_rx_stops_when_queue_is_full);
+	RUN_TEST(test_messages_pass_unchanged);
+	RUN_TEST(test_rx_reads_at_most_max_frames);
 	RUN_TEST(test_standard_frames_are_filtered);
 	RUN_TEST(test_open_rejects_unknown_interface);
 	return UNITY_END();

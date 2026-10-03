@@ -11,7 +11,6 @@
 
 #include "j1939/j1939.h"
 
-#define RX_LEN  32U
 #define TX_LEN  8U
 #define MSG_LEN 2U
 #define BUF_LEN 2U
@@ -41,7 +40,6 @@
 
 static const uint32_t pgns_ds[] = {PGN_DS};
 static const uint32_t pgns_cmd[] = {CMD, J1939_PGN_ADDRESS_CLAIMED};
-static j1939_port_frame_t rx_buf[RX_LEN];
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_tp_buf_t tp_tx[BUF_LEN];
@@ -50,8 +48,6 @@ static j1939_t s;
 
 static void init(const uint32_t *rx_pgns, uint16_t rx_pgns_len, uint16_t tp_tx_len) {
 	const j1939_cfg_t cfg = {
-	        .rx_buf = rx_buf,
-	        .rx_len = RX_LEN,
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
@@ -86,11 +82,10 @@ static uint32_t make_id(uint8_t prio, uint32_t pgn, uint8_t da, uint8_t sa) {
 }
 
 static void rx(uint32_t id, const uint8_t *data, uint8_t len) {
-	j1939_port_frame_t *slot = j1939_queue_acquire(j1939_rx_queue(&s));
+	j1939_port_frame_t f;
 
-	TEST_ASSERT_NOT_NULL(slot);
-	j1939_port_frame_build(slot, id, data, len);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_commit(j1939_rx_queue(&s)));
+	j1939_port_frame_build(&f, id, data, len);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
 }
 
 static void rx_cm(uint8_t sa, uint8_t da, uint8_t ctrl, uint8_t b1, uint8_t b2, uint8_t b3,
@@ -136,13 +131,13 @@ static void process(uint32_t elapsed_us) {
 
 /* Pops the next sent frame, checks its identifier and returns its data in d. */
 static void tx_expect(uint32_t id, uint8_t len, uint8_t *d) {
-	const j1939_port_frame_t *f = j1939_queue_peek(j1939_tx_queue(&s));
+	const j1939_port_frame_t *f = j1939_tx_peek(&s);
 
 	TEST_ASSERT_NOT_NULL_MESSAGE(f, "no frame sent");
 	TEST_ASSERT_EQUAL_HEX32(id, j1939_port_frame_id_get(f));
 	TEST_ASSERT_EQUAL_UINT8(len, j1939_port_frame_len_get(f));
 	(void)memcpy(d, j1939_port_frame_data(f), len);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 }
 
 static void tx_expect_claim(uint8_t sa, uint64_t name) {
@@ -169,11 +164,11 @@ static void tx_expect_cm(uint8_t sa, uint8_t da, uint8_t prio, uint8_t ctrl, uin
 }
 
 static void tx_expect_empty(void) {
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
 }
 
 static void tx_drain(void) {
-	while (j1939_queue_pop(j1939_tx_queue(&s)) == J1939_RET_OK) {
+	while (j1939_tx_pop(&s) == J1939_RET_OK) {
 	}
 }
 
@@ -213,8 +208,6 @@ void setUp(void) {
 }
 
 void tearDown(void) {
-	TEST_ASSERT_EQUAL_UINT32(0U, s.tx.ring.lock.depth);
-	TEST_ASSERT_EQUAL_UINT32(0U, s.rx.ring.lock.depth);
 }
 
 /* A broadcast command moves the CA with the next process(); the old address is given up. */
@@ -222,7 +215,6 @@ static void test_accepted_command_moves_ca(void) {
 	j1939_ca_id_t ca = claimed_ca(NAME_OWN);
 
 	rx_command_bam(NAME_OWN, NEW);
-	process(0U);
 	tx_expect_empty();
 	expect_state(ca, J1939_ADDR_STATE_CLAIMED, OWN);
 
@@ -232,7 +224,7 @@ static void test_accepted_command_moves_ca(void) {
 	expect_state(ca, J1939_ADDR_STATE_CLAIMED, NEW);
 	TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(ca));
 	TEST_ASSERT_EQUAL_HEX32(make_id(6U, 0xFEF1U, J1939_ADDR_GLOBAL, NEW),
-	                        j1939_port_frame_id_get(j1939_queue_peek(j1939_tx_queue(&s))));
+	                        j1939_port_frame_id_get(j1939_tx_peek(&s)));
 	tx_drain();
 
 	/* Nothing is left of the command, and the old address no longer answers. */
@@ -249,7 +241,6 @@ static void test_command_to_self_configurable_address_waits(void) {
 	j1939_ca_id_t ca = claimed_ca(NAME_OWN);
 
 	rx_command_bam(NAME_OWN, SELF);
-	process(0U);
 	process(100000U);
 	tx_expect_claim(SELF, NAME_OWN);
 	expect_state(ca, J1939_ADDR_STATE_CLAIMING, SELF);
@@ -518,7 +509,6 @@ static void test_rts_command_ends_sessions_of_old_address(void) {
 	process(0U);
 	tx_expect_cm(OWN, TOOL, 7U, CTS, 2U, 1U);
 	rx_command_packets(OWN, NAME_OWN, NEW);
-	process(0U);
 	tx_expect_cm(OWN, TOOL, 7U, EOMA, 9U, 0U);
 	tx_expect_empty();
 	expect_state(ca, J1939_ADDR_STATE_CLAIMED, OWN);
@@ -583,7 +573,6 @@ static void test_corrupted_command_fails_safe(void) {
 	TEST_ASSERT_EQUAL_HEX8(J1939_ADDR_NULL, s.ca[ca].commanded);
 
 	rx_command_bam(NAME_OWN, NEW);
-	process(0U);
 	s.ca[ca].state = (j1939_addr_state_t)42;
 	process(0U);
 	expect_state(ca, J1939_ADDR_STATE_CANNOT_CLAIM, J1939_ADDR_NULL);
@@ -595,7 +584,6 @@ static void test_corrupted_command_fails_safe(void) {
 
 	/* The same through the Request path, which runs outside the claim process. */
 	rx_command_bam(NAME_OWN, NEW);
-	process(0U);
 	s.ca[ca].state = (j1939_addr_state_t)42;
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL));

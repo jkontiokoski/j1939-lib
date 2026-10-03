@@ -9,7 +9,6 @@
 
 #include "j1939/j1939.h"
 
-#define RX_LEN  32U
 #define TX_LEN  8U
 #define MSG_LEN 2U
 #define BUF_LEN 2U
@@ -34,7 +33,6 @@
 #define GAP J1939_CFG_TP_BAM_GAP_US
 
 static const uint32_t rx_pgns[] = {PGN_A, PGN_B};
-static j1939_port_frame_t rx_buf[RX_LEN];
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_tp_buf_t tp_tx[BUF_LEN];
@@ -58,11 +56,10 @@ static uint32_t make_id(uint8_t prio, uint32_t pgn, uint8_t da, uint8_t sa) {
 }
 
 static void rx_raw(uint32_t id, const uint8_t *d, uint8_t len) {
-	j1939_port_frame_t *slot = j1939_queue_acquire(j1939_rx_queue(&s));
+	j1939_port_frame_t f;
 
-	TEST_ASSERT_NOT_NULL(slot);
-	j1939_port_frame_build(slot, id, d, len);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_commit(j1939_rx_queue(&s)));
+	j1939_port_frame_build(&f, id, d, len);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
 }
 
 static void rx_cm_to(uint8_t sa, uint8_t da, uint8_t ctrl, uint8_t b1, uint8_t b2, uint8_t b3,
@@ -107,7 +104,7 @@ static void run(uint32_t us) {
 
 /* Pops the next sent frame, checks its identifier and keeps its data in sent[]. */
 static void expect_tx(uint8_t prio, uint32_t pgn, uint8_t da) {
-	const j1939_port_frame_t *f = j1939_queue_peek(j1939_tx_queue(&s));
+	const j1939_port_frame_t *f = j1939_tx_peek(&s);
 	uint32_t i;
 
 	TEST_ASSERT_NOT_NULL_MESSAGE(f, "no frame sent");
@@ -116,7 +113,7 @@ static void expect_tx(uint8_t prio, uint32_t pgn, uint8_t da) {
 	for (i = 0U; i < 8U; i++) {
 		sent[i] = j1939_port_frame_data(f)[i];
 	}
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 }
 
 static void expect_cm(uint8_t da, uint8_t ctrl, uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4,
@@ -133,19 +130,19 @@ static void expect_abort(uint8_t da, uint8_t reason, uint32_t pgn) {
 }
 
 static void expect_none(void) {
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
 }
 
 /* Drains the tx queue; none of the frames may belong to the transport protocol. */
 static void expect_no_tp(void) {
 	const j1939_port_frame_t *f;
 
-	while ((f = j1939_queue_peek(j1939_tx_queue(&s))) != NULL) {
+	while ((f = j1939_tx_peek(&s)) != NULL) {
 		uint32_t pgn = j1939_id_pgn_get(j1939_port_frame_id_get(f));
 
 		TEST_ASSERT_NOT_EQUAL_HEX32(J1939_PGN_TP_CM, pgn);
 		TEST_ASSERT_NOT_EQUAL_HEX32(J1939_PGN_TP_DT, pgn);
-		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 	}
 }
 
@@ -209,7 +206,7 @@ static void init(uint16_t tx_bufs, uint16_t rx_bufs) {
 	init_unclaimed(tx_bufs, rx_bufs, OWN, 0x100000U);
 	/* Claim the address; the CA may transmit right after its Address Claimed. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 }
 
 void setUp(void) {
@@ -219,8 +216,6 @@ void setUp(void) {
 		data[i] = pat(i);
 	}
 	cfg = (j1939_cfg_t){
-	        .rx_buf = rx_buf,
-	        .rx_len = RX_LEN,
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
@@ -234,10 +229,6 @@ void setUp(void) {
 }
 
 void tearDown(void) {
-	TEST_ASSERT_EQUAL_UINT32(0U, s.rx.ring.lock.depth);
-	TEST_ASSERT_EQUAL_UINT32(0U, s.tx.ring.lock.depth);
-	TEST_ASSERT_EQUAL_UINT32(0U, s.msgs.ring.lock.depth);
-	TEST_ASSERT_LESS_OR_EQUAL_UINT32(1U, s.msgs.ring.lock.max_depth);
 }
 
 /* ---- Configuration ---- */
@@ -700,10 +691,10 @@ static void test_bam_send_waits_for_tx_queue_then_gives_up(void) {
 	}
 	run(0U);
 	run(GAP);
-	TEST_ASSERT_EQUAL_UINT16(TX_LEN, j1939_queue_count(j1939_tx_queue(&s)));
-	(void)j1939_queue_pop(j1939_tx_queue(&s)); /* room for one packet */
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
+	(void)j1939_tx_pop(&s); /* room for one packet */
 	run(J1939_TP_TR_US);
-	TEST_ASSERT_EQUAL_UINT16(TX_LEN, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
 	run(GAP + J1939_TP_TR_US - 1U);
 	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open());
 	run(1U);
@@ -862,13 +853,13 @@ static void test_data_waits_for_tx_queue_then_aborts(void) {
 	for (i = 1U; i < TX_LEN; i++) {
 		TEST_ASSERT_EQUAL(J1939_RET_OK, send(J1939_ADDR_GLOBAL, PGN_A, 0U));
 	}
-	(void)j1939_queue_pop(j1939_tx_queue(&s)); /* the RTS */
+	(void)j1939_tx_pop(&s); /* the RTS */
 	rx_cts(PEER, 3U, 1U, PGN_B);
 	run(0U);
-	TEST_ASSERT_EQUAL_UINT16(TX_LEN, j1939_queue_count(j1939_tx_queue(&s)));
-	(void)j1939_queue_pop(j1939_tx_queue(&s));
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
+	(void)j1939_tx_pop(&s);
 	run(J1939_TP_TR_US - 1U); /* one packet goes out and restarts Tr */
-	TEST_ASSERT_EQUAL_UINT16(TX_LEN, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
 	run(J1939_TP_TR_US - 1U);
 	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open());
 	run(1U);
@@ -919,7 +910,7 @@ static void test_unclaimed_ca_cannot_send_multi_packet(void) {
 	/* Still in the contention wait. */
 	init_unclaimed(BUF_LEN, BUF_LEN, SELF, 0U);
 	run(0U);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_NO_ADDRESS, send(J1939_ADDR_GLOBAL, PGN_A, LEN_20));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_NO_ADDRESS, send(PEER, PGN_B, LEN_20));
 	expect_none();
@@ -930,7 +921,7 @@ static void test_unclaimed_ca_cannot_send_multi_packet(void) {
 static void test_rts_to_claiming_ca_is_not_answered(void) {
 	init_unclaimed(BUF_LEN, BUF_LEN, SELF, 0U);
 	run(0U);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 	rx_cm_to(PEER, SELF, RTS, LEN_20, 0U, 3U, NA, PGN_B);
 	rx_cm_to(PEER, SELF, RTS, 8U, 0U, 2U, NA, PGN_B); /* invalid: no abort either */
 	/* A broadcast needs no transmission and is received. */

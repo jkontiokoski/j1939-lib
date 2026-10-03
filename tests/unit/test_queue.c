@@ -22,8 +22,8 @@ void setUp(void) {
 
 void tearDown(void) {
 	/* Every critical section was left and none was nested. */
-	TEST_ASSERT_EQUAL_UINT32(0U, q.ring.lock.depth);
-	TEST_ASSERT_LESS_OR_EQUAL_UINT32(1U, q.ring.lock.max_depth);
+	TEST_ASSERT_EQUAL_UINT32(0U, q.lock.depth);
+	TEST_ASSERT_LESS_OR_EQUAL_UINT32(1U, q.lock.max_depth);
 }
 
 static void test_init_rejects_invalid_arguments(void) {
@@ -129,17 +129,17 @@ static void test_every_operation_locks(void) {
 	uint32_t before;
 
 	frame(&f, 1U);
-	before = q.ring.lock.count;
+	before = q.lock.count;
 	(void)j1939_queue_acquire(&q);
-	TEST_ASSERT_EQUAL_UINT32(before + 1U, q.ring.lock.count);
+	TEST_ASSERT_EQUAL_UINT32(before + 1U, q.lock.count);
 	(void)j1939_queue_commit(&q);
-	TEST_ASSERT_EQUAL_UINT32(before + 2U, q.ring.lock.count);
+	TEST_ASSERT_EQUAL_UINT32(before + 2U, q.lock.count);
 	(void)j1939_queue_peek(&q);
-	TEST_ASSERT_EQUAL_UINT32(before + 3U, q.ring.lock.count);
+	TEST_ASSERT_EQUAL_UINT32(before + 3U, q.lock.count);
 	(void)j1939_queue_pop(&q);
-	TEST_ASSERT_EQUAL_UINT32(before + 4U, q.ring.lock.count);
+	TEST_ASSERT_EQUAL_UINT32(before + 4U, q.lock.count);
 	(void)j1939_queue_count(&q);
-	TEST_ASSERT_EQUAL_UINT32(before + 5U, q.ring.lock.count);
+	TEST_ASSERT_EQUAL_UINT32(before + 5U, q.lock.count);
 }
 
 int main(void) {

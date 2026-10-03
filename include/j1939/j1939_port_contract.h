@@ -50,22 +50,4 @@ static inline const uint8_t *j1939_port_frame_data(const j1939_port_frame_t *f);
 static inline void j1939_port_frame_build(j1939_port_frame_t *f, uint32_t id29, const uint8_t *data,
                                           uint8_t len);
 
-/* j1939_port_lock_t: lock object embedded in each library queue. A port
- * without concurrency may use any scalar type and empty functions. */
-
-/** @brief Initialises a lock object. Called once, before any other use. */
-static inline void j1939_port_lock_init(j1939_port_lock_t *lock);
-
-/**
- * @brief Enters a critical section.
- *
- * Lock and unlock must also act as compiler and memory barriers, so that
- * frame contents written before a queue update are visible to the other
- * execution context. Critical sections are never nested by the library.
- */
-static inline void j1939_port_lock(j1939_port_lock_t *lock);
-
-/** @brief Leaves a critical section. */
-static inline void j1939_port_unlock(j1939_port_lock_t *lock);
-
 #endif /* J1939_PORT_CONTRACT_H */

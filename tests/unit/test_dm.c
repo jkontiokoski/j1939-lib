@@ -11,7 +11,6 @@
 
 #include "j1939/j1939.h"
 
-#define RX_LEN   16U
 #define TX_LEN   8U
 #define MSG_LEN  2U
 #define DTC_LEN  4U
@@ -34,7 +33,6 @@ static const j1939_diag_dtc_t dtc_b = {0x7FFFFU, 31U, 126U, J1939_DIAG_CM_V4};
 static const j1939_diag_dtc_t dtc_c = {5000U, 1U, 127U, J1939_DIAG_CM_V4};
 static const j1939_diag_dtc_t dtc_d = {6000U, 2U, 2U, J1939_DIAG_CM_V4};
 
-static j1939_port_frame_t rx_buf[RX_LEN];
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_tp_buf_t tp_tx[1];
@@ -61,7 +59,7 @@ static void rx_raw(uint32_t id, const uint8_t *d, uint8_t len) {
 	j1939_port_frame_t f;
 
 	j1939_port_frame_build(&f, id, d, len);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_put(j1939_rx_queue(&s), &f));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
 }
 
 static void rx_request(uint8_t sa, uint8_t da, uint32_t pgn) {
@@ -75,17 +73,17 @@ static void process(uint32_t us) {
 }
 
 static void expect_none(void) {
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
 }
 
 static void expect_frame(uint32_t id, const uint8_t *d, uint8_t len) {
-	const j1939_port_frame_t *f = j1939_queue_peek(j1939_tx_queue(&s));
+	const j1939_port_frame_t *f = j1939_tx_peek(&s);
 
 	TEST_ASSERT_NOT_NULL(f);
 	TEST_ASSERT_EQUAL_HEX32(id, j1939_port_frame_id_get(f));
 	TEST_ASSERT_EQUAL_UINT8(len, j1939_port_frame_len_get(f));
 	TEST_ASSERT_EQUAL_HEX8_ARRAY(d, j1939_port_frame_data(f), len);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 }
 
 static void expect_ack(uint8_t ctrl, uint8_t requester, uint32_t pgn) {
@@ -128,8 +126,7 @@ static void expect_dm(uint32_t pgn, const j1939_diag_dtc_t *dtcs, uint16_t n) {
 			const j1939_port_frame_t *f;
 
 			process(GAP);
-			while ((next <= packets) &&
-			       ((f = j1939_queue_peek(j1939_tx_queue(&s))) != NULL)) {
+			while ((next <= packets) && ((f = j1939_tx_peek(&s)) != NULL)) {
 				TEST_ASSERT_EQUAL_HEX32(
 				        make_id(6U, J1939_PGN_TP_DT, J1939_ADDR_GLOBAL, own),
 				        j1939_port_frame_id_get(f));
@@ -137,7 +134,7 @@ static void expect_dm(uint32_t pgn, const j1939_diag_dtc_t *dtcs, uint16_t n) {
 				(void)memcpy(&got[(next - 1U) * 7U], &j1939_port_frame_data(f)[1],
 				             7U);
 				next++;
-				(void)j1939_queue_pop(j1939_tx_queue(&s));
+				(void)j1939_tx_pop(&s);
 			}
 		}
 		TEST_ASSERT_EQUAL_UINT8(packets + 1U, next);
@@ -175,14 +172,14 @@ static void expect_dm_rts(uint32_t pgn, const j1939_diag_dtc_t *dtcs, uint16_t n
 	}
 	process(0U);
 	for (i = 1U; i <= packets; i++) {
-		const j1939_port_frame_t *f = j1939_queue_peek(j1939_tx_queue(&s));
+		const j1939_port_frame_t *f = j1939_tx_peek(&s);
 
 		TEST_ASSERT_NOT_NULL(f);
 		TEST_ASSERT_EQUAL_HEX32(make_id(6U, J1939_PGN_TP_DT, da, own),
 		                        j1939_port_frame_id_get(f));
 		TEST_ASSERT_EQUAL_UINT8(i, j1939_port_frame_data(f)[0]);
 		(void)memcpy(&got[(i - 1U) * 7U], &j1939_port_frame_data(f)[1], 7U);
-		(void)j1939_queue_pop(j1939_tx_queue(&s));
+		(void)j1939_tx_pop(&s);
 	}
 	TEST_ASSERT_EQUAL_HEX8_ARRAY(ref, got, len);
 	{
@@ -208,23 +205,25 @@ static void set_prev(const j1939_diag_dtc_t *dtcs, uint16_t n) {
 
 /* Fills the tx queue with frames that are not DMs. */
 static void tx_fill(void) {
-	j1939_port_frame_t f;
+	const j1939_msg_t msg = {.pgn = 0xFF00U,
+	                         .prio = 6U,
+	                         .sa = 0U,
+	                         .da = J1939_ADDR_GLOBAL,
+	                         .len = 0U,
+	                         .data = NULL};
 
-	j1939_port_frame_build(&f, 0x18FF0000U | OWN, NULL, 0U);
-	while (j1939_queue_count(j1939_tx_queue(&s)) < TX_LEN) {
-		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_put(j1939_tx_queue(&s), &f));
+	while (s.tx.ring.count < TX_LEN) {
+		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_send(&s, ca, &msg));
 	}
 }
 
 static void tx_drain(void) {
-	while (j1939_queue_pop(j1939_tx_queue(&s)) == J1939_RET_OK) {
+	while (j1939_tx_pop(&s) == J1939_RET_OK) {
 	}
 }
 
 static void stack_setup(uint8_t address, bool dm3, bool dm11) {
 	cfg = (j1939_cfg_t){
-	        .rx_buf = rx_buf,
-	        .rx_len = RX_LEN,
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
@@ -256,7 +255,7 @@ static void stack_setup(uint8_t address, bool dm3, bool dm11) {
 /* Claims OWN: Address Claimed, then the first DM1 in the same call. */
 static void start(void) {
 	process(0U);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 	expect_dm1(NULL, 0U);
 	expect_none();
 }
@@ -273,7 +272,7 @@ static void test_first_dm1_waits_for_the_claim(void) {
 	set_active(&dtc_a, 1U);
 	process(0U);
 	/* Only Address Claimed while claiming. */
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 	expect_none();
 	rx_request(OTHER, SELF, J1939_PGN_DM1);
 	rx_request(OTHER, J1939_ADDR_GLOBAL, J1939_PGN_DM2);
@@ -497,8 +496,8 @@ static void test_requests_for_other_nodes_or_cas_without_diagnostics(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = 0x11U, .name = 2U}, &ca2));
 	process(0U);
-	(void)j1939_queue_pop(j1939_tx_queue(&s)); /* Address Claimed of ca2 */
-	rx_request(OTHER, 0x20U, J1939_PGN_DM1);   /* another node */
+	(void)j1939_tx_pop(&s);                  /* Address Claimed of ca2 */
+	rx_request(OTHER, 0x20U, J1939_PGN_DM1); /* another node */
 	process(0U);
 	expect_none();
 	/* The CA without diagnostics refuses as for any unsupported PGN. */
@@ -747,10 +746,10 @@ static void test_lost_address_ends_diagnostics(void) {
 	process(10U * PERIOD);
 	process(PERIOD);
 	/* Only the Cannot Claim. */
-	TEST_ASSERT_EQUAL_UINT16(1U, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(1U, s.tx.ring.count);
 	TEST_ASSERT_EQUAL_HEX32(
 	        make_id(6U, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL, J1939_ADDR_NULL),
-	        j1939_port_frame_id_get(j1939_queue_peek(j1939_tx_queue(&s))));
+	        j1939_port_frame_id_get(j1939_tx_peek(&s)));
 }
 
 static void test_corrupted_clear_state_fails_safe(void) {

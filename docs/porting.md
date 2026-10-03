@@ -5,13 +5,13 @@ It is a directory containing a header named `j1939_target.h`, selected with the 
 The library is built against exactly one port.
 
 The library never calls into the port at runtime except through the `static inline` functions of the target header.
-A port may ship helper code that moves frames between the driver and the library's queues, see `port/socketcan/j1939_socketcan.c`.
+A port may ship helper code that moves frames between the driver and the stack, see `port/socketcan/j1939_socketcan.c`.
 
 ## Port directory
 
 | File                   | Required | Content                                                                  |
 | ---------------------- | -------- | ------------------------------------------------------------------------ |
-| `j1939_target.h`       | Yes      | Native frame type, frame accessors, lock type and lock functions        |
+| `j1939_target.h`       | Yes      | Native frame type and frame accessors; the lock if the optional frame queue is used |
 | `port.cmake`           | No       | Port helper sources, libraries the port needs, conformance test fixture |
 | `j1939_port_fixture.c` | No       | Fixture for the port conformance test                                   |
 
@@ -20,7 +20,7 @@ A port may ship helper code that moves frames between the driver and the library
 | Variable                    | Content                                                               |
 | --------------------------- | --------------------------------------------------------------------- |
 | `J1939_PORT_SOURCES`        | Helper sources compiled into the library                              |
-| `J1939_PORT_LINK_LIBRARIES` | Libraries linked to the library, e.g. `Threads::Threads`              |
+| `J1939_PORT_LINK_LIBRARIES` | Libraries linked to the library, e.g. a vendor driver library         |
 | `J1939_PORT_TEST_FIXTURE`   | Path of the source implementing `tests/port/j1939_port_fixture.h`     |
 
 ## The target header
@@ -51,23 +51,6 @@ They hide driver-specific details such as identifier flag bits, the position of 
 
 The library ignores frames for which `is_ext` is `false` or `is_rtr` is `true`.
 
-### Lock
-
-```c
-typedef pthread_mutex_t j1939_port_lock_t; /* SocketCAN */
-
-static inline void j1939_port_lock_init(j1939_port_lock_t *lock);
-static inline void j1939_port_lock(j1939_port_lock_t *lock);
-static inline void j1939_port_unlock(j1939_port_lock_t *lock);
-```
-
-Every library queue embeds one lock object and holds it only while updating its indices.
-Critical sections are short and never nested.
-
-- Lock and unlock must act as compiler and memory barriers, so that a frame written before a queue update is visible to the other execution context.
-- On a single-core microcontroller where an ISR produces into the rx queue, disabling that interrupt (or all interrupts) is sufficient.
-- A port without concurrency may use any scalar type and empty functions.
-
 ### Contract check
 
 The library includes the target header only through `include/j1939/j1939_port_contract.h`, which repeats every required declaration.
@@ -75,47 +58,42 @@ A definition with a different signature fails with "conflicting types"; a missin
 
 ## Moving frames
 
-Receiving, zero copy:
+Every function of a stack instance runs in one execution context, the stack's task or main loop.
+The stack has no lock: the CAN driver's own frame FIFOs (a socket, an RTOS message queue, a hardware FIFO) carry frames between the interrupts or threads of the driver and that context.
+
+Receiving: the stack's context takes each frame from the driver and passes it to `j1939_rx()`, which handles it during the call and reads it in place.
+Frames of other protocols on the same bus may be passed as well, or filtered out before.
 
 ```c
-j1939_queue_t *rx_q = j1939_rx_queue(&stack);
-j1939_port_frame_t *slot = j1939_queue_acquire(rx_q);
-if (slot != NULL) {
-	driver_read(slot);
-	j1939_queue_commit(rx_q);
+j1939_port_frame_t frame;
+while (driver_read(&frame) == DRIVER_OK) {
+	(void)j1939_rx(&stack, &frame);
 }
 ```
 
-Transmitting:
+Transmitting: the stack queues the frames it generates in its tx queue, over the integrator's `tx_buf`.
+The stack's context moves them to the driver with `j1939_tx_peek()` and `j1939_tx_pop()`:
 
 ```c
-j1939_queue_t *tx_q = j1939_tx_queue(&stack);
 const j1939_port_frame_t *f;
-while ((f = j1939_queue_peek(tx_q)) != NULL) {
+while ((f = j1939_tx_peek(&stack)) != NULL) {
 	if (driver_write(f) != DRIVER_OK) {
-		break;
+		break; /* The frame stays queued for the next attempt. */
 	}
-	j1939_queue_pop(tx_q);
+	(void)j1939_tx_pop(&stack);
 }
 ```
 
-A full rx queue leaves frames in the driver; a failed write leaves the frame in the tx queue.
-
-Each queue has exactly one producer and one consumer:
-
-| Queue | Producer                                                  | Consumer                                                                  |
-| ----- | --------------------------------------------------------- | ------------------------------------------------------------------------- |
-| rx    | Driver: rx ISR, rx thread or the main loop                | `j1939_process()`                                                         |
-| tx    | `j1939_process()`, `j1939_send()`, `j1939_request_send()` | Driver: main loop, tx-complete ISR or DMA completion, only one of them    |
+A driver without a frame FIFO of its own, typically on bare metal, can use the optional frame queue between its interrupt and the stack's context, see [Optional frame queue](#optional-frame-queue).
 
 ## The main loop
 
 Every integration runs the same cycle, in one task or the main loop:
 
-1. Move received frames into the rx queue, or let an rx ISR do it.
+1. Pass the received frames to `j1939_rx()`.
 2. Call `j1939_process(&stack, elapsed_us)` with the time since the previous call, read from a monotonic clock.
 3. Read application messages with `j1939_msg_peek()` and `j1939_msg_pop()`, send with `j1939_send()`, check the claim with `j1939_addr_get()`.
-4. Move the tx queue to the driver, or wake the tx ISR that does it.
+4. Move the tx queue to the driver.
 
 The stack's timers advance only through `elapsed_us`, so the cycle period is their resolution.
 BAM data packets are sent one per call and at most 200 ms apart, so the stack needs a call at least every 200 ms while it broadcasts; a period of 10 ms keeps the gap between 50 and 60 ms.
@@ -123,9 +101,39 @@ A wrapping 32-bit microsecond counter is fine: the unsigned difference of two re
 
 Sizing the buffers:
 
-- rx queue: the frames that can arrive during one cycle. As a responder the stack asks for all remaining packets of an RTS/CTS transfer in one CTS, up to the originator's packets-per-CTS limit, and they arrive back to back: at 250 kbit/s about 1800 frames per second, so up to 255 frames in 140 ms. A packet lost to a full queue ends the connection with Connection Abort (bad sequence number).
-- tx queue: the largest burst the stack generates in one call, a CTS window of data packets when it sends with RTS/CTS. Packets that do not fit are sent as the queue drains, within Tr (200 ms).
+- The driver's receive FIFO: the frames that can arrive during one cycle. As a responder the stack asks for all remaining packets of an RTS/CTS transfer in one CTS, up to the originator's packets-per-CTS limit, and they arrive back to back: at 250 kbit/s about 1800 frames per second, so up to 255 frames in 140 ms. A packet the driver loses ends the connection with Connection Abort (bad sequence number).
+- tx queue (`tx_buf`): the largest burst the stack generates in one cycle, a CTS window of data packets when it sends with RTS/CTS. Packets that do not fit are sent as the queue drains, within Tr (200 ms).
 - TP buffers: `j1939_tp_buf_t` takes `J1939_CFG_TP_BUF_SIZE` bytes plus a few bytes of bookkeeping. A microcontroller that never handles 1785 byte messages lowers it with `-DJ1939_CONFIG_FILE`.
+
+## Optional frame queue
+
+`j1939_queue.h` is a helper the stack does not use.
+It is a first-in first-out queue of native frames over integrator storage for one producer and one consumer in different execution contexts, typically a receive interrupt and the stack's main loop.
+Integrators whose driver already has a frame FIFO do not need it.
+
+It is built as its own library target, which only exists in a build that links it:
+
+```cmake
+target_link_libraries(my_app PRIVATE j1939::j1939 j1939::queue)
+```
+
+The queue needs a lock in the port's `j1939_target.h`, in addition to the frame accessors:
+
+```c
+typedef uint32_t j1939_port_lock_t; /* e.g. saved PRIMASK */
+
+static inline void j1939_port_lock_init(j1939_port_lock_t *lock);
+static inline void j1939_port_lock(j1939_port_lock_t *lock);
+static inline void j1939_port_unlock(j1939_port_lock_t *lock);
+```
+
+- Each queue embeds one lock object and holds it only while updating its indices. Critical sections are short and never nested.
+- Lock and unlock must act as compiler and memory barriers, so that a frame written before a queue update is visible to the other execution context.
+- On a single-core microcontroller where an interrupt is the producer, disabling that interrupt (or all interrupts) is sufficient.
+
+The producer writes a frame in place (`j1939_queue_acquire()`, then `j1939_queue_commit()`) or copies one in (`j1939_queue_put()`); the consumer reads it in place with `j1939_queue_peek()` and releases it with `j1939_queue_pop()`.
+A full queue returns no slot; the producer drops the frame or leaves it in the hardware.
+The bare-metal sketch below uses the queue between the receive interrupt and the main loop.
 
 ## Verifying a port
 
@@ -138,8 +146,8 @@ Sizing the buffers:
 
 | Port             | Frame type                  | Purpose                                                              |
 | ---------------- | --------------------------- | -------------------------------------------------------------------- |
-| `port/mock`      | `struct j1939_mock_frame`   | Unit tests. Layout of a bxCAN style mailbox: identifier left-aligned in a 32-bit word with IDE and RTR flags in the low bits, raw 4-bit DLC. It differs from SocketCAN so that tests catch any layout assumption. The lock records nesting depth and call count |
-| `port/socketcan` | `struct can_frame`          | Linux SocketCAN (CAN_RAW). Uses `can_dlc` so that kernel headers before 5.11 work. Pthread mutex lock. `j1939_socketcan.h` opens a non-blocking socket that receives extended data frames only, and moves frames between the socket and library queues |
+| `port/mock`      | `struct j1939_mock_frame`   | Unit tests. Layout of a bxCAN style mailbox: identifier left-aligned in a 32-bit word with IDE and RTR flags in the low bits, raw 4-bit DLC. It differs from SocketCAN so that tests catch any layout assumption. A lock for the optional frame queue that records nesting depth and call count |
+| `port/socketcan` | `struct can_frame`          | Linux SocketCAN (CAN_RAW). Uses `can_dlc` so that kernel headers before 5.11 work. No lock: the socket is the frame FIFO. `j1939_socketcan.h` opens a non-blocking socket that receives extended data frames only, and moves frames between the socket and the stack |
 
 ### Mock port
 
@@ -169,30 +177,30 @@ static inline uint8_t j1939_port_frame_len_get(const j1939_port_frame_t *f) {
 }
 ```
 
-The lock has no concurrency to guard: it records the nesting depth and the number of calls, which the unit tests check.
-A single-threaded system without interrupts that touch the queues can use a scalar lock type with empty functions the same way.
+The mock port also defines the lock of the optional frame queue.
+It has no concurrency to guard: it records the nesting depth and the number of calls, which the queue's unit tests check.
 
 ### SocketCAN port
 
 `port/socketcan` is the port the example applications use.
 
-- `j1939_target.h`: `typedef struct can_frame j1939_port_frame_t;`, accessors over `can_id` (`CAN_EFF_FLAG`, `CAN_RTR_FLAG`, `CAN_EFF_MASK`) and `can_dlc`, and a `pthread_mutex_t` lock, so an rx thread may feed the rx queue while another thread runs the stack.
-- `port.cmake`: compiles `j1939_socketcan.c` into the library and links `Threads::Threads`.
-- `j1939_socketcan.h`: `j1939_socketcan_open()` returns a non-blocking CAN_RAW socket with a kernel filter for extended data frames. `j1939_socketcan_rx()` reads frames directly into rx queue slots (acquire, `read()`, commit) until the socket is empty or the queue is full. `j1939_socketcan_tx()` writes the tx queue until it is empty or the socket reports `EAGAIN` or `ENOBUFS`.
+- `j1939_target.h`: `typedef struct can_frame j1939_port_frame_t;` and accessors over `can_id` (`CAN_EFF_FLAG`, `CAN_RTR_FLAG`, `CAN_EFF_MASK`) and `can_dlc`. No lock: the kernel's socket buffer is the frame FIFO between the CAN driver and the stack's thread.
+- `port.cmake`: compiles `j1939_socketcan.c` into the library.
+- `j1939_socketcan.h`: `j1939_socketcan_open()` returns a non-blocking CAN_RAW socket with a kernel filter for extended data frames. `j1939_socketcan_rx()` reads frames and passes each to `j1939_rx()`, until the socket is empty or a given number of frames has been read; the rest wait in the socket. `j1939_socketcan_tx()` writes the tx queue until it is empty or the socket reports `EAGAIN` or `ENOBUFS`.
 
-The main loop of the examples, without threads:
+The main loop of the examples:
 
 ```c
 uint64_t last_us = now_us(); /* CLOCK_MONOTONIC */
 
 while (running) {
 	struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
-	if (j1939_queue_count(tx_q) > 0U) {
+	if (j1939_tx_peek(&stack) != NULL) {
 		pfd.events = (short)(POLLIN | POLLOUT); /* Frames wait for the socket. */
 	}
 	(void)poll(&pfd, 1, 10); /* One 10 ms tick at most. */
 
-	(void)j1939_socketcan_rx(fd, rx_q, NULL); /* Socket -> rx queue. */
+	(void)j1939_socketcan_rx(fd, &stack, 256U, NULL); /* Socket -> stack. */
 	uint64_t now = now_us();
 	(void)j1939_process(&stack, (uint32_t)(now - last_us));
 	last_us = now;
@@ -202,7 +210,7 @@ while (running) {
 		(void)j1939_msg_pop(&stack);
 	}
 
-	(void)j1939_socketcan_tx(fd, tx_q, NULL); /* tx queue -> socket. */
+	(void)j1939_socketcan_tx(fd, &stack, NULL); /* tx queue -> socket. */
 }
 ```
 
@@ -319,12 +327,14 @@ Without a node at the destination the RTS goes unanswered. After T3 (1.25 s) the
 ## Sketch: bare-metal port for STM32 bxCAN
 
 A microcontroller port consists of a target header, an rx interrupt, a tx path and a time base.
+The bxCAN receive FIFO holds three frames, too few for a main loop to poll, so the rx interrupt hands frames to the main loop through the optional frame queue.
 The sketch targets the bxCAN peripheral of STM32F0/F1/F4 parts through the CMSIS device header; it is not compiled in this repository.
 The structure carries over to other mailbox controllers.
 
 ### Target header
 
-The native frame is the image of a bxCAN mailbox, the layout the mock port also uses: the rx ISR copies the mailbox registers into a queue slot and the tx path copies a slot into a transmit mailbox, without conversion.
+The native frame is the image of a bxCAN mailbox, the layout the mock port also uses: the rx ISR copies the mailbox registers into a queue slot and the tx path copies a frame into a transmit mailbox, without conversion.
+The lock is there for the frame queue.
 
 ```c
 /* port/stm32_bxcan/j1939_target.h */
@@ -349,8 +359,9 @@ typedef struct bxcan_frame {
 	uint8_t data[8]; /* RDLR, RDHR, least significant byte first */
 } j1939_port_frame_t;
 
-/* Saved PRIMASK. On a single core the lock disables every interrupt, so the
- * ISR and the main loop cannot overwrite each other's saved value. */
+/* Lock of the frame queue: saved PRIMASK. On a single core the lock disables
+ * every interrupt, so the ISR and the main loop cannot overwrite each other's
+ * saved value. */
 typedef uint32_t j1939_port_lock_t;
 
 static inline bool j1939_port_frame_is_ext(const j1939_port_frame_t *f) {
@@ -411,16 +422,19 @@ Instead of disabling every interrupt, the lock may mask only the CAN interrupts 
 
 ### Receiving in the rx interrupt
 
-The rx FIFO interrupt is the rx queue's only producer.
-It copies each pending mailbox into a queue slot and commits it.
+The rx FIFO interrupt is the frame queue's only producer, the main loop its only consumer.
+The interrupt copies each pending mailbox into a queue slot and commits it.
 The queue functions take the lock inside the ISR as well, which is harmless: nothing else runs meanwhile.
 
 ```c
-extern j1939_t stack;
+#include "j1939/j1939_queue.h"
+
+static j1939_port_frame_t rx_storage[64];
+static j1939_queue_t rx_q; /* j1939_queue_init(&rx_q, rx_storage, 64) in board_init() */
 static volatile uint32_t rx_dropped;
 
 void CAN1_RX0_IRQHandler(void) {
-	j1939_queue_t *q = j1939_rx_queue(&stack);
+	j1939_queue_t *q = &rx_q;
 	uint32_t n;
 
 	/* Bounded: the hardware FIFO holds three frames. */
@@ -447,20 +461,19 @@ void CAN1_RX0_IRQHandler(void) {
 The FIFO output mailbox is released even when the queue is full; otherwise the interrupt fires again at once.
 If the bus carries 11-bit traffic, acceptance filters that pass extended frames only save interrupt load; the library drops such frames anyway.
 
-### Transmitting from the tx interrupt
+### Transmitting from the main loop
 
-The tx queue has one consumer, so exactly one context drains it.
-Here it is the transmit mailbox empty interrupt, which the main loop sets pending after it has queued frames.
+The stack's tx queue belongs to the main loop like every other stack call.
+The main loop fills the free transmit mailboxes; the transmit mailbox empty interrupt only acknowledges and wakes the loop, which then fills the mailboxes again.
 
 ```c
-void CAN1_TX_IRQHandler(void) {
-	j1939_queue_t *q = j1939_tx_queue(&stack);
+extern j1939_t stack;
+
+static void tx_fill(void) {
 	const j1939_port_frame_t *f;
 
-	CAN1->TSR = CAN_TSR_RQCP0 | CAN_TSR_RQCP1 | CAN_TSR_RQCP2; /* Acknowledge. */
-
 	/* Bounded by the three transmit mailboxes. */
-	while (((CAN1->TSR & CAN_TSR_TME) != 0U) && ((f = j1939_queue_peek(q)) != NULL)) {
+	while (((CAN1->TSR & CAN_TSR_TME) != 0U) && ((f = j1939_tx_peek(&stack)) != NULL)) {
 		uint32_t box = (CAN1->TSR & CAN_TSR_CODE) >> CAN_TSR_CODE_Pos;
 		uint32_t lo;
 		uint32_t hi;
@@ -471,8 +484,12 @@ void CAN1_TX_IRQHandler(void) {
 		CAN1->sTxMailBox[box].TDLR = lo;
 		CAN1->sTxMailBox[box].TDHR = hi;
 		CAN1->sTxMailBox[box].TIR = f->ir | CAN_TI0R_TXRQ; /* Request transmission. */
-		(void)j1939_queue_pop(q);
+		(void)j1939_tx_pop(&stack);
 	}
+}
+
+void CAN1_TX_IRQHandler(void) {
+	CAN1->TSR = CAN_TSR_RQCP0 | CAN_TSR_RQCP1 | CAN_TSR_RQCP2; /* Acknowledge; wakes the loop. */
 }
 ```
 
@@ -480,7 +497,7 @@ Set `CAN_MCR_TXFP` during initialisation so that the three mailboxes transmit in
 By default bxCAN sends the mailbox with the highest priority identifier first and, for equal identifiers, the lowest mailbox number: transport protocol data packets share one identifier and would leave out of sequence.
 Enable the interrupts with `CAN_IER_FMPIE0` and `CAN_IER_TMEIE`.
 
-Draining the tx queue from the main loop is equally valid, as long as the tx interrupt then leaves the queue alone.
+To refill the mailboxes from the interrupt instead, the main loop moves the stack's frames into a second frame queue, which the tx interrupt drains.
 
 ### Main loop and time base
 
@@ -497,8 +514,13 @@ int main(void) {
 
 	for (;;) {
 		uint32_t now = TIM2->CNT;
+		const j1939_port_frame_t *f;
 		const j1939_msg_t *msg;
 
+		while ((f = j1939_queue_peek(&rx_q)) != NULL) {
+			(void)j1939_rx(&stack, f);
+			(void)j1939_queue_pop(&rx_q);
+		}
 		(void)j1939_process(&stack, now - last);
 		last = now;
 
@@ -508,19 +530,19 @@ int main(void) {
 		}
 		app_send(); /* j1939_send() of the messages that are due */
 
-		NVIC_SetPendingIRQ(CAN1_TX_IRQn); /* Drain the tx queue. */
-		__WFI();                          /* An rx, tx or tick interrupt wakes the loop. */
+		tx_fill();
+		__WFI(); /* An rx, tx or tick interrupt wakes the loop. */
 	}
 }
 ```
 
 The CAN interrupts wake the loop when frames arrive; a periodic tick of about 10 ms keeps the stack's timers and the BAM pacing running on a quiet bus.
-Build the library with the ARM toolchain and `-DJ1939_PORT_DIR=port/stm32_bxcan`, and lower `J1939_CFG_TP_BUF_SIZE` and the number of TP buffers to fit the RAM.
+Build the library with the ARM toolchain and `-DJ1939_PORT_DIR=port/stm32_bxcan`, link `j1939::queue` as well, and lower `J1939_CFG_TP_BUF_SIZE` and the number of TP buffers to fit the RAM.
 
 ### Other controllers
 
 | Controller                      | Native frame                                                | Differences to the bxCAN sketch                                                    |
 | ------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | STM32 FDCAN (G0, G4, H7), M_CAN | Message RAM element: word R0/T0, word R1/T1, 8 data bytes   | Identifier in bits 28..0 of R0, not shifted; XTD in bit 30, RTR in bit 29; DLC in bits 19..16 of R1. The rx ISR copies the element at the rx FIFO get index and acknowledges it. Tx FIFO mode, not Tx queue mode, keeps frames in order |
-| Vendor HAL with a header struct | `struct { HAL_RxHeader hdr; uint8_t data[8]; }`             | The accessors read the header fields (identifier, IDE, RTR, DLC). The HAL receive call writes straight into an acquired slot. The tx path converts the header into the HAL's transmit header |
+| Vendor HAL with a header struct | `struct { HAL_RxHeader hdr; uint8_t data[8]; }`             | The accessors read the header fields (identifier, IDE, RTR, DLC). The HAL receive call writes straight into an acquired slot of the frame queue. The tx path converts the header into the HAL's transmit header |
 | Mailbox controllers in general  | The receive mailbox image                                   | Keep the frame layout equal to the hardware's so that the ISR copies without conversion, and make the tx path send in queue order |

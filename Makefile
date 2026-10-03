@@ -41,7 +41,7 @@ coverage:
 
 cross:
 	$(CMAKE) -S . -B $(ARM_DIR) --toolchain cmake/arm-none-eabi.cmake -DJ1939_BUILD_TESTS=OFF
-	$(CMAKE) --build $(ARM_DIR)
+	$(CMAKE) --build $(ARM_DIR) --target j1939 j1939_queue
 
 examples:
 	$(CMAKE) -S . -B $(EX_DIR) -DCMAKE_BUILD_TYPE=Debug -DJ1939_BUILD_TESTS=OFF -DJ1939_BUILD_EXAMPLES=ON
