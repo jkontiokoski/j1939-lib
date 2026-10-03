@@ -11,7 +11,6 @@
 #include "j1939/j1939.h"
 #include "test_bus.h"
 
-#define RX_LEN  32U
 #define TX_LEN  16U
 #define MSG_LEN 4U
 #define DTC_LEN 8U
@@ -26,7 +25,6 @@
 typedef struct node {
 	j1939_t s;
 	j1939_ca_id_t ca;
-	j1939_port_frame_t rx[RX_LEN];
 	j1939_port_frame_t tx[TX_LEN];
 	j1939_msg_slot_t msgs[MSG_LEN];
 	j1939_tp_buf_t tp_tx[1];
@@ -62,8 +60,6 @@ static uint32_t ack_pgn;
 static void node_init(node_t *n, uint8_t address, uint64_t name, const uint32_t *pgns,
                       uint16_t pgns_len) {
 	const j1939_cfg_t cfg = {
-	        .rx_buf = n->rx,
-	        .rx_len = RX_LEN,
 	        .tx_buf = n->tx,
 	        .tx_len = TX_LEN,
 	        .msg_buf = n->msgs,

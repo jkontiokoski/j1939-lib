@@ -41,11 +41,9 @@
  * buffer is a static array handed to j1939_init(). This demo sends and
  * receives only single frames, so it gives the stack no TP buffers.
  */
-#define RX_LEN  32U
 #define TX_LEN  16U
 #define MSG_LEN 8U
 
-static j1939_port_frame_t rx_buf[RX_LEN];
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 
@@ -119,8 +117,6 @@ int main(int argc, char **argv) {
 
 	/* 1. Stack instance over the static buffers. */
 	const j1939_cfg_t cfg = {
-	        .rx_buf = rx_buf,
-	        .rx_len = RX_LEN,
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
@@ -164,8 +160,6 @@ int main(int argc, char **argv) {
 		(void)j1939_request_send(&stack, ca, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL);
 	}
 
-	j1939_queue_t *rx_q = j1939_rx_queue(&stack);
-	j1939_queue_t *tx_q = j1939_tx_queue(&stack);
 	uint64_t last_us = example_now_us();
 	j1939_addr_state_t shown_state = J1939_ADDR_STATE_UNCLAIMED;
 	uint8_t shown_address = J1939_ADDR_NULL;
@@ -175,13 +169,13 @@ int main(int argc, char **argv) {
 		/* a. Sleep until a frame arrives, at most one tick. Ask for
 		 *    POLLOUT too while frames wait for room in the socket. */
 		struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
-		if (j1939_queue_count(tx_q) > 0U) {
+		if (j1939_tx_peek(&stack) != NULL) {
 			pfd.events = (short)(POLLIN | POLLOUT);
 		}
 		(void)poll(&pfd, 1, EXAMPLE_TICK_MS);
 
-		/* b. Socket -> rx queue. */
-		if (j1939_socketcan_rx(fd, rx_q, NULL) != J1939_RET_OK) {
+		/* b. Socket -> stack. Each frame is handled as it is read. */
+		if (j1939_socketcan_rx(fd, &stack, EXAMPLE_RX_PER_TICK, NULL) != J1939_RET_OK) {
 			(void)fprintf(stderr, "CAN receive error\n");
 			status = EXIT_FAILURE;
 			break;
@@ -211,7 +205,7 @@ int main(int argc, char **argv) {
 		}
 
 		/* e. tx queue -> socket. Frames the socket cannot take stay queued. */
-		if (j1939_socketcan_tx(fd, tx_q, NULL) != J1939_RET_OK) {
+		if (j1939_socketcan_tx(fd, &stack, NULL) != J1939_RET_OK) {
 			(void)fprintf(stderr, "CAN transmit error\n");
 			status = EXIT_FAILURE;
 			break;

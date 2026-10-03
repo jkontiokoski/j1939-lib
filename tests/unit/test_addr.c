@@ -5,7 +5,6 @@
 
 #include "j1939/j1939.h"
 
-#define RX_LEN  8U
 #define TX_LEN  4U
 #define MSG_LEN 4U
 
@@ -22,15 +21,12 @@
 
 static const uint32_t rx_pgns[] = {PGN_DS, J1939_PGN_ADDRESS_CLAIMED};
 static const uint32_t req_pgns[] = {J1939_PGN_ADDRESS_CLAIMED};
-static j1939_port_frame_t rx_buf[RX_LEN];
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_t s;
 
 static void init(uint16_t rx_pgns_len) {
 	const j1939_cfg_t cfg = {
-	        .rx_buf = rx_buf,
-	        .rx_len = RX_LEN,
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
@@ -54,11 +50,10 @@ static j1939_ca_id_t ca_add(uint8_t address, uint64_t name) {
 }
 
 static void rx(uint32_t id, const uint8_t *data, uint8_t len) {
-	j1939_port_frame_t *slot = j1939_queue_acquire(j1939_rx_queue(&s));
+	j1939_port_frame_t f;
 
-	TEST_ASSERT_NOT_NULL(slot);
-	j1939_port_frame_build(slot, id, data, len);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_commit(j1939_rx_queue(&s)));
+	j1939_port_frame_build(&f, id, data, len);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
 }
 
 static uint32_t claim_id(uint8_t da, uint8_t sa) {
@@ -89,7 +84,7 @@ static void rx_request(uint8_t da) {
 
 /* Pops the next transmitted frame and checks it is Address Claimed from sa with name. */
 static void tx_expect_claim(uint8_t sa, uint64_t name) {
-	const j1939_port_frame_t *f = j1939_queue_peek(j1939_tx_queue(&s));
+	const j1939_port_frame_t *f = j1939_tx_peek(&s);
 	uint8_t data[J1939_NAME_LEN];
 
 	TEST_ASSERT_NOT_NULL_MESSAGE(f, "no Address Claimed queued");
@@ -97,11 +92,11 @@ static void tx_expect_claim(uint8_t sa, uint64_t name) {
 	TEST_ASSERT_EQUAL_HEX32(claim_id(J1939_ADDR_GLOBAL, sa), j1939_port_frame_id_get(f));
 	TEST_ASSERT_EQUAL_UINT8(J1939_NAME_LEN, j1939_port_frame_len_get(f));
 	TEST_ASSERT_EQUAL_HEX8_ARRAY(data, j1939_port_frame_data(f), J1939_NAME_LEN);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 }
 
 static void tx_expect_empty(void) {
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
 }
 
 static void expect_state(j1939_ca_id_t ca, j1939_addr_state_t state, uint8_t address) {
@@ -134,8 +129,6 @@ void setUp(void) {
 }
 
 void tearDown(void) {
-	TEST_ASSERT_EQUAL_UINT32(0U, s.tx.ring.lock.depth);
-	TEST_ASSERT_EQUAL_UINT32(0U, s.rx.ring.lock.depth);
 }
 
 static void test_claim_is_sent_by_first_process(void) {
@@ -151,7 +144,7 @@ static void test_claim_is_sent_by_first_process(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(ca));
 
 	process(1000000U);
-	TEST_ASSERT_EQUAL_UINT16(1U, j1939_queue_count(j1939_tx_queue(&s))); /* no new claim */
+	TEST_ASSERT_EQUAL_UINT16(1U, s.tx.ring.count); /* no new claim */
 }
 
 /* J1939/81: only a CA claiming a self-configurable address waits 250 ms. */
@@ -215,7 +208,7 @@ static void test_nack_only_from_claimed_address(void) {
 	process(J1939_ADDR_CLAIM_WAIT_US);
 	rx(id, req, 3U);
 	process(0U);
-	f = j1939_queue_peek(j1939_tx_queue(&s));
+	f = j1939_tx_peek(&s);
 	TEST_ASSERT_NOT_NULL(f);
 	TEST_ASSERT_EQUAL_HEX32(0x18E8FF80U, j1939_port_frame_id_get(f));
 	TEST_ASSERT_EQUAL_HEX8(J1939_ACK_CTRL_NACK, j1939_port_frame_data(f)[0]);
@@ -330,9 +323,6 @@ static void test_arbitrary_ca_without_free_address_cannot_claim(void) {
 	tx_expect_claim(OWN, ARB | NAME_OWN);
 	for (a = J1939_ADDR_SELF_CFG_MIN; a <= J1939_ADDR_SELF_CFG_MAX; a++) {
 		rx_claim((uint8_t)a, NAME_LOSE);
-		if (j1939_queue_count(j1939_rx_queue(&s)) == RX_LEN) {
-			process(0U);
-		}
 	}
 	rx_claim(OWN, NAME_WIN);
 	process(0U);
@@ -439,6 +429,30 @@ static void test_request_is_answered_with_cannot_claim(void) {
 	expect_state(ca, J1939_ADDR_STATE_CANNOT_CLAIM, J1939_ADDR_NULL);
 }
 
+/* A delay started between two calls, by a frame or an API call, counts from the next call. */
+static void test_delay_started_between_calls_counts_from_next_call(void) {
+	j1939_ca_id_t ca = ca_add(OWN, NAME_OWN);
+
+	process(0U);
+	tx_expect_claim(OWN, NAME_OWN);
+	rx_claim(OWN, NAME_WIN);
+	process(DELAY_OWN); /* the time before the loss does not count */
+	tx_expect_empty();
+	process(DELAY_OWN - 1U);
+	tx_expect_empty();
+	process(1U);
+	tx_expect_claim(J1939_ADDR_NULL, NAME_OWN);
+
+	TEST_ASSERT_EQUAL(J1939_RET_OK,
+	                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s)); /* the Request itself */
+	process(DELAY_OWN);
+	tx_expect_empty();
+	process(DELAY_OWN);
+	tx_expect_claim(J1939_ADDR_NULL, NAME_OWN);
+	expect_state(ca, J1939_ADDR_STATE_CANNOT_CLAIM, J1939_ADDR_NULL);
+}
+
 static void test_request_send_uses_null_address_until_claimed(void) {
 	j1939_ca_id_t ca = ca_add(OWN, NAME_OWN);
 	const j1939_port_frame_t *f;
@@ -447,11 +461,11 @@ static void test_request_send_uses_null_address_until_claimed(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_NO_ADDRESS, j1939_request_send(&s, ca, 0xFEF1U, OTHER));
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL));
-	f = j1939_queue_peek(j1939_tx_queue(&s));
+	f = j1939_tx_peek(&s);
 	TEST_ASSERT_NOT_NULL(f);
 	TEST_ASSERT_EQUAL_HEX32(0x18EAFFFEU, j1939_port_frame_id_get(f));
 	TEST_ASSERT_EQUAL_HEX8(0xEEU, j1939_port_frame_data(f)[1]);
-	(void)j1939_queue_pop(j1939_tx_queue(&s));
+	(void)j1939_tx_pop(&s);
 	tx_expect_empty(); /* the unclaimed CA answers with its claim in process */
 
 	process(0U);
@@ -460,15 +474,15 @@ static void test_request_send_uses_null_address_until_claimed(void) {
 	/* Once claimed: from the own address, and the requester answers too. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL));
-	f = j1939_queue_peek(j1939_tx_queue(&s));
+	f = j1939_tx_peek(&s);
 	TEST_ASSERT_EQUAL_HEX32(0x18EAFF00U | OWN, j1939_port_frame_id_get(f));
-	(void)j1939_queue_pop(j1939_tx_queue(&s));
+	(void)j1939_tx_pop(&s);
 	tx_expect_claim(OWN, NAME_OWN);
 
 	/* A destination specific Request to another node is answered by that node only. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, OTHER));
-	(void)j1939_queue_pop(j1939_tx_queue(&s));
+	(void)j1939_tx_pop(&s);
 	tx_expect_empty();
 
 	/* After losing the address: from NULL again, answered with Cannot Claim. */
@@ -476,9 +490,9 @@ static void test_request_send_uses_null_address_until_claimed(void) {
 	process(DELAY_OWN);
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL));
-	f = j1939_queue_peek(j1939_tx_queue(&s));
+	f = j1939_tx_peek(&s);
 	TEST_ASSERT_EQUAL_HEX32(0x18EAFFFEU, j1939_port_frame_id_get(f));
-	(void)j1939_queue_pop(j1939_tx_queue(&s));
+	(void)j1939_tx_pop(&s);
 	process(DELAY_OWN);
 	tx_expect_claim(J1939_ADDR_NULL, NAME_OWN);
 
@@ -504,7 +518,7 @@ static void test_full_tx_queue_delays_claims(void) {
 	TEST_ASSERT_EQUAL_UINT32(1U, j1939_stats_get(&s)->tx_overflow);
 
 	for (i = 0U; i < TX_LEN; i++) {
-		(void)j1939_queue_pop(j1939_tx_queue(&s));
+		(void)j1939_tx_pop(&s);
 	}
 	process(0U);
 	tx_expect_claim(0x80U, ARB | NAME_LOSE);
@@ -520,7 +534,7 @@ static void test_full_tx_queue_delays_claims(void) {
 	expect_state(b, J1939_ADDR_STATE_UNCLAIMED, J1939_ADDR_NULL);
 	TEST_ASSERT_EQUAL_UINT32(2U, j1939_stats_get(&s)->tx_overflow);
 	for (i = 0U; i < TX_LEN; i++) {
-		(void)j1939_queue_pop(j1939_tx_queue(&s));
+		(void)j1939_tx_pop(&s);
 	}
 	process(0U);
 	tx_expect_claim(0x81U, ARB | NAME_LOSE);
@@ -552,7 +566,7 @@ static void test_cannot_claim_waits_for_tx_space(void) {
 	process(DELAY_OWN);
 	expect_state(a, J1939_ADDR_STATE_CANNOT_CLAIM, J1939_ADDR_NULL);
 	for (i = 0U; i < TX_LEN; i++) {
-		(void)j1939_queue_pop(j1939_tx_queue(&s));
+		(void)j1939_tx_pop(&s);
 	}
 	process(0U);
 	tx_expect_claim(J1939_ADDR_NULL, NAME_OWN);
@@ -613,6 +627,7 @@ int main(void) {
 	RUN_TEST(test_claims_are_delivered_when_listed);
 	RUN_TEST(test_request_for_address_claimed_is_answered_per_ca);
 	RUN_TEST(test_request_is_answered_with_cannot_claim);
+	RUN_TEST(test_delay_started_between_calls_counts_from_next_call);
 	RUN_TEST(test_request_send_uses_null_address_until_claimed);
 	RUN_TEST(test_full_tx_queue_delays_claims);
 	RUN_TEST(test_cannot_claim_waits_for_tx_space);

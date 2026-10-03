@@ -29,6 +29,12 @@
 #define EXAMPLE_TICK_MS 10
 
 /**
+ * Most frames read from the socket per tick. Further frames wait in the
+ * socket, so an RTS/CTS burst of up to 255 data packets is read in one tick.
+ */
+#define EXAMPLE_RX_PER_TICK 256U
+
+/**
  * @brief Prepares the process: SIGINT and SIGTERM make example_running()
  * return false, stdout is line buffered so that output piped to a file
  * appears at once, and example_uptime_s() counts from here.

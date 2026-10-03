@@ -5,7 +5,6 @@
 
 #include "j1939/j1939.h"
 
-#define RX_LEN  8U
 #define TX_LEN  2U
 #define MSG_LEN 4U
 
@@ -15,7 +14,6 @@
 #define PGN_UNS 0xFF20U /* not answered */
 
 static const uint32_t req_pgns[] = {PGN_SUP};
-static j1939_port_frame_t rx_buf[RX_LEN];
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_t s;
@@ -26,19 +24,16 @@ static void rx_request(uint8_t da, uint32_t pgn, uint8_t len) {
 	uint8_t data[8] = {
 	        (uint8_t)pgn, (uint8_t)(pgn >> 8), (uint8_t)(pgn >> 16), 0xFFU, 0xFFU, 0xFFU, 0xFFU,
 	        0xFFU};
-	j1939_port_frame_t *slot = j1939_queue_acquire(j1939_rx_queue(&s));
+	j1939_port_frame_t f;
 	uint32_t id = 0U;
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_id_build(6U, J1939_PGN_REQUEST, da, OTHER, &id));
-	TEST_ASSERT_NOT_NULL(slot);
-	j1939_port_frame_build(slot, id, data, len);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_commit(j1939_rx_queue(&s)));
+	j1939_port_frame_build(&f, id, data, len);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
 }
 
 void setUp(void) {
 	const j1939_cfg_t cfg = {
-	        .rx_buf = rx_buf,
-	        .rx_len = RX_LEN,
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
@@ -53,7 +48,7 @@ void setUp(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN}, &ca));
 	/* Claim the address; the CA may transmit right after its Address Claimed. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 }
 
 void tearDown(void) {
@@ -83,7 +78,7 @@ static void test_request_for_supported_pgn_is_delivered(void) {
 	TEST_ASSERT_EQUAL_HEX32(PGN_SUP, pgn);
 	(void)j1939_msg_pop(&s);
 
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
 }
 
 static void test_specific_request_for_unsupported_pgn_is_nacked(void) {
@@ -96,7 +91,7 @@ static void test_specific_request_for_unsupported_pgn_is_nacked(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
 	TEST_ASSERT_NULL(j1939_msg_peek(&s));
 
-	f = j1939_queue_peek(j1939_tx_queue(&s));
+	f = j1939_tx_peek(&s);
 	TEST_ASSERT_NOT_NULL(f);
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_id_build(6U, J1939_PGN_ACK, J1939_ADDR_GLOBAL, OWN, &id));
@@ -112,7 +107,7 @@ static void test_requests_without_answer_are_ignored(void) {
 	rx_request(OWN, 0xFFFFFFU, 3U);             /* not a PGN */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
 	TEST_ASSERT_NULL(j1939_msg_peek(&s));
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
 }
 
 static void test_nack_overflow_is_counted(void) {
@@ -122,7 +117,7 @@ static void test_nack_overflow_is_counted(void) {
 		rx_request(OWN, PGN_UNS, 3U);
 	}
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
-	TEST_ASSERT_EQUAL_UINT16(TX_LEN, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
 	TEST_ASSERT_EQUAL_UINT32(1U, j1939_stats_get(&s)->tx_overflow);
 }
 
@@ -131,16 +126,16 @@ static void test_request_send_builds_request(void) {
 	const j1939_port_frame_t *f;
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_request_send(&s, ca, PGN_SUP, OTHER));
-	f = j1939_queue_peek(j1939_tx_queue(&s));
+	f = j1939_tx_peek(&s);
 	TEST_ASSERT_NOT_NULL(f);
 	TEST_ASSERT_EQUAL_HEX32(0x18EA0000U | ((uint32_t)OTHER << 8) | OWN,
 	                        j1939_port_frame_id_get(f));
 	TEST_ASSERT_EQUAL_UINT8(3U, j1939_port_frame_len_get(f));
 	TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, j1939_port_frame_data(f), 3U);
-	(void)j1939_queue_pop(j1939_tx_queue(&s));
+	(void)j1939_tx_pop(&s);
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_request_send(&s, ca, 0x3FF00U, J1939_ADDR_GLOBAL));
-	f = j1939_queue_peek(j1939_tx_queue(&s));
+	f = j1939_tx_peek(&s);
 	TEST_ASSERT_EQUAL_HEX32(0x18EAFF00U | OWN, j1939_port_frame_id_get(f));
 	TEST_ASSERT_EQUAL_HEX8(0x03U, j1939_port_frame_data(f)[2]);
 

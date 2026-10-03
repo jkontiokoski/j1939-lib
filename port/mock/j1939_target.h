@@ -10,8 +10,9 @@
  * and the DLC is kept raw (0..15). The layout is deliberately different
  * from SocketCAN so that tests catch any assumption about frame layout.
  *
- * The lock records its use so that tests can check that critical sections
- * are balanced and never nested.
+ * The port also defines the lock of the optional frame queue (j1939_queue.h),
+ * which the stack itself does not need. The lock records its use so that
+ * tests can check that critical sections are balanced and never nested.
  */
 
 #ifndef J1939_TARGET_H
@@ -38,7 +39,7 @@ typedef struct j1939_mock_frame {
 	uint8_t reserved; /**< Unused. */
 } j1939_port_frame_t;
 
-/** Lock with usage bookkeeping for tests. */
+/** Lock of the optional frame queue, with usage bookkeeping for tests. */
 typedef struct j1939_mock_lock {
 	uint32_t depth;     /**< Current nesting depth. */
 	uint32_t max_depth; /**< Deepest nesting seen. */

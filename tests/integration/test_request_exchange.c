@@ -18,7 +18,6 @@
 typedef struct node {
 	j1939_t s;
 	j1939_ca_id_t ca;
-	j1939_port_frame_t rx[LEN];
 	j1939_port_frame_t tx[LEN];
 	j1939_msg_slot_t msgs[LEN];
 } node_t;
@@ -34,8 +33,6 @@ static test_bus_t bus;
 static void node_init(node_t *n, uint8_t address, const uint32_t *rx_pgns, uint16_t rx_pgns_len,
                       const uint32_t *req_pgns, uint16_t req_pgns_len) {
 	const j1939_cfg_t cfg = {
-	        .rx_buf = n->rx,
-	        .rx_len = LEN,
 	        .tx_buf = n->tx,
 	        .tx_len = LEN,
 	        .msg_buf = n->msgs,

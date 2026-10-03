@@ -39,7 +39,6 @@
 /** Software Identification, PGN 65242. Variable length, so answered with TP if long. */
 #define PGN_SOFT 0xFEDAU
 
-#define RX_LEN      64U /* A burst of RTS/CTS data packets arrives at once. */
 #define TX_LEN      16U
 #define MSG_LEN     8U
 #define TP_RX_LEN   2U /* Two multi-packet receptions at a time, e.g. a BAM and an RTS/CTS. */
@@ -52,7 +51,6 @@
  * J1939_CFG_TP_BUF_SIZE bytes. A reassembled message stays in its buffer
  * until the application releases it with j1939_msg_pop().
  */
-static j1939_port_frame_t rx_buf[RX_LEN];
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_tp_buf_t tp_rx_buf[TP_RX_LEN];
@@ -182,8 +180,6 @@ int main(int argc, char **argv) {
 	}
 
 	const j1939_cfg_t cfg = {
-	        .rx_buf = rx_buf,
-	        .rx_len = RX_LEN,
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
@@ -221,8 +217,6 @@ int main(int argc, char **argv) {
 	(void)printf("[%8.3f] listening on %s at address 0x%02X for %u PGN(s)\n",
 	             example_uptime_s(), ifname, (unsigned)address, (unsigned)n_pgns);
 
-	j1939_queue_t *rx_q = j1939_rx_queue(&stack);
-	j1939_queue_t *tx_q = j1939_tx_queue(&stack);
 	uint64_t last_us = example_now_us();
 	j1939_addr_state_t shown_state = J1939_ADDR_STATE_UNCLAIMED;
 	int status = EXIT_SUCCESS;
@@ -230,19 +224,19 @@ int main(int argc, char **argv) {
 	while (example_running()) {
 		/* a. Sleep until a frame arrives, at most one tick. */
 		struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
-		if (j1939_queue_count(tx_q) > 0U) {
+		if (j1939_tx_peek(&stack) != NULL) {
 			pfd.events = (short)(POLLIN | POLLOUT);
 		}
 		(void)poll(&pfd, 1, EXAMPLE_TICK_MS);
 
-		/* b. Socket -> rx queue. */
-		if (j1939_socketcan_rx(fd, rx_q, NULL) != J1939_RET_OK) {
+		/* b. Socket -> stack. Each frame is handled as it is read. */
+		if (j1939_socketcan_rx(fd, &stack, EXAMPLE_RX_PER_TICK, NULL) != J1939_RET_OK) {
 			(void)fprintf(stderr, "CAN receive error\n");
 			status = EXIT_FAILURE;
 			break;
 		}
 
-		/* c. Run the stack: filtering, Requests, transport protocol, claim. */
+		/* c. Run the stack's timers: claim, transport protocol, diagnostics. */
 		(void)j1939_process(&stack, example_elapsed_us(&last_us));
 
 		/* d. Application. Each message is read in place and released with
@@ -270,7 +264,7 @@ int main(int argc, char **argv) {
 		}
 
 		/* e. tx queue -> socket. */
-		if (j1939_socketcan_tx(fd, tx_q, NULL) != J1939_RET_OK) {
+		if (j1939_socketcan_tx(fd, &stack, NULL) != J1939_RET_OK) {
 			(void)fprintf(stderr, "CAN transmit error\n");
 			status = EXIT_FAILURE;
 			break;

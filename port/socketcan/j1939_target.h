@@ -5,21 +5,19 @@
  * @file j1939_target.h
  * @brief Linux SocketCAN (CAN_RAW) port.
  *
- * Native frame: struct can_frame. Critical sections use a pthread mutex, so
- * the queues may be shared between threads.
+ * Native frame: struct can_frame. The port defines no lock: the socket is
+ * the frame queue between the kernel and the stack.
  */
 
 #ifndef J1939_TARGET_H
 #define J1939_TARGET_H
 
 #include <linux/can.h>
-#include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 
 typedef struct can_frame j1939_port_frame_t;
-typedef pthread_mutex_t j1939_port_lock_t;
 
 static inline bool j1939_port_frame_is_ext(const j1939_port_frame_t *f) {
 	return (f->can_id & CAN_EFF_FLAG) != 0U;
@@ -59,18 +57,6 @@ static inline void j1939_port_frame_build(j1939_port_frame_t *f, uint32_t id29, 
 	if ((data != NULL) && (n > 0U)) {
 		(void)memcpy(f->data, data, n);
 	}
-}
-
-static inline void j1939_port_lock_init(j1939_port_lock_t *lock) {
-	(void)pthread_mutex_init(lock, NULL);
-}
-
-static inline void j1939_port_lock(j1939_port_lock_t *lock) {
-	(void)pthread_mutex_lock(lock);
-}
-
-static inline void j1939_port_unlock(j1939_port_lock_t *lock) {
-	(void)pthread_mutex_unlock(lock);
 }
 
 #endif /* J1939_TARGET_H */

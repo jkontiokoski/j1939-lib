@@ -50,32 +50,28 @@ void j1939_socketcan_close(int fd) {
 	(void)close(fd);
 }
 
-j1939_ret_t j1939_socketcan_rx(int fd, j1939_queue_t *q, uint16_t *n_rx) {
+j1939_ret_t j1939_socketcan_rx(int fd, j1939_t *s, uint16_t max, uint16_t *n_rx) {
 	j1939_ret_t ret = J1939_RET_OK;
 	uint16_t n = 0U;
 	bool done = false;
 
-	if (q == NULL) {
+	if (s == NULL) {
 		ret = J1939_RET_ERR_ARG;
 		done = true;
 	}
-	/* Bounded by the queue length: every iteration either fills a slot or stops. */
-	while (!done) {
-		j1939_port_frame_t *slot = j1939_queue_acquire(q);
+	/* Bounded by max: every iteration either reads a frame or stops. */
+	while (!done && (n < max)) {
+		j1939_port_frame_t frame;
+		ssize_t r = read(fd, &frame, sizeof(frame));
 
-		if (slot == NULL) {
-			done = true;
+		if (r == (ssize_t)sizeof(frame)) {
+			(void)j1939_rx(s, &frame);
+			n++;
 		} else {
-			ssize_t r = read(fd, slot, sizeof(*slot));
-			if (r == (ssize_t)sizeof(*slot)) {
-				(void)j1939_queue_commit(q);
-				n++;
-			} else {
-				if ((r >= 0) || ((errno != EAGAIN) && (errno != EWOULDBLOCK))) {
-					ret = J1939_RET_ERR_IO;
-				}
-				done = true;
+			if ((r >= 0) || ((errno != EAGAIN) && (errno != EWOULDBLOCK))) {
+				ret = J1939_RET_ERR_IO;
 			}
+			done = true;
 		}
 	}
 	if (n_rx != NULL) {
@@ -84,25 +80,25 @@ j1939_ret_t j1939_socketcan_rx(int fd, j1939_queue_t *q, uint16_t *n_rx) {
 	return ret;
 }
 
-j1939_ret_t j1939_socketcan_tx(int fd, j1939_queue_t *q, uint16_t *n_tx) {
+j1939_ret_t j1939_socketcan_tx(int fd, j1939_t *s, uint16_t *n_tx) {
 	j1939_ret_t ret = J1939_RET_OK;
 	uint16_t n = 0U;
 	bool done = false;
 
-	if (q == NULL) {
+	if (s == NULL) {
 		ret = J1939_RET_ERR_ARG;
 		done = true;
 	}
-	/* Bounded by the queue length: every iteration either empties a slot or stops. */
+	/* Bounded by the tx queue length: every iteration either sends a frame or stops. */
 	while (!done) {
-		const j1939_port_frame_t *frame = j1939_queue_peek(q);
+		const j1939_port_frame_t *frame = j1939_tx_peek(s);
 
 		if (frame == NULL) {
 			done = true;
 		} else {
 			ssize_t r = write(fd, frame, sizeof(*frame));
 			if (r == (ssize_t)sizeof(*frame)) {
-				(void)j1939_queue_pop(q);
+				(void)j1939_tx_pop(s);
 				n++;
 			} else {
 				/* ENOBUFS: the interface transmit queue is full. */

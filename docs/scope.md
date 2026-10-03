@@ -24,13 +24,16 @@
 | Milestone | Content                                                                                                                                                   | Status  |
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | M0        | Foundations: source tree, CMake + Makefile wrapper, LICENSE, formatting, Unity, documentation                                                              | Done    |
-| M1        | Port boundary: port contract, mock port, SocketCAN port, ID/PGN codec, rx/tx queues over integrator buffers, port conformance tests                          | Done    |
+| M1        | Port boundary: port contract, mock port, SocketCAN port, ID/PGN codec, tx queue over integrator buffers, port conformance tests                           | Done    |
 | M2        | J1939/21 core: stack init/process, DA and PGN filtering, message pull API, single-frame send, Request (PGN 59904), Acknowledgement (PGN 59392)             | Done    |
 | M3        | J1939/21 transport protocol: BAM and RTS/CTS tx/rx, timers T1–T4/Tr/Th, aborts, session pool with integrator-supplied reassembly memory                   | Done    |
 | M4        | J1939/81 network management: NAME codec, address claiming, Cannot Claim, Request for Address Claimed, arbitrary address capability, Commanded Address     | Done    |
 | M5        | SocketCAN example applications, porting guide worked examples                                                                                             | Done    |
 | M6        | Signals / database layer (J1939/71 + DA schema): SPN descriptors, bit extraction and insertion, scaling, validity ranges                                  | Done    |
 | M7        | Diagnostics (J1939/73): DTC codec, lamp status, DM1/DM2 payload codec; per CA in the stack: periodic and change-triggered DM1, DM1/DM2 on Request (single frame, BAM, RTS/CTS to the requester), DM3/DM11 clearing decided by the application. Not planned yet: DM4 and higher | Done    |
+| M8        | Message objects: per-PGN transmit objects sent periodically or on change by `j1939_process()`; receive objects with timeout supervision per PGN and sender | Planned |
+| M9        | Table of the NAMEs of other nodes from their address claims, so the application can tie a source address to a NAME | Planned |
 
 J1939/31, /74 and /75 are opt-in modules implemented on demand.
+End-to-end protection of safety-related messages (message counters, checksums) is the application's: the library carries those signals and does not compute or check them.
 J1939/76 and the J1939/91 series are outside the scope unless a product requires them.

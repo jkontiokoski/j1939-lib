@@ -23,7 +23,6 @@
 typedef struct node {
 	j1939_t s;
 	j1939_ca_id_t ca;
-	j1939_port_frame_t rx[LEN];
 	j1939_port_frame_t tx[LEN];
 	j1939_msg_slot_t msgs[LEN];
 	j1939_tp_buf_t tp_tx[BUF_LEN];
@@ -39,8 +38,6 @@ static test_bus_t bus;
 
 static void node_init(node_t *n, bool is_monitor) {
 	const j1939_cfg_t cfg = {
-	        .rx_buf = n->rx,
-	        .rx_len = LEN,
 	        .tx_buf = n->tx,
 	        .tx_len = LEN,
 	        .msg_buf = n->msgs,

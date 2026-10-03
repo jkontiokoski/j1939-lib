@@ -40,8 +40,9 @@ It will serve this purpose after the library is published, but also for the auth
 
 - The library targets ISO 13849 safety-rated systems: no function pointers or runtime dispatch anywhere, including application callbacks. Bind at compile time.
 - Do not define a library-owned CAN frame struct. Operate on the integrator's native frame type through `static inline` accessors in the port's `j1939_target.h`.
-- The integrator allocates and supplies all buffers (CAN rx/tx queues, TP memory). No dynamic memory.
+- The integrator allocates and supplies all buffers (tx queue, message slots, TP memory). No dynamic memory.
 - The library never calls out: tx frames and received messages are pulled by the integrator.
+- All functions of a stack instance run in one execution context; the stack has no lock. Received frames are pushed with `j1939_rx()`, the tx queue is drained with `j1939_tx_peek()` / `j1939_tx_pop()`. The frame queue (`j1939::queue`) is an optional helper outside the stack; only it needs the port lock.
 
 ### Tooling notes
 

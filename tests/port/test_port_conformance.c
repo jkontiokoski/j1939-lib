@@ -121,17 +121,6 @@ static void test_frame_copies_by_assignment(void) {
 	TEST_ASSERT_EQUAL_HEX8_ARRAY(payload, j1939_port_frame_data(&b), 3U);
 }
 
-static void test_lock_cycle(void) {
-	j1939_port_lock_t lock;
-
-	j1939_port_lock_init(&lock);
-	j1939_port_lock(&lock);
-	j1939_port_unlock(&lock);
-	j1939_port_lock(&lock);
-	j1939_port_unlock(&lock);
-	TEST_PASS();
-}
-
 int main(void) {
 	UNITY_BEGIN();
 	RUN_TEST(test_build_sets_extended_data_frame);
@@ -143,6 +132,5 @@ int main(void) {
 	RUN_TEST(test_remote_frame_is_detected);
 	RUN_TEST(test_raw_dlc_above_8_reads_as_8);
 	RUN_TEST(test_frame_copies_by_assignment);
-	RUN_TEST(test_lock_cycle);
 	return UNITY_END();
 }

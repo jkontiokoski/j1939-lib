@@ -77,6 +77,16 @@ static uint32_t cannot_claim_delay(uint64_t name) {
 	return (uint32_t)fold * J1939_ADDR_CANNOT_CLAIM_STEP_US;
 }
 
+/*
+ * Starts the contention wait or the Cannot Claim delay. The timer counts from
+ * the next j1939_process(), also when a received frame or an API call starts
+ * it between two calls.
+ */
+static void timer_start(j1939_ca_t *ca, uint32_t timeout_us) {
+	ca->timer_us = timeout_us;
+	ca->timer_fresh = true;
+}
+
 /* Queues Address Claimed from sa with the CA's NAME; sa J1939_ADDR_NULL makes it Cannot Claim. */
 static j1939_ret_t claim_tx(j1939_t *s, const j1939_ca_t *ca, uint8_t sa) {
 	uint8_t data[J1939_NAME_LEN];
@@ -100,7 +110,7 @@ static void claim_start(j1939_t *s, j1939_ca_t *ca) {
 	if (claim_tx(s, ca, ca->address) == J1939_RET_OK) {
 		if (self_cfg(ca->address)) {
 			ca->state = J1939_ADDR_STATE_CLAIMING;
-			ca->timer_us = J1939_ADDR_CLAIM_WAIT_US;
+			timer_start(ca, J1939_ADDR_CLAIM_WAIT_US);
 		} else {
 			ca->state = J1939_ADDR_STATE_CLAIMED;
 		}
@@ -120,7 +130,7 @@ static void cannot_claim_enter(j1939_t *s, j1939_ca_t *ca) {
 	address_release(s, ca);
 	ca->state = J1939_ADDR_STATE_CANNOT_CLAIM;
 	ca->cannot_claim_pending = true;
-	ca->timer_us = cannot_claim_delay(ca->name);
+	timer_start(ca, cannot_claim_delay(ca->name));
 }
 
 /* The CA lost its address to a NAME of higher priority. */
@@ -175,11 +185,14 @@ static bool command_apply(j1939_t *s, j1939_ca_t *ca) {
 	return moved;
 }
 
-/* Returns true once timer_us has run out, and counts it down otherwise. */
+/* Returns true once timer_us has run out, and counts it down otherwise. A fresh timer waits. */
 static bool timer_expired(j1939_ca_t *ca, uint32_t elapsed_us) {
-	bool expired = ca->timer_us <= elapsed_us;
+	bool expired = false;
 
-	ca->timer_us = expired ? 0U : (ca->timer_us - elapsed_us);
+	if (!ca->timer_fresh) {
+		expired = ca->timer_us <= elapsed_us;
+		ca->timer_us = expired ? 0U : (ca->timer_us - elapsed_us);
+	}
 	return expired;
 }
 
@@ -191,6 +204,7 @@ void j1939_addr_ca_init(j1939_ca_t *ca, const j1939_ca_cfg_t *cfg) {
 	ca->name = cfg->name;
 	ca->state = J1939_ADDR_STATE_UNCLAIMED;
 	ca->timer_us = 0U;
+	ca->timer_fresh = false;
 	ca->address = cfg->address;
 	ca->cannot_claim_pending = false;
 	ca->accept_commanded = cfg->accept_commanded;
@@ -203,7 +217,6 @@ void j1939_addr_process(j1939_t *s, uint32_t elapsed_us) {
 	for (i = 0U; i < s->ca_count; i++) {
 		j1939_ca_t *ca = &s->ca[i];
 
-		/* A new claim started by a command counts its time from the next call. */
 		switch (ca->state) {
 		case J1939_ADDR_STATE_UNCLAIMED:
 			if (!command_apply(s, ca)) {
@@ -230,6 +243,8 @@ void j1939_addr_process(j1939_t *s, uint32_t elapsed_us) {
 			fail_safe(s, ca);
 			break;
 		}
+		/* A timer started before or during this call counts from the next one. */
+		ca->timer_fresh = false;
 	}
 }
 
@@ -335,7 +350,7 @@ void j1939_addr_request_handle(j1939_t *s, uint8_t da) {
 			case J1939_ADDR_STATE_CANNOT_CLAIM:
 				if (!ca->cannot_claim_pending) {
 					ca->cannot_claim_pending = true;
-					ca->timer_us = cannot_claim_delay(ca->name);
+					timer_start(ca, cannot_claim_delay(ca->name));
 				}
 				break;
 			default:

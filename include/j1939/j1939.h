@@ -18,7 +18,6 @@
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_msg.h"
 #include "j1939/j1939_name.h"
-#include "j1939/j1939_queue.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_signal.h"

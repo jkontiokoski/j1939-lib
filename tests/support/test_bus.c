@@ -17,24 +17,28 @@ void test_bus_attach(test_bus_t *bus, j1939_t *node) {
 }
 
 uint32_t test_bus_run(test_bus_t *bus) {
+	uint16_t queued[TEST_BUS_NODES_MAX];
 	uint32_t carried = 0U;
 	uint8_t i;
 	uint8_t j;
 
+	/* Answers the receivers queue meanwhile go out with the next run. */
 	for (i = 0U; i < bus->count; i++) {
-		j1939_queue_t *tx = j1939_tx_queue(bus->nodes[i]);
-		const j1939_port_frame_t *f;
+		queued[i] = bus->nodes[i]->tx.ring.count;
+	}
+	for (i = 0U; i < bus->count; i++) {
+		uint16_t k;
 
-		while ((f = j1939_queue_peek(tx)) != NULL) {
+		for (k = 0U; k < queued[i]; k++) {
+			const j1939_port_frame_t *f = j1939_tx_peek(bus->nodes[i]);
+
+			TEST_ASSERT_NOT_NULL(f);
 			for (j = 0U; j < bus->count; j++) {
 				if (j != i) {
-					TEST_ASSERT_EQUAL_MESSAGE(
-					        J1939_RET_OK,
-					        j1939_queue_put(j1939_rx_queue(bus->nodes[j]), f),
-					        "rx queue full on the test bus");
+					TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(bus->nodes[j], f));
 				}
 			}
-			TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(tx));
+			TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(bus->nodes[i]));
 			carried++;
 		}
 	}

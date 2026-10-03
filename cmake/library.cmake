@@ -7,7 +7,6 @@ set(J1939_CORE_SOURCES
 	"${PROJECT_SOURCE_DIR}/src/j1939_addr.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_id.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_name.c"
-	"${PROJECT_SOURCE_DIR}/src/j1939_queue.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_ring.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_request.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_signal.c"
@@ -43,5 +42,21 @@ function(j1939_add_library target port_dir)
 	)
 	target_include_directories(${target} PUBLIC "${PROJECT_SOURCE_DIR}/include" "${port_dir}")
 	target_link_libraries(${target} PUBLIC ${J1939_PORT_LINK_LIBRARIES})
+	j1939_set_warnings(${target})
+endfunction()
+
+# j1939_add_queue(<target> <library>)
+#
+# Builds the optional frame queue helper (j1939_queue.h) for a library built
+# with j1939_add_library(). The queue needs the lock functions of the
+# library's port.
+function(j1939_add_queue target library)
+	add_library(${target} STATIC "${PROJECT_SOURCE_DIR}/src/j1939_queue.c")
+	set_target_properties(${target} PROPERTIES
+		C_STANDARD 99
+		C_STANDARD_REQUIRED ON
+		C_EXTENSIONS OFF
+	)
+	target_link_libraries(${target} PUBLIC ${library})
 	j1939_set_warnings(${target})
 endfunction()

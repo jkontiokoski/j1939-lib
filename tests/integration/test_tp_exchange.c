@@ -11,7 +11,6 @@
 #include "j1939/j1939.h"
 #include "test_bus.h"
 
-#define RX_LEN  64U
 #define TX_LEN  16U
 #define MSG_LEN 4U
 #define BUF_LEN 2U
@@ -32,7 +31,6 @@
 typedef struct node {
 	j1939_t s;
 	j1939_ca_id_t ca;
-	j1939_port_frame_t rx[RX_LEN];
 	j1939_port_frame_t tx[TX_LEN];
 	j1939_msg_slot_t msgs[MSG_LEN];
 	j1939_tp_buf_t tp_tx[BUF_LEN];
@@ -54,8 +52,6 @@ static uint8_t pat(uint32_t i, uint8_t seed) {
 
 static void node_init(node_t *n, uint8_t address, uint64_t name) {
 	const j1939_cfg_t cfg = {
-	        .rx_buf = n->rx,
-	        .rx_len = RX_LEN,
 	        .tx_buf = n->tx,
 	        .tx_len = TX_LEN,
 	        .msg_buf = n->msgs,
@@ -139,17 +135,16 @@ static void carry_dropping(node_t *from, uint8_t seq) {
 	const j1939_port_frame_t *f;
 	uint8_t i;
 
-	while ((f = j1939_queue_peek(j1939_tx_queue(&from->s))) != NULL) {
+	while ((f = j1939_tx_peek(&from->s)) != NULL) {
 		bool drop = (j1939_id_pgn_get(j1939_port_frame_id_get(f)) == J1939_PGN_TP_DT) &&
 		            (j1939_port_frame_data(f)[0] == seq);
 
 		for (i = 0U; (!drop) && (i < bus.count); i++) {
 			if (bus.nodes[i] != &from->s) {
-				TEST_ASSERT_EQUAL(J1939_RET_OK,
-				                  j1939_queue_put(j1939_rx_queue(bus.nodes[i]), f));
+				TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(bus.nodes[i], f));
 			}
 		}
-		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&from->s)));
+		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&from->s));
 	}
 	(void)test_bus_run(&bus);
 }

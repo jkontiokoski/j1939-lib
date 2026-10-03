@@ -6,7 +6,6 @@
 #include "j1939/j1939.h"
 #include "j1939_port_fixture.h"
 
-#define RX_LEN  8U
 #define TX_LEN  4U
 #define MSG_LEN 3U
 
@@ -18,7 +17,6 @@
 #define PGN_OFF 0xFEEEU /* not in the rx list */
 
 static const uint32_t rx_pgns[] = {PGN_BC, PGN_DS};
-static j1939_port_frame_t rx_buf[RX_LEN];
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_cfg_t cfg;
@@ -35,17 +33,14 @@ static uint32_t make_id(uint8_t prio, uint32_t pgn, uint8_t da, uint8_t sa) {
 }
 
 static void rx_frame(uint32_t id, uint8_t len) {
-	j1939_port_frame_t *slot = j1939_queue_acquire(j1939_rx_queue(&s));
+	j1939_port_frame_t f;
 
-	TEST_ASSERT_NOT_NULL(slot);
-	j1939_port_frame_build(slot, id, payload, len);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_commit(j1939_rx_queue(&s)));
+	j1939_port_frame_build(&f, id, payload, len);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
 }
 
 void setUp(void) {
 	cfg = (j1939_cfg_t){
-	        .rx_buf = rx_buf,
-	        .rx_len = RX_LEN,
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
@@ -60,14 +55,10 @@ void setUp(void) {
 	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN_A}, &ca_a));
 	/* Claim the address; the CA may transmit right after its Address Claimed. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_pop(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 }
 
 void tearDown(void) {
-	TEST_ASSERT_EQUAL_UINT32(0U, s.rx.ring.lock.depth);
-	TEST_ASSERT_EQUAL_UINT32(0U, s.tx.ring.lock.depth);
-	TEST_ASSERT_EQUAL_UINT32(0U, s.msgs.ring.lock.depth);
-	TEST_ASSERT_LESS_OR_EQUAL_UINT32(1U, s.msgs.ring.lock.max_depth);
 }
 
 static void test_init_rejects_invalid_configuration(void) {
@@ -78,12 +69,6 @@ static void test_init_rejects_invalid_configuration(void) {
 
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(NULL, &cfg));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&other, NULL));
-	c = cfg;
-	c.rx_buf = NULL;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&other, &c));
-	c = cfg;
-	c.rx_len = 0U;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&other, &c));
 	c = cfg;
 	c.tx_buf = NULL;
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&other, &c));
@@ -134,11 +119,10 @@ static void test_ca_add_validates_address_and_capacity(void) {
 static void test_broadcast_in_list_is_delivered(void) {
 	const j1939_msg_t *msg;
 
-	rx_frame(make_id(3U, PGN_BC, J1939_ADDR_GLOBAL, OTHER), 8U);
 	TEST_ASSERT_NULL(j1939_msg_peek(&s));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 1000U));
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_rx_queue(&s)));
+	rx_frame(make_id(3U, PGN_BC, J1939_ADDR_GLOBAL, OTHER), 8U);
 
+	/* Delivered by j1939_rx() itself, without j1939_process(). */
 	msg = j1939_msg_peek(&s);
 	TEST_ASSERT_NOT_NULL(msg);
 	TEST_ASSERT_EQUAL_HEX32(PGN_BC, msg->pgn);
@@ -162,22 +146,19 @@ static void test_empty_message_is_delivered(void) {
 }
 
 static void test_unlisted_and_foreign_frames_are_dropped(void) {
-	j1939_port_frame_t *slot;
+	j1939_port_frame_t f;
 
 	rx_frame(make_id(6U, PGN_OFF, J1939_ADDR_GLOBAL, OTHER), 8U);
 	rx_frame(make_id(6U, PGN_DS, 0x20U, OTHER), 8U); /* another node's address */
 	rx_frame(make_id(6U, PGN_BC, J1939_ADDR_GLOBAL, OTHER) | (1U << 25), 8U); /* EDP set */
-	slot = j1939_queue_acquire(j1939_rx_queue(&s));
-	j1939_port_fixture_std(slot, 0x123U);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_commit(j1939_rx_queue(&s)));
-	slot = j1939_queue_acquire(j1939_rx_queue(&s));
-	j1939_port_fixture_rtr(slot, make_id(6U, PGN_BC, J1939_ADDR_GLOBAL, OTHER));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_queue_commit(j1939_rx_queue(&s)));
+	j1939_port_fixture_std(&f, 0x123U);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
+	j1939_port_fixture_rtr(&f, make_id(6U, PGN_BC, J1939_ADDR_GLOBAL, OTHER));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_rx_queue(&s)));
 	TEST_ASSERT_NULL(j1939_msg_peek(&s));
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
 }
 
 static void test_destination_specific_to_each_ca_is_delivered(void) {
@@ -185,6 +166,7 @@ static void test_destination_specific_to_each_ca_is_delivered(void) {
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN_B}, &ca_b));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U)); /* OWN_B is claimed */
 	rx_frame(make_id(6U, PGN_DS, OWN_A, OTHER), 2U);
 	rx_frame(make_id(6U, PGN_DS, OWN_B, OTHER), 2U);
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
@@ -213,15 +195,45 @@ static void test_message_overflow_is_counted(void) {
 	}
 }
 
-static void test_process_handles_only_frames_present_at_start(void) {
-	uint32_t i;
+static void test_rx_reads_the_frame_only_during_the_call(void) {
+	j1939_port_frame_t f;
 
-	for (i = 0U; i < RX_LEN; i++) {
-		rx_frame(make_id(6U, PGN_OFF, J1939_ADDR_GLOBAL, OTHER), 8U);
-	}
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_rx_queue(&s)));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_process(NULL, 0U));
+	j1939_port_frame_build(&f, make_id(6U, PGN_BC, J1939_ADDR_GLOBAL, OTHER), payload, 8U);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
+	j1939_port_frame_build(&f, make_id(6U, PGN_OFF, J1939_ADDR_GLOBAL, OTHER), NULL, 0U);
+	TEST_ASSERT_EQUAL_HEX32(PGN_BC, j1939_msg_peek(&s)->pgn);
+	TEST_ASSERT_EQUAL_HEX8_ARRAY(payload, j1939_msg_peek(&s)->data, 8U);
+}
+
+static void test_tx_queue_is_drained_in_order(void) {
+	const j1939_msg_t msg = {.pgn = PGN_BC,
+	                         .prio = 6U,
+	                         .sa = 0U,
+	                         .da = J1939_ADDR_GLOBAL,
+	                         .len = 1U,
+	                         .data = payload};
+	const j1939_port_frame_t *f;
+
+	TEST_ASSERT_NULL(j1939_tx_peek(&s));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_EMPTY, j1939_tx_pop(&s));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_send(&s, ca_a, &msg));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_send(&s, ca_a,
+	                                           &(j1939_msg_t){.pgn = PGN_DS,
+	                                                          .prio = 6U,
+	                                                          .sa = 0U,
+	                                                          .da = OTHER,
+	                                                          .len = 0U,
+	                                                          .data = NULL}));
+	/* A frame the driver refuses stays: peek returns it again until it is popped. */
+	f = j1939_tx_peek(&s);
+	TEST_ASSERT_EQUAL_PTR(f, j1939_tx_peek(&s));
+	TEST_ASSERT_EQUAL_HEX32(make_id(6U, PGN_BC, J1939_ADDR_GLOBAL, OWN_A),
+	                        j1939_port_frame_id_get(f));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
+	TEST_ASSERT_EQUAL_HEX32(make_id(6U, PGN_DS, OTHER, OWN_A),
+	                        j1939_port_frame_id_get(j1939_tx_peek(&s)));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
+	TEST_ASSERT_NULL(j1939_tx_peek(&s));
 }
 
 static void test_send_queues_single_frame(void) {
@@ -230,7 +242,7 @@ static void test_send_queues_single_frame(void) {
 	const j1939_port_frame_t *f;
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_send(&s, ca_a, &msg));
-	f = j1939_queue_peek(j1939_tx_queue(&s));
+	f = j1939_tx_peek(&s);
 	TEST_ASSERT_NOT_NULL(f);
 	TEST_ASSERT_TRUE(j1939_port_frame_is_ext(f));
 	TEST_ASSERT_EQUAL_HEX32(make_id(3U, PGN_DS, OTHER, OWN_A), j1939_port_frame_id_get(f));
@@ -260,7 +272,7 @@ static void test_send_rejects_invalid_messages(void) {
 	msg.len = 0U;
 	msg.da = OTHER; /* PDU2 PGN with a destination */
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_send(&s, ca_a, &msg));
-	TEST_ASSERT_EQUAL_UINT16(0U, j1939_queue_count(j1939_tx_queue(&s)));
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
 
 	msg.da = J1939_ADDR_GLOBAL;
 	for (i = 0U; i < TX_LEN; i++) {
@@ -270,8 +282,14 @@ static void test_send_rejects_invalid_messages(void) {
 }
 
 static void test_null_stack_accessors(void) {
-	TEST_ASSERT_NULL(j1939_rx_queue(NULL));
-	TEST_ASSERT_NULL(j1939_tx_queue(NULL));
+	j1939_port_frame_t f;
+
+	j1939_port_frame_build(&f, make_id(6U, PGN_BC, J1939_ADDR_GLOBAL, OTHER), payload, 8U);
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rx(NULL, &f));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rx(&s, NULL));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_process(NULL, 0U));
+	TEST_ASSERT_NULL(j1939_tx_peek(NULL));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_tx_pop(NULL));
 	TEST_ASSERT_NULL(j1939_msg_peek(NULL));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_msg_pop(NULL));
 	TEST_ASSERT_NULL(j1939_stats_get(NULL));
@@ -286,7 +304,8 @@ int main(void) {
 	RUN_TEST(test_unlisted_and_foreign_frames_are_dropped);
 	RUN_TEST(test_destination_specific_to_each_ca_is_delivered);
 	RUN_TEST(test_message_overflow_is_counted);
-	RUN_TEST(test_process_handles_only_frames_present_at_start);
+	RUN_TEST(test_rx_reads_the_frame_only_during_the_call);
+	RUN_TEST(test_tx_queue_is_drained_in_order);
 	RUN_TEST(test_send_queues_single_frame);
 	RUN_TEST(test_send_rejects_invalid_messages);
 	RUN_TEST(test_null_stack_accessors);

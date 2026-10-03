@@ -12,6 +12,7 @@
 - **Native CAN frames.** The library has no CAN frame type of its own.
   It operates directly on the integrator's frame type through compile-time accessors supplied by the port.
 - **The library never calls out.** Received frames are pushed in, outgoing frames and received messages are pulled out.
+- **One execution context, no lock.** All functions of a stack instance run in the integrator's stack task or main loop. Frames cross from driver interrupts or threads through the driver's own FIFOs.
 - **No global state.** All state lives in integrator-owned objects; several buses can be run by one binary.
 - **Time is passed in.** The library never reads a clock.
 
@@ -26,16 +27,18 @@ Each layer depends only on the layers below it.
  ──────────────────────────────────────────────────────────────────────────────
  j1939_dm (J1939/73): DM1/DM2 transmission, DM3/DM11 handling per CA
  j1939_addr (J1939/81)   j1939_tp (J1939/21 TP.BAM / TP.CM)               protocol core
- j1939_stack: j1939_t, rx/tx queues, CA objects, DA/PGN filtering, message slots
+ j1939_stack: j1939_t, frame rx, tx queue, CA objects, DA/PGN filtering, message slots
  j1939_request: Request (PGN 59904) and Acknowledgement (PGN 59392)
  ──────────────────────────────────────────────────────────────────────────────
  j1939_id / j1939_name: pure codecs on uint32_t / uint64_t                no state, no I/O
- j1939_queue / j1939_ring: FIFOs over integrator storage                 port lock only
+ j1939_ring: FIFO indices over integrator storage                         no I/O
  ──────────────────────────────────────────────────────────────────────────────
  PORT BOUNDARY (compile time): j1939_target.h, supplied by the port
  ──────────────────────────────────────────────────────────────────────────────
  port/socketcan, port/mock, integrator ports
 ```
+
+The optional frame queue (`j1939_queue`) sits outside these layers: integrator code uses it to hand frames from a driver interrupt to the stack's context, see [Optional frame queue](#optional-frame-queue).
 
 ## Source tree
 
@@ -53,13 +56,13 @@ include/j1939/        public headers
                         j1939_addr.h            address claiming
                         j1939_diag.h            J1939/73 DTC, lamp status and DM1/DM2 payload codec
                         j1939_dm.h              J1939/73 diagnostics of a CA: DM1, DM2, DM3, DM11
-                        j1939_queue.h           CAN frame queue over integrator storage
-                        j1939_ring.h            ring index type shared by the queues (members private)
+                        j1939_queue.h           optional helper: frame queue between two contexts
+                        j1939_ring.h            ring index type of the library's FIFOs (members private)
                         j1939_config.h          compile-time configuration and defaults
                         j1939_port_contract.h   required target API, compile-time checks
 src/                  implementation (*.c) and private headers (*_priv.h)
 port/<name>/          one directory per port
-                        j1939_target.h          native frame type, accessors, lock
+                        j1939_target.h          native frame type, accessors; lock for the frame queue
                         port.cmake              optional: port sources, libraries, test fixture
                         j1939_port_fixture.c    optional: conformance test fixture
 port/mock/            test port with a deliberately unusual frame layout
@@ -77,7 +80,7 @@ tests/support/        test_bus.[ch]: virtual CAN bus connecting several stacks i
 tests/config/         j1939_test_config.h: configuration of the test library builds
 tests/vendor/unity/   vendored Unity test framework
 cmake/                build helpers
-                        library.cmake           j1939_add_library(): builds the library for a port
+                        library.cmake           j1939_add_library(), j1939_add_queue(): build for a port
                         warnings.cmake          project warning set, j1939_set_warnings()
                         instrumentation.cmake   sanitizer and coverage options
                         arm-none-eabi.cmake     Cortex-M0+ toolchain for the portability check
@@ -96,14 +99,15 @@ The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
 | Abstraction            | Type                                             | Role                                                                                  |
 | ---------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | Native frame           | `j1939_port_frame_t` (typedef by the port)       | The only type crossing the port boundary. Accessed only through the port accessors    |
-| Lock                   | `j1939_port_lock_t` (typedef by the port)        | Critical-section object embedded in each queue                                        |
-| Frame queue            | `j1939_queue_t`                                  | FIFO of native frames over integrator storage; one producer, one consumer            |
+| Tx queue               | `j1939_tx_queue_t` in `j1939_t`                  | FIFO of the frames the stack generates, over the integrator's `tx_buf`; drained with `j1939_tx_peek()` / `j1939_tx_pop()` |
+| Frame queue (optional) | `j1939_queue_t`                                  | Helper outside the stack: FIFO of native frames over integrator storage, one producer and one consumer in different contexts |
+| Lock (optional)        | `j1939_port_lock_t` (typedef by the port)        | Critical-section object embedded in each frame queue; needed only with the frame queue |
 | ID codec               | `j1939_id_*()` pure functions on `uint32_t`      | Priority, EDP, DP, PF, PS, SA; PDU1 (PF < 240, PS = DA) / PDU2 rules; PGN handling    |
 | NAME codec             | `j1939_name_*()` pure functions on `uint64_t`    | J1939/81 NAME fields                                                                  |
 | Message                | `j1939_msg_t {pgn, prio, sa, da, len, data}`     | Logical message, 0–1785 bytes; `data` points to integrator memory                     |
 | Message slot           | `j1939_msg_slot_t`                               | Integrator storage for one received message; the application reads it in place        |
 | Signal descriptor      | `j1939_signal_t`, `j1939_signal_*()` functions   | SPN position, length, scaling and J1939/71 range type; `const` integrator data        |
-| Stack                  | `j1939_t`, configured by `j1939_cfg_t`           | One per CAN bus. Queues, message slots, PGN lists, CAs, event counters                |
+| Stack                  | `j1939_t`, configured by `j1939_cfg_t`           | One per CAN bus. Tx queue, message slots, PGN lists, CAs, event counters              |
 | Controller Application | `j1939_ca_t`, configured by `j1939_ca_cfg_t`     | Source address; NAME and address-claim state with J1939/81. Referenced by `j1939_ca_id_t` |
 | Event counters         | `j1939_stats_t`                                  | Messages and frames dropped because integrator storage was full; transport protocol aborts and refusals; diagnostic sends retried or given up |
 | DTC                    | `j1939_diag_dtc_t {spn, fmi, oc, cm}`            | J1939/73 diagnostic trouble code; 4-byte codec `j1939_diag_dtc_*()`                   |
@@ -119,7 +123,8 @@ The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
 ### Port boundary
 
 The library includes `j1939_target.h`, found through the include path selected by the build (`J1939_PORT_DIR`).
-The port typedefs its native frame type as `j1939_port_frame_t` and provides `static inline` accessors for it, plus a lock type with `static inline` lock functions.
+The port typedefs its native frame type as `j1939_port_frame_t` and provides `static inline` accessors for it.
+A port used with the optional frame queue also provides a lock type with `static inline` lock functions.
 The library includes the target header only through `j1939_port_contract.h`, which repeats the required declarations: a port whose definitions differ fails to compile, and a missing definition is reported as declared but never defined.
 The library is compiled against exactly one port.
 The full contract is described in [porting.md](porting.md).
@@ -129,7 +134,6 @@ The full contract is described in [porting.md](porting.md).
 The integrator allocates all memory and hands it to the stack at initialisation:
 
 ```c
-static j1939_port_frame_t rx_buf[16];
 static j1939_port_frame_t tx_buf[16];
 static j1939_msg_slot_t msg_buf[8];
 static j1939_tp_buf_t tp_tx_buf[1];                    /* multi-packet sends */
@@ -140,7 +144,6 @@ static j1939_t stack;
 static j1939_ca_id_t ca;
 
 const j1939_cfg_t cfg = {
-	.rx_buf = rx_buf, .rx_len = 16,
 	.tx_buf = tx_buf, .tx_len = 16,
 	.msg_buf = msg_buf, .msg_len = 8,
 	.rx_pgns = rx_pgns, .rx_pgns_len = 2,
@@ -157,24 +160,33 @@ PGNs in the lists must be valid PGNs: at most 0x3FFFF, lowest byte 0 for PDU1 fo
 
 ### Runtime interface
 
-| Direction           | API                                                                                       | Context                            |
-| ------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------- |
-| CAN rx (zero copy)  | `j1939_queue_acquire(j1939_rx_queue(&stack))` → driver writes the slot → `j1939_queue_commit()` | ISR or rx thread (single producer) |
-| CAN rx (copy)       | `j1939_queue_put(j1939_rx_queue(&stack), &frame)`                                         | ISR or rx thread (single producer) |
-| Processing          | `j1939_process(&stack, elapsed_us)`                                                       | Main loop / task                   |
-| CAN tx              | `j1939_queue_peek(j1939_tx_queue(&stack))` → driver writes the frame → `j1939_queue_pop()` | Main loop, tx-complete ISR, DMA    |
-| Application rx      | `j1939_msg_peek(&stack)`, application switches on `msg->pgn`, then `j1939_msg_pop(&stack)` | Main loop / task                   |
-| Application tx      | `j1939_send(&stack, ca, &msg)`, `j1939_request_send(&stack, ca, pgn, da)`                 | Main loop / task                   |
-| Address claim state | `j1939_addr_get(&stack, ca, &address, &state)`                                            | Main loop / task                   |
-| Commanded Address   | `j1939_addr_command_send(&stack, ca, name, address, da)`                                  | Main loop / task                   |
-| Diagnostics         | `j1939_dm_active_set()`, `j1939_dm_prev_set()`, `j1939_dm_lamps_set()`; `j1939_dm_clear_get()` → `j1939_dm_clear_confirm()` | Main loop / task                   |
+| Direction           | API                                                                                       |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| CAN rx              | `j1939_rx(&stack, &frame)` for each frame taken from the driver                           |
+| Processing          | `j1939_process(&stack, elapsed_us)`                                                       |
+| CAN tx              | `j1939_tx_peek(&stack)` → driver takes the frame → `j1939_tx_pop(&stack)`                 |
+| Application rx      | `j1939_msg_peek(&stack)`, application switches on `msg->pgn`, then `j1939_msg_pop(&stack)` |
+| Application tx      | `j1939_send(&stack, ca, &msg)`, `j1939_request_send(&stack, ca, pgn, da)`                 |
+| Address claim state | `j1939_addr_get(&stack, ca, &address, &state)`                                            |
+| Commanded Address   | `j1939_addr_command_send(&stack, ca, name, address, da)`                                  |
+| Diagnostics         | `j1939_dm_active_set()`, `j1939_dm_prev_set()`, `j1939_dm_lamps_set()`; `j1939_dm_clear_get()` → `j1939_dm_clear_confirm()` |
 
-- Execution contexts: the frame queue functions and `j1939_msg_peek()` / `j1939_msg_pop()` are protected by the port lock and may run in a context other than `j1939_process()`, one producer and one consumer per queue. Every other stack function (initialisation, `j1939_process()`, sending, and the address and diagnostic calls) reads or changes unlocked stack state: call them all from the context that runs `j1939_process()`, or serialise them with a lock of the integrator's own.
-- The rx and tx queues are `j1939_queue_t` instances over the integrator's buffers, reached through `j1939_rx_queue()` and `j1939_tx_queue()`. Each has one producer and one consumer, which may run in different contexts; index updates run inside the port lock, frame contents are written and read outside it. Every slot of the buffer is usable.
-- `j1939_process()` handles the frames present in the rx queue when it starts; frames arriving meanwhile wait for the next call. It stores application messages in the message slots and queues frames the stack generates into the tx queue.
+- Execution context: every function of a stack instance runs in one context, the task or main loop that calls `j1939_process()`. The stack holds no lock. An application whose logic runs in other tasks exchanges data with the stack's task through mailboxes of its own.
+- `j1939_rx()` handles a frame during the call and reads it in place; the caller may reuse the frame afterwards. Answers the stack generates go into the tx queue, application messages into the message slots. Standard, remote and non-J1939 frames are ignored, so every frame of a shared bus may be passed.
+- `j1939_process()` advances the timers of address claiming, the transport protocol and diagnostics, and queues what is due. A timer started by a received frame or an API call between two calls counts from the next call.
+- The tx queue is a FIFO over the integrator's `tx_buf`; every slot is usable. A frame stays in it until `j1939_tx_pop()`, so a frame the driver refuses is offered again by the next `j1939_tx_peek()`.
 - A received message and its data stay valid in its slot until `j1939_msg_pop()`.
 - `j1939_send()` builds a single frame immediately. A payload of 9 to `J1939_CFG_TP_BUF_SIZE` bytes is copied into a free TP transmit buffer and sent with BAM to the global address, with RTS/CTS to a specific one, PDU2 PGNs included; the BAM or RTS frame is queued at once, the data packets by `j1939_process()`. Either way the message and its data may be reused after the call.
 - When the message slots or the tx queue are full, the stack drops the message or frame it generated and counts it in `j1939_stats_t`. Application sends report `J1939_RET_ERR_FULL` instead.
+
+### Optional frame queue
+
+`j1939_queue.h` is a helper for integrators whose CAN driver has no frame FIFO of its own, typically on bare metal: a receive interrupt fills it, the stack's context empties it into `j1939_rx()`.
+It is a FIFO of native frames over integrator storage for one producer and one consumer in different contexts; index updates run inside the port lock, frame contents are written and read outside it.
+
+- It is built as the separate target `j1939::queue` (`j1939_add_queue()`), excluded from the default build, so it is compiled only when linked and a port without a lock is not affected.
+- Its lock contract is declared in `j1939_queue.h`.
+- The porting guide shows its use between a bxCAN receive interrupt and the main loop.
 
 Transport protocol (J1939/21, `src/j1939_tp.c`):
 
@@ -193,7 +205,7 @@ Transport protocol (J1939/21, `src/j1939_tp.c`):
 - Frames the stack generates (CTS, EndOfMsgAck, Connection Abort) are dropped and counted in `tx_overflow` when the tx queue is full; the protocol timers then end the session.
 - `tp_tx_aborted` and `tp_rx_aborted` count sessions that ended without the message (abort, timeout, sequence error); `tp_rx_refused` counts RTS and BAM refused for lack of a session or buffer.
 
-Receive filtering in `j1939_process()`:
+Receive filtering in `j1939_rx()`:
 
 1. Standard (11-bit) frames, remote frames and frames with the extended data page bit set are dropped.
 2. Frames addressed to an address none of the stack's CAs holds are dropped; global frames pass. Address Claimed (PGN 60928) is handled by address claiming whatever its destination, and is also delivered to the application if it is in `rx_pgns`.
@@ -209,7 +221,7 @@ Receive filtering in `j1939_process()`:
 ### Address claiming (J1939/81)
 
 Every CA claims an address before it transmits; `j1939_ca_cfg_t` gives its NAME and preferred address.
-The procedure runs inside `j1939_process()`; its only clock is `elapsed_us`.
+Its timers run inside `j1939_process()`; their only clock is `elapsed_us`. A wait started by a received frame or an API call counts from the next call.
 `j1939_addr_get()` reports the CA's address and `j1939_addr_state_t`, which can change at runtime.
 
 | State          | Address held | May transmit                           | Left by                                                        |
@@ -366,10 +378,10 @@ j1939_dm_active_set(&stack, ca, dtcs, n);   /* whenever the fault set changes */
 - Unity (vendored in `tests/vendor/unity/`), run through `ctest`.
 - The test build compiles the library once per port with `j1939_add_library()`. Unit tests link the mock port variant, whatever port the main `j1939` target uses.
 - The port conformance test `tests/port/test_port_conformance.c` runs against the mock port, the SocketCAN port (on Linux) and the configured `J1939_PORT_DIR` port if it is another one. Frames the port API cannot build (standard, remote, raw DLC above 8) come from the port's `j1939_port_fixture.c`.
-- The mock lock records nesting depth and call count; unit tests check that every critical section is left and none is nested.
+- `test_queue` links the frame queue built for the mock port (`j1939_add_queue()`). The mock lock records nesting depth and call count; the test checks that every critical section is left and none is nested.
 - `test_socketcan_vcan` exchanges frames over a real SocketCAN interface, `vcan0` by default or `J1939_TEST_CANIF`. It reports "skipped" when the interface does not exist.
 - Unit and integration tests link a library variant built with `tests/config/j1939_test_config.h` through `J1939_CONFIG_FILE`, which also exercises the configuration override.
-- Integration tests run several `j1939_t` instances in one process; `tests/support/test_bus.c` moves every frame from one stack's tx queue to the rx queues of all others.
+- Integration tests run several `j1939_t` instances in one process; `tests/support/test_bus.c` passes every frame of one stack's tx queue to `j1939_rx()` of all others. Each run carries the frames queued when it starts; answers wait for the next run.
 - `test_signal` compares bit extraction and insertion against a bit-by-bit reference model for every offset and length in payloads of 1 to 8 bytes. `test_signal_example` builds and decodes messages with the example table from `examples/signals/`.
 - Timers are tested by passing the elapsed time to `j1939_process()`, for example one call 1 µs before and one at a deadline.
 - `test_addr_command` drives Commanded Address on one stack with injected BAM and RTS/CTS transfers; `test_addr_command_exchange` lets a tool node move a target with BAM and with RTS/CTS while a monitor node watches the Address Claimed messages.
@@ -424,7 +436,7 @@ Make targets:
 | `make`              | Debug build in `build/`                                                  |
 | `make test`         | Builds with sanitizers in `build-test/` and runs `ctest`                 |
 | `make coverage`     | Builds with coverage in `build-coverage/`, runs tests, fails under 90 % line coverage |
-| `make cross`        | Compiles the library for Cortex-M0+ in `build-arm/`                      |
+| `make cross`        | Compiles the library and the frame queue for Cortex-M0+ in `build-arm/`  |
 | `make examples`     | Builds the SocketCAN example applications in `build-examples/`           |
 | `make lint`         | cppcheck: core and mock port with the MISRA addon, SocketCAN port and examples with the general checks |
 | `make format`       | Formats all project sources                                              |
