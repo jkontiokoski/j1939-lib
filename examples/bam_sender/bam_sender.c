@@ -60,12 +60,12 @@ static j1939_tp_buf_t tp_tx_buf[TP_TX_LEN];
 
 static j1939_t stack;
 
-/* Example DTCs: invented faults with plausible SPN/FMI pairs. */
+/* Example DTCs: invented SPNs from the proprietary range (520192 up). */
 static const j1939_diag_dtc_t dtcs[] = {
-        {.spn = 100U, .fmi = 1U, .oc = 3U, .cm = J1939_DIAG_CM_V4},     /* Oil pressure low */
-        {.spn = 110U, .fmi = 0U, .oc = 1U, .cm = J1939_DIAG_CM_V4},     /* Coolant temp high */
-        {.spn = 190U, .fmi = 2U, .oc = 7U, .cm = J1939_DIAG_CM_V4},     /* Speed erratic */
-        {.spn = 520192U, .fmi = 31U, .oc = 1U, .cm = J1939_DIAG_CM_V4}, /* Proprietary SPN */
+        {.spn = 520202U, .fmi = 1U, .oc = 3U, .cm = J1939_DIAG_CM_V4},
+        {.spn = 520203U, .fmi = 0U, .oc = 1U, .cm = J1939_DIAG_CM_V4},
+        {.spn = 520204U, .fmi = 2U, .oc = 7U, .cm = J1939_DIAG_CM_V4},
+        {.spn = 520192U, .fmi = 31U, .oc = 1U, .cm = J1939_DIAG_CM_V4},
 };
 
 static void usage(const char *prog) {

@@ -5,7 +5,8 @@
  * pgn_listener: receives the PGNs given on the command line and prints every
  * message, whether it came in one frame or was reassembled by the transport
  * protocol (BAM or RTS/CTS). A DM1 is also decoded. The listener answers
- * Requests for Software Identification (PGN 65242) with the library version.
+ * Requests for PGN 0xFF22, an invented Proprietary B identification text,
+ * with the library version.
  *
  *   pgn_listener [-i ifname] [-a address] [-n identity] PGN...
  *
@@ -17,9 +18,9 @@
  *
  *   ./pgn_listener -a 0x90 0xFECA 0xEF00
  *
- * Ask it for its software identification from another shell:
+ * Ask it for its identification text from another shell:
  *
- *   cansend vcan0 18EA90F9#DAFE00      # Request from 0xF9 to 0x90 for PGN 0xFEDA
+ *   cansend vcan0 18EA90F9#22FF00      # Request from 0xF9 to 0x90 for PGN 0xFF22
  *
  * Stop with Ctrl-C.
  */
@@ -36,13 +37,13 @@
 #include "j1939/j1939.h"
 #include "j1939_socketcan.h"
 
-/** Software Identification, PGN 65242. Variable length, so answered with TP if long. */
-#define PGN_SOFT 0xFEDAU
+/** Identification text, an invented Proprietary B PGN. Longer than 8 bytes, so sent with TP. */
+#define PGN_IDENT 0xFF22U
 
 #define TX_LEN      16U
 #define MSG_LEN     8U
 #define TP_RX_LEN   2U /* Two multi-packet receptions at a time, e.g. a BAM and an RTS/CTS. */
-#define TP_TX_LEN   1U /* One multi-packet send: the Software Identification answer. */
+#define TP_TX_LEN   1U /* One multi-packet send: the identification text answer. */
 #define RX_PGNS_MAX 16U
 #define DTCS_MAX    16U
 
@@ -61,7 +62,7 @@ static uint32_t rx_pgns[RX_PGNS_MAX];
 
 /* PGNs this node answers Requests for. A Request for any other PGN sent to
  * this node's address is NACKed by the stack. */
-static const uint32_t req_pgns[] = {PGN_SOFT};
+static const uint32_t req_pgns[] = {PGN_IDENT};
 
 static j1939_t stack;
 
@@ -98,9 +99,9 @@ static void dm1_print(const j1939_msg_t *msg) {
 }
 
 /*
- * Answers a Request for Software Identification. J1939/21: the answer goes
+ * Answers a Request for the identification text. J1939/21: the answer goes
  * to the requester when the Request was sent to this node and the PGN is
- * PDU1; to the global address otherwise. PGN 65242 is PDU2, so it is
+ * PDU1; to the global address otherwise. PGN 0xFF22 is PDU2, so it is
  * broadcast, and at more than 8 bytes j1939_send() uses BAM.
  */
 static void request_answer(j1939_ca_id_t ca, const j1939_msg_t *req) {
@@ -109,25 +110,24 @@ static void request_answer(j1939_ca_id_t ca, const j1939_msg_t *req) {
 	uint8_t data[32];
 	int n;
 
-	if ((j1939_request_pgn_get(req, &pgn) != J1939_RET_OK) || (pgn != PGN_SOFT)) {
+	if ((j1939_request_pgn_get(req, &pgn) != J1939_RET_OK) || (pgn != PGN_IDENT)) {
 		return;
 	}
-	/* Byte 1: number of fields; then each field terminated by '*'. */
-	data[0] = 1U;
-	n = snprintf((char *)&data[1], sizeof(data) - 1U, "j1939-lib %u.%u.%u*",
+	/* The text without a terminating NUL. */
+	n = snprintf((char *)data, sizeof(data), "j1939-lib %u.%u.%u",
 	             (unsigned)((v >> 16) & 0xFFU), (unsigned)((v >> 8) & 0xFFU),
 	             (unsigned)(v & 0xFFU));
-	if ((n <= 0) || ((size_t)n >= (sizeof(data) - 1U))) {
+	if ((n <= 0) || ((size_t)n >= sizeof(data))) {
 		return;
 	}
 
 	const j1939_msg_t answer = {
-	        .pgn = PGN_SOFT,
+	        .pgn = PGN_IDENT,
 	        .prio = J1939_PRIO_DEFAULT,
 	        .da = (j1939_pgn_is_pdu1(pgn) && (req->da != J1939_ADDR_GLOBAL))
 	                      ? req->sa
 	                      : J1939_ADDR_GLOBAL,
-	        .len = (uint16_t)(1 + n),
+	        .len = (uint16_t)n,
 	        .data = data,
 	};
 	j1939_ret_t ret = j1939_send(&stack, ca, &answer);
