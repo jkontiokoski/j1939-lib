@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.21)
 
 # The version is defined once, in j1939.h.
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/include/j1939/j1939.h" _j1939_version_lines
-	REGEX "^#define J1939_VERSION_(MAJOR|MINOR|PATCH) +[0-9]+$")
+	REGEX "^#define J1939_VERSION_(MAJOR|MINOR|PATCH) +[0-9]+( |$)")
 foreach(_part MAJOR MINOR PATCH)
 	string(REGEX MATCH "J1939_VERSION_${_part} +([0-9]+)" _ "${_j1939_version_lines}")
 	set(_j1939_version_${_part} "${CMAKE_MATCH_1}")
@@ -21,6 +21,7 @@ option(J1939_WERROR "Treat compiler warnings as errors" ${PROJECT_IS_TOP_LEVEL})
 option(J1939_SANITIZE "Instrument with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(J1939_COVERAGE "Instrument for gcov coverage" OFF)
 option(J1939_BUILD_EXAMPLES "Build the SocketCAN example applications (Linux)" OFF)
+option(J1939_BUILD_DOCS "Add the docs and docs-internal targets (Doxygen, Graphviz)" OFF)
 set(J1939_PORT_DIR "" CACHE PATH "Port directory containing j1939_target.h")
 option(J1939_COMPILE_COMMANDS "Generate compile_commands.json for tooling such as clangd"
 	${PROJECT_IS_TOP_LEVEL})
@@ -61,4 +62,8 @@ endif()
 
 if(J1939_BUILD_EXAMPLES)
 	add_subdirectory(examples)
+endif()
+
+if(J1939_BUILD_DOCS)
+	include(cmake/docs.cmake)
 endif()

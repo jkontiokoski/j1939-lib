@@ -11,6 +11,7 @@ TEST_DIR  := build-test
 COV_DIR   := build-coverage
 ARM_DIR   := build-arm
 EX_DIR    := build-examples
+DOCS_DIR  := build-docs
 
 COVERAGE_MIN := 90
 
@@ -19,7 +20,7 @@ FORMAT_FILES = $(shell find include src tests port examples \
 CPPCHECK_FLAGS = --std=c99 --enable=all --inconclusive --error-exitcode=1 --inline-suppr \
 	--suppressions-list=cppcheck-suppressions.txt
 
-.PHONY: all lib test coverage cross examples format format-check lint clean
+.PHONY: all lib test coverage cross examples docs docs-internal format format-check lint clean
 
 all: lib
 
@@ -47,6 +48,14 @@ examples:
 	$(CMAKE) -S . -B $(EX_DIR) -DCMAKE_BUILD_TYPE=Debug -DJ1939_BUILD_TESTS=OFF -DJ1939_BUILD_EXAMPLES=ON
 	$(CMAKE) --build $(EX_DIR)
 
+docs:
+	$(CMAKE) -S . -B $(DOCS_DIR) -DJ1939_BUILD_TESTS=OFF -DJ1939_BUILD_DOCS=ON
+	$(CMAKE) --build $(DOCS_DIR) --target docs
+
+docs-internal:
+	$(CMAKE) -S . -B $(DOCS_DIR) -DJ1939_BUILD_TESTS=OFF -DJ1939_BUILD_DOCS=ON
+	$(CMAKE) --build $(DOCS_DIR) --target docs-internal
+
 format:
 	clang-format -i $(FORMAT_FILES)
 
@@ -62,4 +71,4 @@ lint:
 		examples/common examples/addr_claim_demo examples/pgn_listener examples/bam_sender
 
 clean:
-	rm -rf $(BUILD_DIR) $(TEST_DIR) $(COV_DIR) $(ARM_DIR) $(EX_DIR)
+	rm -rf $(BUILD_DIR) $(TEST_DIR) $(COV_DIR) $(ARM_DIR) $(EX_DIR) $(DOCS_DIR)
