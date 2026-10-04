@@ -62,10 +62,10 @@ static j1939_t stack;
 
 /* Example DTCs: invented SPNs from the proprietary range (520192 up). */
 static const j1939_diag_dtc_t dtcs[] = {
-        {.spn = 520202U, .fmi = 1U, .oc = 3U, .cm = J1939_DIAG_CM_V4},
-        {.spn = 520203U, .fmi = 0U, .oc = 1U, .cm = J1939_DIAG_CM_V4},
-        {.spn = 520204U, .fmi = 2U, .oc = 7U, .cm = J1939_DIAG_CM_V4},
-        {.spn = 520192U, .fmi = 31U, .oc = 1U, .cm = J1939_DIAG_CM_V4},
+        {.spn = 520202U, .fmi = 1U, .oc = 3U},
+        {.spn = 520203U, .fmi = 0U, .oc = 1U},
+        {.spn = 520204U, .fmi = 2U, .oc = 7U},
+        {.spn = 520192U, .fmi = 31U, .oc = 1U},
 };
 
 static void usage(const char *prog) {

@@ -79,6 +79,7 @@ j1939_ca_add(&stack, &(j1939_ca_cfg_t){.address = 0x80, .name = MY_NAME}, &ca);
 `j1939_init()` rejects an invalid configuration without changing the stack, for example a PGN above 0x3FFFF or a PDU1 PGN whose lowest byte is not 0.
 [Configuration](configuration.md) explains how to size each buffer.
 
+<a id="gs-main-loop"></a>
 ## Run the main loop
 
 Every integration runs the same cycle in one task or main loop:
@@ -116,15 +117,7 @@ while ((f = j1939_tx_peek(&stack)) != NULL) {
 
 ## Try it on Linux
 
-The example applications run on a virtual SocketCAN interface and show the loop above in a complete program:
-
-```sh
-sudo ip link add dev vcan0 type vcan && sudo ip link set up vcan0
-make examples
-cd build/dev/examples && ./addr_claim_demo
-```
-
-[Example applications](examples.md) describes each program and what to watch on the bus.
+The [example applications](examples.md) run this loop in complete programs on a virtual SocketCAN interface; that page shows how to set the interface up and what to watch on the bus.
 
 ## Next steps
 

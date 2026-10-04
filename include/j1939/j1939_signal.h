@@ -23,6 +23,12 @@
  * classify signals within a PGN payload. They are pure: no state, no I/O,
  * no floating point.
  *
+ * @par Typical use
+ * j1939_signal_decode() and j1939_signal_msg_decode() read a value,
+ * j1939_signal_encode() writes one, and j1939_signal_indicator_set() writes
+ * the "error" or "not available" indicator. The other functions are the
+ * building blocks they use, for generated code and special cases.
+ *
  * @par Bit position
  * A signal occupies @c bits consecutive bits starting at bit offset
  * @c start. Payload bit @c n is bit <tt>n % 8</tt> (0 = least significant)

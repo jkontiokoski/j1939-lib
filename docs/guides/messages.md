@@ -52,7 +52,7 @@ while ((msg = j1939_msg_peek(&stack)) != NULL) {
 
 - A message and its data stay valid until `j1939_msg_pop()`.
 - When every slot is in use, new messages are dropped and counted in `j1939_stats_t::rx_msg_overflow`. Size `msg_len` for the longest time between two reads, see [Configuration](../configuration.md).
-- Frames the stack handles itself, such as transport protocol frames and the Requests it answers, never reach the slots. Address Claimed and Commanded Address reach them too when listed.
+- Transport protocol frames and the Requests the stack answers never reach the slots. Address Claimed and Commanded Address are handled by the stack and also delivered when listed in `rx_pgns`.
 
 ## Answer a Request
 

@@ -66,7 +66,8 @@ typedef struct j1939_rxobj_cfg {
 	uint16_t buf_len;    /**< Largest accepted payload, min_len..J1939_CFG_TP_BUF_SIZE. */
 	uint16_t min_len;    /**< Smallest accepted payload, at least 1. */
 	uint8_t sa;          /**< Source address received from, 0..253; ignored when name is set. */
-	uint64_t name;       /**< NAME of the sender; 0: the sender is identified by sa. */
+	uint64_t name; /**< NAME of the sender; 0: identified by sa (so a NAME of 0 is matched by
+	                  address only). */
 } j1939_rxobj_cfg_t;
 
 /** State of a receive object. */

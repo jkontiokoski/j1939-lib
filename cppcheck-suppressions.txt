@@ -2,11 +2,13 @@
 // Copyright (c) 2026 jkontiokoski
 //
 // General cppcheck suppressions, used for every linted directory.
-// Each entry is a documented deviation, see docs/safety.md.
 
-// System headers are not analysed.
+// Tool settings, not deviations: system headers are not analysed, and the
+// summary of active checkers is not printed.
 missingIncludeSystem
 checkersReport
+
+// Deviations, each documented in docs/safety.md.
 
 // Public API functions have no callers inside the library.
 unusedFunction

@@ -91,7 +91,7 @@ typedef struct j1939_diag_dtc {
 	uint32_t spn; /**< Suspect parameter number, 0..J1939_DIAG_SPN_MAX. */
 	uint8_t fmi;  /**< Failure mode identifier, 0..J1939_DIAG_FMI_MAX. */
 	uint8_t oc;   /**< Occurrence count, 0..J1939_DIAG_OC_MAX or J1939_DIAG_OC_NA. */
-	uint8_t cm;   /**< SPN conversion method, J1939_DIAG_CM_V4 or J1939_DIAG_CM_LEGACY. */
+	uint8_t cm; /**< SPN conversion method; J1939_DIAG_CM_V4 is 0, the default when left out. */
 } j1939_diag_dtc_t;
 
 /** Lamp status (J1939_DIAG_LAMP_*) and flash (J1939_DIAG_FLASH_*) of the four lamps. */

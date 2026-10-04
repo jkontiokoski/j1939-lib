@@ -41,7 +41,7 @@ Whenever the fault set changes, hand the complete lists to the stack:
 
 ```c
 const j1939_diag_dtc_t now[] = {
-	{.spn = 520202U, .fmi = 1U, .oc = 3U, .cm = J1939_DIAG_CM_V4}, /* invented proprietary SPN, below normal */
+	{.spn = 520202U, .fmi = 1U, .oc = 3U}, /* invented proprietary SPN, below normal */
 };
 (void)j1939_dm_active_set(&stack, ca, now, 1U);
 (void)j1939_dm_prev_set(&stack, ca, previously_active, n_prev);
