@@ -23,6 +23,46 @@ A port may ship helper code that moves frames between the driver and the stack, 
 | `J1939_PORT_LINK_LIBRARIES` | Libraries linked to the library, e.g. a vendor driver library         |
 | `J1939_PORT_TEST_FIXTURE`   | Path of the source implementing `tests/port/j1939_port_fixture.h`     |
 
+## Using the library from CMake
+
+An integrator's CMake project adds the library as a subdirectory.
+It builds the static library `j1939::j1939` against the port that `J1939_PORT_DIR` names, so the variable is set before the library is added; a relative path is resolved against the top-level source directory.
+Tests, examples and documentation targets are off when the library is not the top-level project.
+
+From a copy inside the project, such as an extracted source archive or a git submodule:
+
+```cmake
+set(J1939_PORT_DIR "${CMAKE_SOURCE_DIR}/j1939_port")
+add_subdirectory(third_party/j1939-lib)
+target_link_libraries(app PRIVATE j1939::j1939)
+```
+
+With `FetchContent` from a release's source archive, checked against its `SHA256SUMS`:
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(j1939
+	URL https://github.com/jkontiokoski/j1939-lib/releases/download/vX.Y.Z/j1939-lib-X.Y.Z.tar.gz
+	URL_HASH SHA256=<checksum from SHA256SUMS>)
+set(J1939_PORT_DIR "${CMAKE_SOURCE_DIR}/j1939_port")
+FetchContent_MakeAvailable(j1939)
+target_link_libraries(app PRIVATE j1939::j1939)
+```
+
+A port shipped with the library is used from the fetched sources, which `FetchContent` places in `${FETCHCONTENT_BASE_DIR}/j1939-src`:
+
+```cmake
+set(J1939_PORT_DIR "${FETCHCONTENT_BASE_DIR}/j1939-src/port/socketcan")
+```
+
+- The optional frame queue is the target `j1939::queue`; it is compiled only when linked.
+- A configuration header (see `j1939_config.h`) is passed to the library target with `PUBLIC` visibility, so that the application is compiled against the same type layouts as the library:
+
+  ```cmake
+  target_compile_definitions(j1939 PUBLIC J1939_CONFIG_FILE="my_j1939_config.h")
+  target_include_directories(j1939 PUBLIC "${CMAKE_SOURCE_DIR}/config")
+  ```
+
 ## The target header
 
 ### Native frame type
