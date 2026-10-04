@@ -56,11 +56,13 @@ target_include_directories(test_signal_example PRIVATE "${PROJECT_SOURCE_DIR}/ex
 j1939_add_test(test_addr test_support unit/test_addr.c)
 j1939_add_test(test_addr_command test_support unit/test_addr_command.c)
 j1939_add_test(test_tp test_support unit/test_tp.c)
+j1939_add_test(test_rxobj test_support unit/test_rxobj.c)
 j1939_add_test(test_request_exchange test_support integration/test_request_exchange.c)
 j1939_add_test(test_addr_claim test_support integration/test_addr_claim.c)
 j1939_add_test(test_addr_command_exchange test_support integration/test_addr_command_exchange.c)
 j1939_add_test(test_tp_exchange test_support integration/test_tp_exchange.c)
 j1939_add_test(test_dm_exchange test_support integration/test_dm_exchange.c)
+j1939_add_test(test_rxobj_exchange test_support integration/test_rxobj_exchange.c)
 
 # Port conformance: the bundled ports, plus the configured port if it is another one.
 j1939_add_port_conformance(test_port_mock j1939_test_mock)

@@ -21,11 +21,12 @@
 Each layer depends only on the layers below it.
 
 ```
- Application: pulls received messages, queues messages to send, signal access, DM1
+ Application: pulls received messages, reads message objects, queues messages to send, signal access, DM1
  ──────────────────────────────────────────────────────────────────────────────
  j1939_diag (J1939/73)   j1939_signal (J1939/71 + DA schema)              optional modules
  ──────────────────────────────────────────────────────────────────────────────
  j1939_dm (J1939/73): DM1/DM2 transmission, DM3/DM11 handling per CA
+ j1939_rxobj: receive objects, latest payload per PGN and sender, timeout supervision
  j1939_addr (J1939/81)   j1939_tp (J1939/21 TP.BAM / TP.CM)               protocol core
  j1939_stack: j1939_t, frame rx, tx queue, CA objects, DA/PGN filtering, message slots
  j1939_request: Request (PGN 59904) and Acknowledgement (PGN 59392)
@@ -56,6 +57,7 @@ include/j1939/        public headers
                         j1939_addr.h            address claiming
                         j1939_diag.h            J1939/73 DTC, lamp status and DM1/DM2 payload codec
                         j1939_dm.h              J1939/73 diagnostics of a CA: DM1, DM2, DM3, DM11
+                        j1939_rxobj.h           receive objects
                         j1939_queue.h           optional helper: frame queue between two contexts
                         j1939_ring.h            ring index type of the library's FIFOs (members private)
                         j1939_config.h          compile-time configuration and defaults
@@ -109,10 +111,11 @@ The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
 | Signal descriptor      | `j1939_signal_t`, `j1939_signal_*()` functions   | SPN position, length, scaling and J1939/71 range type; `const` integrator data        |
 | Stack                  | `j1939_t`, configured by `j1939_cfg_t`           | One per CAN bus. Tx queue, message slots, PGN lists, CAs, event counters              |
 | Controller Application | `j1939_ca_t`, configured by `j1939_ca_cfg_t`     | Source address; NAME and address-claim state with J1939/81. Referenced by `j1939_ca_id_t` |
-| Event counters         | `j1939_stats_t`                                  | Messages and frames dropped because integrator storage was full; transport protocol aborts and refusals; diagnostic sends retried or given up |
+| Event counters         | `j1939_stats_t`                                  | Messages and frames dropped because integrator storage was full; transport protocol aborts and refusals; diagnostic sends retried or given up; receive object rejections and timeouts |
 | DTC                    | `j1939_diag_dtc_t {spn, fmi, oc, cm}`            | J1939/73 diagnostic trouble code; 4-byte codec `j1939_diag_dtc_*()`                   |
 | Lamp status            | `j1939_diag_lamps_t`                             | MIL, red stop, amber warning, protect lamp status and flash; 2-byte codec             |
 | DM payload codec       | `j1939_diag_dm_build()`, `j1939_diag_dm_parse()` | DM1/DM2 payloads over caller buffers: lamp bytes and a DTC list, up to 1785 bytes     |
+| Receive object         | `j1939_rxobj_t`, configured by `j1939_rxobj_cfg_t` | Latest payload of one PGN from one source address in an integrator buffer, its age and state; `const` table, one state entry per object |
 | Diagnostic state       | `j1939_dm_t`, configured by `j1939_dm_cfg_t`     | Per CA, integrator storage: copies of the active and previously active DTCs and the lamps; DM1 schedule, change hold records, pending answers and clear requests |
 | TP buffer              | `j1939_tp_buf_t`                                 | Integrator storage for one multi-packet message (`J1939_CFG_TP_BUF_SIZE` bytes), for sending or reassembly |
 | TP session             | `j1939_tp_session_t`, pool of `J1939_CFG_TP_SESSIONS` in `j1939_t` | One BAM or RTS/CTS transfer in either direction; explicit state machine with its timer |
@@ -170,10 +173,11 @@ PGNs in the lists must be valid PGNs: at most 0x3FFFF, lowest byte 0 for PDU1 fo
 | Address claim state | `j1939_addr_get(&stack, ca, &address, &state)`                                            |
 | Commanded Address   | `j1939_addr_command_send(&stack, ca, name, address, da)`                                  |
 | Diagnostics         | `j1939_dm_active_set()`, `j1939_dm_prev_set()`, `j1939_dm_lamps_set()`; `j1939_dm_clear_get()` → `j1939_dm_clear_confirm()` |
+| Receive objects     | `j1939_rxobj_init(&stack, cfg, obj, len)`; `j1939_rxobj_get(&stack, index, &status)`, then decode from the object's buffer |
 
 - Execution context: every function of a stack instance runs in one context, the task or main loop that calls `j1939_process()`. The stack holds no lock. An application whose logic runs in other tasks exchanges data with the stack's task through mailboxes of its own.
 - `j1939_rx()` handles a frame during the call and reads it in place; the caller may reuse the frame afterwards. Answers the stack generates go into the tx queue, application messages into the message slots. Standard, remote and non-J1939 frames are ignored, so every frame of a shared bus may be passed.
-- `j1939_process()` advances the timers of address claiming, the transport protocol and diagnostics, and queues what is due. A timer started by a received frame or an API call between two calls counts from the next call.
+- `j1939_process()` advances the timers of address claiming, the transport protocol, diagnostics and receive objects, and queues what is due. A timer started by a received frame or an API call between two calls counts from the next call.
 - The tx queue is a FIFO over the integrator's `tx_buf`; every slot is usable. A frame stays in it until `j1939_tx_pop()`, so a frame the driver refuses is offered again by the next `j1939_tx_peek()`.
 - A received message and its data stay valid in its slot until `j1939_msg_pop()`.
 - `j1939_send()` builds a single frame immediately. A payload of 9 to `J1939_CFG_TP_BUF_SIZE` bytes is copied into a free TP transmit buffer and sent with BAM to the global address, with RTS/CTS to a specific one, PDU2 PGNs included; the BAM or RTS frame is queued at once, the data packets by `j1939_process()`. Either way the message and its data may be reused after the call.
@@ -193,7 +197,8 @@ Transport protocol (J1939/21, `src/j1939_tp.c`):
 - Sessions come from one pool of `J1939_CFG_TP_SESSIONS`, shared by both directions. Per pair of addresses there is at most one session per direction: one BAM per sender, one RTS/CTS connection per originator and responder. A second send to the same destination from the same CA returns `J1939_RET_ERR_BUSY`; no free session or transmit buffer returns `J1939_RET_ERR_FULL`.
 - Address claiming: a multi-packet send needs a `CLAIMED` CA like a single frame, else `J1939_RET_ERR_NO_ADDRESS`. CTS, EndOfMsgAck and Connection Abort go out only from a claimed address: an RTS to a CA in `CLAIMING` is not answered and the originator times out. BAM reception transmits nothing and is independent of the claim. When a CA loses its address, or moves to another one, the sessions of its old address end without Connection Abort, since the address is no longer the stack's, and are counted in `tp_tx_aborted` / `tp_rx_aborted`.
 - Received multi-packet messages reach the application through the message slots like single frames; `msg->data` points into the TP reassembly buffer. The buffer stays reserved until `j1939_msg_pop()` releases the slot. Only the stack's own context changes buffer state: a delivered buffer becomes free when its slot has been released or reused, checked when a new session needs a buffer.
-- `rx_pgns` filters the reassembled PGN. An RTS for another PGN is answered with Connection Abort (reason 250), a BAM for it is ignored.
+- `rx_pgns` and the receive objects filter the reassembled PGN: a PGN in `rx_pgns`, or one a receive object takes from the sender, is received. An RTS for another PGN is answered with Connection Abort (reason 250), a BAM for it is ignored.
+  A completed message updates its receive object whether or not a message slot is free. Unlisted in `rx_pgns`, it needs no message slot, so the responder never holds for it.
   Commanded Address (PGN 65240) is also received while a CA of the stack accepts commands; the completed message goes to address claiming, and to the application only if listed. Unlisted, it needs no message slot, so the responder never holds for it.
 - `msg->prio` of a received message is the priority of the RTS or BAM frame. The originator sends RTS, BAM and data packets with the message priority; CTS, EndOfMsgAck and Connection Abort use priority 7. `msg->da` is the responder's address for RTS/CTS and `J1939_ADDR_GLOBAL` for BAM.
 - Timers (T1 750 ms, T2 1250 ms, T3 1250 ms, T4 1050 ms, Tr 200 ms, Th 500 ms) advance only through `elapsed_us` of `j1939_process()`. A timer started by an event counts from the next call, so a timeout expires between its nominal value and one call period later.
@@ -216,7 +221,7 @@ Receive filtering in `j1939_rx()`:
    - a destination-specific Request for any other PGN is answered by the stack with a NACK (PGN 59392), sent to the global address with the requester in byte 5, as J1939/21 specifies; a CA still in its claim wait sends no NACK;
    - a global Request for any other PGN, and a Request shorter than 3 bytes, are ignored.
 4. TP.CM (PGN 60416) and TP.DT (PGN 60160) frames go to the transport protocol. Frames that are not 8 bytes long or come from address 254 or 255 are dropped. An RTS to a CA whose claim is not complete is not answered.
-5. Any other PGN in `rx_pgns` is delivered to the application; the rest are dropped.
+5. Any other PGN is stored in the receive object for its PGN and source address, if there is one, and delivered to the application if it is in `rx_pgns`; the rest are dropped.
 
 ### Address claiming (J1939/81)
 
@@ -343,6 +348,65 @@ j1939_dm_active_set(&stack, ca, dtcs, n);   /* whenever the fault set changes */
   Reasoning: clearing erases evidence of faults, which in a safety-rated system is a decision of the application's fault management (operating state, access rights, non-volatile memory), not of the protocol layer. The pull style keeps the library free of callbacks, and the time limit keeps a request that the application does not handle from staying open.
 - Not implemented: DM1 on several networks; lamp changes as a DM1 trigger; the OBD rule that DM11 is accepted only globally.
 
+### Message objects
+
+Message objects keep the protocol behaviour of application data in the stack: receive objects hold the latest payload of a PGN from one sender and supervise its timeout, transmit objects hold a payload that `j1939_process()` sends periodically, on change and on Request.
+
+```
+                        RECEIVE                                              TRANSMIT
+ CAN driver FIFO / ISR                                       application: signal values (engineering units)
+   │ native frames (j1939_port_frame_t)                         │ j1939_signal_encode() into a local payload
+   ▼                                                            ▼
+ [j1939_queue: optional, only between contexts]          j1939_txobj_set(idx, payload)      j1939_send(msg)
+   │                                                            │ copy into obj buf              │ one-off
+   ▼                                                            ▼                                │
+ j1939_rx(frame) ── filter ─┬─ protocol (claim, Request,   tx object: payload + schedule          │
+                            │   TP, DM): handled by stack       │ j1939_process(): period /        │
+                            ├─ rx object (pgn, sa):             │ change / Request due             │
+                            │   latest payload, overwritten,    ▼                                  ▼
+                            │   timeout-supervised         j1939_send() ── single frame or TP ──► tx queue (native frames)
+                            └─ message slot (rx_pgns):                                              │ j1939_tx_peek/pop
+                                FIFO of every message                                               ▼
+   ▲ TP reassembly feeds both rx objects and slots                                            CAN driver
+   │
+ application: j1939_rxobj_get() → state ok → j1939_signal_decode(sig, buf, len)
+              j1939_msg_peek() → j1939_signal_msg_decode(sig, msg)
+```
+
+- **Frames** are the integrator's native type and exist only at the edges: `j1939_rx()` reads one in place, the tx queue holds the frames the stack builds. Objects never see frames; they hold payloads, and the transport protocol splits or joins frames below them.
+- **The frame queue** (`j1939::queue`) is unrelated to objects: an optional FIFO of native frames from an interrupt to the stack's context, before `j1939_rx()`. The tx queue is the stack's own frame FIFO toward the driver.
+- **Signals** (`j1939_signal_t`) are pure codecs over a payload byte array. Objects do not reference signal descriptors: the stack moves payloads, the application or a generated service encodes and decodes them. One object carries any number of SPNs.
+- **Receive object or message slot**: a slot is a queue entry per received message, every occurrence in order, released by `j1939_msg_pop()`, and it may overflow. A receive object is the latest payload of one PGN from one sender, overwritten by each reception; it never overflows and tells whether it is current. State-like PGNs (EEC1, ET1) suit objects; event-like ones (commands, Commanded Address, diagnostic traffic that must not be missed) suit slots. A PGN may use both.
+- **Transmit object or `j1939_send()`**: `j1939_send()` sends once, now. A transmit object keeps its payload and the stack decides when to send it, through `j1939_send()`. The application writes the payload only through `j1939_txobj_set()`, so change detection sees every update. Before the first set the payload is all 0xFF, "not available" for every SPN.
+- Object tables are `const` arrays, e.g. generated, indexed by handles the generator names. Every buffer is exactly as large as the integrator declares it.
+
+#### Receive objects
+
+```c
+static uint8_t eec1_buf[8];
+static const j1939_rxobj_cfg_t rx_cfg[] = {
+	/* buf, pgn, timeout_us, buf_len, min_len, sa */
+	{eec1_buf, 0xF004U, 100000U, 8U, 8U, 0x00U},
+};
+static j1939_rxobj_t rx_obj[1];
+
+j1939_rxobj_init(&stack, rx_cfg, rx_obj, 1);
+
+j1939_rxobj_status_t st;
+if ((j1939_rxobj_get(&stack, 0, &st) == J1939_RET_OK) && (st.state == J1939_RXOBJ_VALID)) {
+	j1939_signal_decode(&sig_engine_speed, eec1_buf, st.len, &rpm, &cls);
+}
+```
+
+- An object takes one PGN from one source address (0–253). It sees what passes the stack's destination filter: global messages and those addressed to an address a CA of the stack holds.
+- `j1939_rxobj_init()` validates the whole table before changing the stack: a buffer, a valid PGN that the stack does not handle itself (Request, Address Claimed, TP.CM, TP.DT), `1 ≤ min_len ≤ buf_len ≤ J1939_CFG_TP_BUF_SIZE` and no two objects with the same PGN and source address. Every object starts in `J1939_RXOBJ_NO_DATA`. It may be called again to reset or replace the table; `j1939_init()` removes it.
+- A matching single frame, or a completed transport protocol message, is copied into the object's buffer, its age is reset, and the object becomes `J1939_RXOBJ_VALID` with `updated` set. A message in `rx_pgns` is also delivered through the message slots; the object is updated even when no slot is free.
+- A payload shorter than `min_len` or longer than `buf_len` is rejected and counted in `rxobj_rejected`. The buffer keeps the previous payload and the age keeps running, so a malformed message never hides a timeout.
+- The age advances with `elapsed_us` of `j1939_process()`, from the call after the reception, and saturates. At `timeout_us` the object becomes `J1939_RXOBJ_TIMEOUT`, counted once per timeout in `rxobj_timeout`; the buffer keeps the last payload. `timeout_us` 0 disables supervision.
+- `j1939_rxobj_get()` reports state, length, age and whether a payload arrived since the previous call, and clears that flag. The application decodes in place from its buffer: the buffer changes only during `j1939_rx()` and `j1939_process()`, in the stack's own context.
+- Memory: the state is 12 bytes per object on 32-bit and 64-bit hosts, plus the payload buffer; the configuration is `const`.
+- Senders are identified by source address. When a node loses its address, another node may claim it and its messages reach the same object.
+
 ## Development standards
 
 ### Language and rules
@@ -386,6 +450,7 @@ j1939_dm_active_set(&stack, ca, dtcs, n);   /* whenever the fault set changes */
 - Timers are tested by passing the elapsed time to `j1939_process()`, for example one call 1 µs before and one at a deadline.
 - `test_addr_command` drives Commanded Address on one stack with injected BAM and RTS/CTS transfers; `test_addr_command_exchange` lets a tool node move a target with BAM and with RTS/CTS while a monitor node watches the Address Claimed messages.
 - `test_dm` checks the DM1 period at its boundaries, change triggers and their per-DTC hold, 0, 1 and several DTCs (BAM), Request answers (single frame, BAM, RTS/CTS to the requester), the DM3/DM11 decisions and timeouts, claim gating, full tx queue and busy broadcast; `test_dm_exchange` has a diagnostic tool node parse DM1 (single frame and BAM), request DM2 (RTS/CTS and BAM) and clear with DM11.
+- `test_rxobj` checks receive objects on one stack: table validation, storage and the updated flag, sender, destination and length filtering, timeout boundaries and counting, delivery alongside `rx_pgns` with full message slots, BAM and RTS/CTS reception without a message slot; `test_rxobj_exchange` lets a display node supervise an ECU's periodic broadcast and BAM, and time out when the ECU loses its address.
 - `test_tp` drives the transport protocol of one stack with injected peer frames and checks every sent frame and timer boundary; `test_tp_exchange` runs BAM and RTS/CTS transfers of up to 1785 bytes between three stacks, with a lost packet, aborts, concurrent sessions and exhausted reassembly memory.
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Coverage with gcov/gcovr; target ≥ 90 % line coverage on the protocol core, branch coverage reported. Defensive checks against states the design rules out remain as uncovered branches.

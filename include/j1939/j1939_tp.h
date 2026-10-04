@@ -17,8 +17,9 @@
  *   (j1939_cfg_t::tp_rx_buf) and delivers complete messages through the
  *   message slots, where msg->data points into the buffer. The buffer stays
  *   reserved until the message is released with j1939_msg_pop(). Only PGNs in
- *   rx_pgns are received, and Commanded Address while a CA accepts it, see
- *   j1939_addr.h.
+ *   rx_pgns are received, PGNs a receive object takes from the sender (see
+ *   j1939_rxobj.h), and Commanded Address while a CA accepts it, see
+ *   j1939_addr.h. A message for a receive object only needs no message slot.
  * - Timers advance only through j1939_process(). A timer started by an event
  *   counts from the next j1939_process() call, so a timeout expires between
  *   its nominal value and one call period later, and the BAM packet gap is
