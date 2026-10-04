@@ -50,7 +50,11 @@
 
 /* j1939_port_lock_t: lock object embedded in each queue, typedef by the port. */
 
-/** @brief Initialises a lock object. Called once, before any other use. */
+/**
+ * @brief Initialises a lock object. Called once, before any other use.
+ *
+ * @param lock  Lock embedded in a frame queue.
+ */
 static inline void j1939_port_lock_init(j1939_port_lock_t *lock);
 
 /**
@@ -59,10 +63,16 @@ static inline void j1939_port_lock_init(j1939_port_lock_t *lock);
  * Lock and unlock must also act as compiler and memory barriers, so that
  * frame contents written before a queue update are visible to the other
  * execution context. Critical sections are short and never nested.
+ *
+ * @param lock  Lock embedded in a frame queue.
  */
 static inline void j1939_port_lock(j1939_port_lock_t *lock);
 
-/** @brief Leaves a critical section. */
+/**
+ * @brief Leaves a critical section.
+ *
+ * @param lock  Lock embedded in a frame queue.
+ */
 static inline void j1939_port_unlock(j1939_port_lock_t *lock);
 
 /** Frame queue. Members are private. */

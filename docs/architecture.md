@@ -88,7 +88,10 @@ cmake/                build helpers
                         warnings.cmake          project warning set, j1939_set_warnings()
                         instrumentation.cmake   sanitizer and coverage options
                         arm-none-eabi.cmake     Cortex-M0+ toolchain for the portability check
+                        docs.cmake              docs and docs-internal targets (J1939_BUILD_DOCS)
 docs/                 project documentation
+                        Doxyfile.in             Doxygen configuration template of both documentation builds
+                        vendor/                 vendored doxygen-awesome-css stylesheet and its license
 CMakeLists.txt        build definition
 Makefile              convenience wrapper around CMake
 cppcheck-suppressions.txt        general static analysis deviations
@@ -186,6 +189,8 @@ PGNs in the lists must be valid PGNs: at most 0x3FFFF, lowest byte 0 for PDU1 fo
 - A received message and its data stay valid in its slot until `j1939_msg_pop()`.
 - `j1939_send()` builds a single frame immediately. A payload of 9 to `J1939_CFG_TP_BUF_SIZE` bytes is copied into a free TP transmit buffer and sent with BAM to the global address, with RTS/CTS to a specific one, PDU2 PGNs included; the BAM or RTS frame is queued at once, the data packets by `j1939_process()`. Either way the message and its data may be reused after the call.
 - When the message slots or the tx queue are full, the stack drops the message or frame it generated and counts it in `j1939_stats_t`. Application sends report `J1939_RET_ERR_FULL` instead.
+
+<a id="optional-frame-queue"></a>
 
 ### Optional frame queue
 
@@ -478,6 +483,21 @@ j1939_txobj_set(&stack, 0U, payload, 8U);         /* whenever the values change 
 
 - Public declarations carry Doxygen comments.
 
+### Documentation
+
+The API reference is generated with Doxygen and Graphviz from `docs/Doxyfile.in`, together with `README.md` (main page) and `docs/*.md`.
+
+| Build    | Target               | Input                                         | Graphs                     | Warnings                     |
+| -------- | -------------------- | --------------------------------------------- | -------------------------- | ---------------------------- |
+| Public   | `make docs`          | `include/j1939/`, `README.md`, `docs/*.md`    | include and dependency     | fail the build               |
+| Internal | `make docs-internal` | public input and `src/`, with source browsing | also call and caller graphs | reported, do not fail the build |
+
+- The public build is a quality gate: every public declaration is documented, documented functions describe all their parameters, and broken references or Markdown links fail it.
+- The port and lock contracts are `static inline` declarations and appear in the public reference; `j1939_port_contract.h` has its own page.
+- `src/` comments are not in Doxygen form yet, so the internal build shows the implementation's structure, source and call graphs but not its comments; whether its warnings fail the build is the `J1939_DOCS_INTERNAL_GATE` switch in `cmake/docs.cmake`.
+- `WARN_NO_PARAMDOC` is off: Doxygen 1.9.8 reports documented parameters of declarations as missing. `WARN_IF_INCOMPLETE_DOC` checks the parameters instead.
+- The narrative documents are written for GitHub first. Doxygen anchors are global across all pages, so an in-page link needs an `<a id="...">` anchor whose name is unique in the project.
+
 ### Testing
 
 - Unity (vendored in `tests/vendor/unity/`), run through `ctest`.
@@ -521,6 +541,9 @@ Port test fixtures are test code and are not linted.
 | gcovr                | Coverage reports                                     |
 | can-utils            | Manual testing on `vcan0` (`candump`, `cansend`)     |
 | arm-none-eabi-gcc    | Compile-only portability check                       |
+| Doxygen (≥ 1.9.8)    | API reference and documentation gate                 |
+| Graphviz (dot)       | Include, dependency and call graphs of the documentation |
+| doxygen-awesome-css 2.5.0 | Documentation stylesheet, vendored in `docs/vendor/` |
 
 CMake options:
 
@@ -533,6 +556,7 @@ CMake options:
 | `J1939_COVERAGE`    | OFF                   | gcov instrumentation                                 |
 | `J1939_COMPILE_COMMANDS` | ON when top level | Writes `compile_commands.json` into the build directory |
 | `J1939_BUILD_EXAMPLES` | OFF                 | Builds the example applications (Linux only) against a SocketCAN build of the library, whatever `J1939_PORT_DIR` selects |
+| `J1939_BUILD_DOCS`  | OFF                   | Adds the `docs` and `docs-internal` targets; requires Doxygen ≥ 1.9.8 and Graphviz |
 
 clangd finds the compilation database of the `make` build in `build/` without further configuration.
 
@@ -545,6 +569,8 @@ Make targets:
 | `make coverage`     | Builds with coverage in `build-coverage/`, runs tests, fails under 90 % line coverage |
 | `make cross`        | Compiles the library and the frame queue for Cortex-M0+ in `build-arm/`  |
 | `make examples`     | Builds the SocketCAN example applications in `build-examples/`           |
+| `make docs`         | Generates the public documentation in `build-docs/public/html/`, fails on any Doxygen warning |
+| `make docs-internal` | Generates the internal documentation in `build-docs/internal/html/`     |
 | `make lint`         | cppcheck: core and mock port with the MISRA addon, SocketCAN port and examples with the general checks |
 | `make format`       | Formats all project sources                                              |
 | `make format-check` | Fails if any project source is not formatted                             |

@@ -62,16 +62,21 @@
 #define J1939_DIAG_CM_V4     0U /**< SPN conversion method 0: version 4 layout. */
 #define J1939_DIAG_CM_LEGACY 1U /**< SPN conversion method 1: versions 1-3, not converted. */
 
-/** Lamp status values. 2 is reserved. */
-#define J1939_DIAG_LAMP_OFF 0U
-#define J1939_DIAG_LAMP_ON  1U
-#define J1939_DIAG_LAMP_NA  3U
+/** @name Lamp status values
+ * 2 is reserved.
+ * @{ */
+#define J1939_DIAG_LAMP_OFF 0U /**< Lamp off. */
+#define J1939_DIAG_LAMP_ON  1U /**< Lamp on. */
+#define J1939_DIAG_LAMP_NA  3U /**< Not available. */
+/** @} */
 
-/** Lamp flash values. */
+/** @name Lamp flash values
+ * @{ */
 #define J1939_DIAG_FLASH_SLOW     0U /**< 1 Hz, 50 % duty cycle. */
 #define J1939_DIAG_FLASH_FAST     1U /**< 2 Hz or faster, 50 % duty cycle. */
 #define J1939_DIAG_FLASH_RESERVED 2U /**< Reserved. */
 #define J1939_DIAG_FLASH_OFF      3U /**< Unavailable / do not flash. */
+/** @} */
 
 #define J1939_DIAG_LAMP_MAX 3U /**< Largest 2-bit lamp status or flash value. */
 

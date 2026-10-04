@@ -1,0 +1,90 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 jkontiokoski
+
+# Doxygen configuration template, filled in by cmake/docs.cmake once for the
+# public and once for the internal documentation. Settings not listed here
+# keep the Doxygen defaults.
+
+#---------------------------------------------------------------------------
+# Project
+#---------------------------------------------------------------------------
+PROJECT_NAME           = "j1939"
+PROJECT_NUMBER         = @PROJECT_VERSION@
+PROJECT_BRIEF          = "@J1939_DOCS_BRIEF@"
+OUTPUT_DIRECTORY       = "@J1939_DOCS_OUTPUT@"
+FULL_PATH_NAMES        = YES
+STRIP_FROM_PATH        = "@PROJECT_SOURCE_DIR@"
+STRIP_FROM_INC_PATH    = "@PROJECT_SOURCE_DIR@/include"
+OPTIMIZE_OUTPUT_FOR_C  = YES
+MARKDOWN_SUPPORT       = YES
+TOC_INCLUDE_HEADINGS   = 3
+
+#---------------------------------------------------------------------------
+# What is extracted
+#---------------------------------------------------------------------------
+EXTRACT_ALL            = NO
+# The port and lock contracts are static inline functions of the public API.
+EXTRACT_STATIC         = YES
+INTERNAL_DOCS          = @J1939_DOCS_INTERNAL@
+SOURCE_BROWSER         = @J1939_DOCS_INTERNAL@
+REFERENCED_BY_RELATION = @J1939_DOCS_INTERNAL@
+REFERENCES_RELATION    = @J1939_DOCS_INTERNAL@
+VERBATIM_HEADERS       = YES
+SHOW_USED_FILES        = YES
+SORT_MEMBER_DOCS       = NO
+
+#---------------------------------------------------------------------------
+# Warnings: the documentation is a quality gate
+#---------------------------------------------------------------------------
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_IF_INCOMPLETE_DOC = YES
+# Doxygen 1.9.8 reports documented parameters of declarations as missing.
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = @J1939_DOCS_WARN_AS_ERROR@
+
+#---------------------------------------------------------------------------
+# Input
+#---------------------------------------------------------------------------
+INPUT                  = @J1939_DOCS_INPUT@
+FILE_PATTERNS          = *.h *.c *.md
+RECURSIVE              = NO
+USE_MDFILE_AS_MAINPAGE = "@PROJECT_SOURCE_DIR@/README.md"
+IMAGE_PATH             = "@PROJECT_SOURCE_DIR@/docs"
+
+#---------------------------------------------------------------------------
+# Preprocessor
+#---------------------------------------------------------------------------
+ENABLE_PREPROCESSING   = YES
+SEARCH_INCLUDES        = YES
+INCLUDE_PATH           = "@PROJECT_SOURCE_DIR@/include"
+
+#---------------------------------------------------------------------------
+# HTML output, styled with doxygen-awesome-css (docs/vendor)
+#---------------------------------------------------------------------------
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_TREEVIEW      = YES
+DISABLE_INDEX          = NO
+FULL_SIDEBAR           = NO
+HTML_COLORSTYLE        = LIGHT
+HTML_EXTRA_STYLESHEET  = "@PROJECT_SOURCE_DIR@/docs/vendor/doxygen-awesome-css/doxygen-awesome.css"
+SEARCHENGINE           = YES
+GENERATE_LATEX         = NO
+
+#---------------------------------------------------------------------------
+# Graphs (Graphviz)
+#---------------------------------------------------------------------------
+HAVE_DOT               = YES
+DOT_PATH               = "@J1939_DOCS_DOT_PATH@"
+DOT_IMAGE_FORMAT       = svg
+INCLUDE_GRAPH          = YES
+INCLUDED_BY_GRAPH      = YES
+CLASS_GRAPH            = YES
+COLLABORATION_GRAPH    = YES
+DIRECTORY_GRAPH        = YES
+CALL_GRAPH             = @J1939_DOCS_INTERNAL@
+CALLER_GRAPH           = @J1939_DOCS_INTERNAL@
+DOT_GRAPH_MAX_NODES    = 100

@@ -53,7 +53,7 @@ The library ignores frames for which `is_ext` is `false` or `is_rtr` is `true`.
 
 ### Contract check
 
-The library includes the target header only through `include/j1939/j1939_port_contract.h`, which repeats every required declaration.
+The library includes the target header only through [`include/j1939/j1939_port_contract.h`](../include/j1939/j1939_port_contract.h), which repeats every required declaration. The API reference page of j1939_port_contract.h documents each function.
 A definition with a different signature fails with "conflicting types"; a missing definition fails with "declared static but never defined".
 
 ## Moving frames
@@ -84,7 +84,7 @@ while ((f = j1939_tx_peek(&stack)) != NULL) {
 }
 ```
 
-A driver without a frame FIFO of its own, typically on bare metal, can use the optional frame queue between its interrupt and the stack's context, see [Optional frame queue](#optional-frame-queue).
+A driver without a frame FIFO of its own, typically on bare metal, can use the optional frame queue between its interrupt and the stack's context, see [Optional frame queue](#porting-frame-queue).
 
 ## The main loop
 
@@ -104,6 +104,8 @@ Sizing the buffers:
 - The driver's receive FIFO: the frames that can arrive during one cycle. As a responder the stack asks for all remaining packets of an RTS/CTS transfer in one CTS, up to the originator's packets-per-CTS limit, and they arrive back to back: at 250 kbit/s about 1800 frames per second, so up to 255 frames in 140 ms. A packet the driver loses ends the connection with Connection Abort (bad sequence number).
 - tx queue (`tx_buf`): the largest burst the stack generates in one cycle, a CTS window of data packets when it sends with RTS/CTS. Packets that do not fit are sent as the queue drains, within Tr (200 ms).
 - TP buffers: `j1939_tp_buf_t` takes `J1939_CFG_TP_BUF_SIZE` bytes plus a few bytes of bookkeeping. A microcontroller that never handles 1785 byte messages lowers it with `-DJ1939_CONFIG_FILE`.
+
+<a id="porting-frame-queue"></a>
 
 ## Optional frame queue
 

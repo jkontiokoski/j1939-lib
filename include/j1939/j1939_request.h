@@ -36,11 +36,13 @@
 #define J1939_REQUEST_LEN 3U /**< Payload length of a Request. */
 #define J1939_ACK_LEN     8U /**< Payload length of an Acknowledgement. */
 
-/** Acknowledgement control byte values. */
-#define J1939_ACK_CTRL_ACK            0U
-#define J1939_ACK_CTRL_NACK           1U
-#define J1939_ACK_CTRL_ACCESS_DENIED  2U
-#define J1939_ACK_CTRL_CANNOT_RESPOND 3U
+/** @name Acknowledgement control byte values
+ * @{ */
+#define J1939_ACK_CTRL_ACK            0U /**< Positive acknowledgement. */
+#define J1939_ACK_CTRL_NACK           1U /**< Negative acknowledgement. */
+#define J1939_ACK_CTRL_ACCESS_DENIED  2U /**< Access denied. */
+#define J1939_ACK_CTRL_CANNOT_RESPOND 3U /**< Cannot respond. */
+/** @} */
 
 /**
  * @brief Queues a Request for @p pgn.

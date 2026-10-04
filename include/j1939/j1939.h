@@ -26,9 +26,9 @@
 #include "j1939/j1939_tp.h"
 #include "j1939/j1939_txobj.h"
 
-#define J1939_VERSION_MAJOR 0
-#define J1939_VERSION_MINOR 1
-#define J1939_VERSION_PATCH 0
+#define J1939_VERSION_MAJOR 0 /**< Major version: incompatible API changes. */
+#define J1939_VERSION_MINOR 1 /**< Minor version: compatible additions. */
+#define J1939_VERSION_PATCH 0 /**< Patch version: compatible fixes. */
 
 /** Version packed as 0x00MMmmpp (major, minor, patch). */
 #define J1939_VERSION                                                                   \
