@@ -29,6 +29,9 @@ CPPCHECK_FLAGS = --std=c99 --enable=all --inconclusive --error-exitcode=1 --inli
 LINT_DIR := $(BUILD_ROOT)/lint
 # A reported finding: <file>:<line>:<column>: <severity>: ...
 LINT_FINDING := ^[^ ]+:[0-9]+:[0-9]+: (error|warning|style|performance|portability|information):
+# Markdown files whose relative links are checked; files left out of the source archive are
+# checked only where they exist.
+LINK_FILES = $(wildcard README.md CONTRIBUTING.md RELEASING.md docs/*.md)
 
 # $(call cppcheck_run,<report name>,<arguments>): runs cppcheck, keeps its output in
 # $(LINT_DIR)/<report name>.txt and fails on its exit code or on any reported finding. cppcheck
@@ -109,6 +112,8 @@ lint:
 		-I include -I port/socketcan -i port/socketcan/j1939_port_fixture.c port/socketcan)
 	$(call cppcheck_run,examples,-I include -I port/socketcan -I examples/common \
 		examples/common examples/addr_claim_demo examples/pgn_listener examples/bam_sender)
+	sh tools/check-links.sh $(LINK_FILES) > $(LINT_DIR)/links.txt 2>&1; \
+		status=$$?; cat $(LINT_DIR)/links.txt; [ $$status -eq 0 ]
 
 clean:
 	rm -rf $(BUILD_ROOT)
