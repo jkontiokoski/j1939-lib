@@ -54,7 +54,25 @@ if ((j1939_rxobj_get(&stack, RX_PUMP, &st) == J1939_RET_OK) && (st.state == J193
 
 - `st.updated` tells whether a new payload arrived since the previous `j1939_rxobj_get()`.
 - Choose `timeout_us` as a few periods of the PGN, typically three to five; 0 disables supervision.
-- An object is bound to a source address. When a node loses its address, the node that claims it next reaches the same object; check the NAME behind an address where that matters.
+- An object bound to a source address takes whatever node holds that address: when a node loses it, the node that claims it next reaches the same object.
+
+### Follow a node by NAME
+
+Set `name` instead of `sa` to receive a PGN from one node wherever it is on the bus. The object then takes the PGN from the address the [NAME table](addressing.md) records for that NAME, and keeps receiving when the node moves to another address:
+
+```c
+static j1939_names_entry_t names[16];
+static const j1939_rxobj_cfg_t pump_by_name = {
+	.buf = pump_buf, .buf_len = 8U, .min_len = 8U, .pgn = 0xFF20U,
+	.timeout_us = 500000U, .name = PUMP_NAME,          /* NAME of the pump controller */
+};
+
+j1939_names_init(&stack, names, 16U);                    /* before j1939_rxobj_init() */
+j1939_rxobj_init(&stack, &pump_by_name, &pump_obj, 1U);
+```
+
+- While the NAME has no address, or before the table has learned it, nothing reaches the object and its timeout runs as usual.
+- A table can mix objects bound by address and by NAME; a message that matches one of each updates both.
 
 ## Transmit objects
 
