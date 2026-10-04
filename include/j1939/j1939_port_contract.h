@@ -4,6 +4,18 @@
 /**
  * @file j1939_port_contract.h
  * @brief The API a port provides in its j1939_target.h.
+ */
+
+#ifndef J1939_PORT_CONTRACT_H
+#define J1939_PORT_CONTRACT_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "j1939_target.h"
+
+/**
+ * @addtogroup grp_port
  *
  * A port is a directory with a header named j1939_target.h, selected at
  * build time with the J1939_PORT_DIR CMake option. The library includes that
@@ -25,15 +37,9 @@
  *
  * Accessors run in the stack's execution context and must not block. The
  * porting guide, docs/porting.md, shows complete ports.
+ *
+ * @{
  */
-
-#ifndef J1939_PORT_CONTRACT_H
-#define J1939_PORT_CONTRACT_H
-
-#include <stdbool.h>
-#include <stdint.h>
-
-#include "j1939_target.h"
 
 /* j1939_port_frame_t: the integrator's native CAN frame type, typedef by the port. */
 
@@ -89,5 +95,7 @@ static inline const uint8_t *j1939_port_frame_data(const j1939_port_frame_t *f);
  */
 static inline void j1939_port_frame_build(j1939_port_frame_t *f, uint32_t id29, const uint8_t *data,
                                           uint8_t len);
+
+/** @} */
 
 #endif /* J1939_PORT_CONTRACT_H */

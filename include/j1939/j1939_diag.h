@@ -4,6 +4,17 @@
 /**
  * @file j1939_diag.h
  * @brief J1939/73 diagnostic message codec: DTCs, lamp status, DM1 and DM2.
+ */
+
+#ifndef J1939_DIAG_H
+#define J1939_DIAG_H
+
+#include <stdint.h>
+
+#include "j1939/j1939_ret.h"
+
+/**
+ * @addtogroup grp_diag_codec
  *
  * DM1 (active DTCs) and DM2 (previously active DTCs) share one payload layout:
  *
@@ -32,14 +43,9 @@
  * DM3 and DM11 carry no payload: they are sent as a Request for their PGN.
  *
  * All functions are pure.
+ *
+ * @{
  */
-
-#ifndef J1939_DIAG_H
-#define J1939_DIAG_H
-
-#include <stdint.h>
-
-#include "j1939/j1939_ret.h"
 
 #define J1939_PGN_DM1  0xFECAU /**< Active diagnostic trouble codes. */
 #define J1939_PGN_DM2  0xFECBU /**< Previously active diagnostic trouble codes. */
@@ -188,5 +194,7 @@ j1939_ret_t j1939_diag_dm_build(const j1939_diag_lamps_t *lamps, const j1939_dia
  */
 j1939_ret_t j1939_diag_dm_parse(const uint8_t *data, uint16_t len, j1939_diag_lamps_t *lamps,
                                 j1939_diag_dtc_t *dtcs, uint16_t dtcs_len, uint16_t *dtc_count);
+
+/** @} */
 
 #endif /* J1939_DIAG_H */

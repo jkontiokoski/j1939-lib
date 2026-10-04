@@ -4,6 +4,18 @@
 /**
  * @file j1939_signal.h
  * @brief Signal (SPN) access: J1939/71 conventions and the J1939DA schema.
+ */
+
+#ifndef J1939_SIGNAL_H
+#define J1939_SIGNAL_H
+
+#include <stdint.h>
+
+#include "j1939/j1939_msg.h"
+#include "j1939/j1939_ret.h"
+
+/**
+ * @addtogroup grp_signal
  *
  * A signal is described by a @ref j1939_signal_t descriptor: plain `const`
  * data supplied by the integrator, typically one table per project built
@@ -50,15 +62,9 @@
  * Every function taking a descriptor validates it first, as
  * j1939_signal_check() does, and fails with J1939_RET_ERR_ARG if it is
  * invalid. A valid descriptor guarantees that scaling cannot overflow.
+ *
+ * @{
  */
-
-#ifndef J1939_SIGNAL_H
-#define J1939_SIGNAL_H
-
-#include <stdint.h>
-
-#include "j1939/j1939_msg.h"
-#include "j1939/j1939_ret.h"
 
 #define J1939_SPN_MAX         0x7FFFFU /**< Largest 19-bit SPN. */
 #define J1939_SIGNAL_BITS_MAX 32U      /**< Longest signal, in bits. */
@@ -278,5 +284,7 @@ j1939_ret_t j1939_signal_indicator_set(const j1939_signal_t *sig, uint8_t *data,
  */
 j1939_ret_t j1939_signal_msg_decode(const j1939_signal_t *sig, const j1939_msg_t *msg,
                                     int64_t *value, j1939_signal_class_t *cls);
+
+/** @} */
 
 #endif /* J1939_SIGNAL_H */

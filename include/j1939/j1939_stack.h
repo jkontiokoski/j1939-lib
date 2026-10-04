@@ -4,20 +4,6 @@
 /**
  * @file j1939_stack.h
  * @brief J1939 stack instance: one per CAN bus.
- *
- * Data flow:
- *
- * 1. The integrator passes each received frame to j1939_rx(). Protocol frames
- *    are handled by the stack; application messages are stored in the
- *    message slots.
- * 2. j1939_process() advances the stack's timers.
- * 3. The application reads messages with j1939_msg_peek() and releases them
- *    with j1939_msg_pop().
- * 4. j1939_send() and the stack itself put frames into the tx queue, which
- *    the integrator drains with j1939_tx_peek() and j1939_tx_pop().
- *
- * All functions of a stack instance run in one execution context. All
- * memory is supplied by the integrator through j1939_cfg_t.
  */
 
 #ifndef J1939_STACK_H
@@ -32,6 +18,43 @@
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_ring.h"
 #include "j1939/j1939_tp.h"
+
+/**
+ * @addtogroup grp_stack
+ *
+ * One stack instance runs one CAN bus. Data flows through it in four steps:
+ *
+ * 1. The integrator passes each received frame to j1939_rx(). Protocol frames
+ *    are handled by the stack; application messages are stored in the message
+ *    slots and the receive objects.
+ * 2. j1939_process() advances the stack's timers and queues what is due.
+ * 3. The application reads messages with j1939_msg_peek() and releases them
+ *    with j1939_msg_pop().
+ * 4. j1939_send() and the stack itself put frames into the tx queue, which
+ *    the integrator drains with j1939_tx_peek() and j1939_tx_pop().
+ *
+ * j1939_rx() sorts each frame in this order:
+ *
+ * 1. Standard (11-bit) frames, remote frames and frames with the extended
+ *    data page bit set are dropped.
+ * 2. Address Claimed goes to address claiming whatever its destination, see
+ *    @ref grp_addr, and to the application too if its PGN is in rx_pgns.
+ * 3. Frames to an address that no CA of the stack holds are dropped; frames
+ *    to the global address pass.
+ * 4. A Request goes to the Request handling, see @ref grp_request.
+ * 5. TP.CM and TP.DT frames go to the transport protocol, see @ref grp_tp.
+ * 6. Any other frame updates the receive object for its PGN and source
+ *    address, if there is one (@ref grp_rxobj), and is delivered to the
+ *    application if its PGN is in rx_pgns. The rest is dropped.
+ *
+ * All functions of a stack instance run in one execution context. All memory
+ * is supplied by the integrator through j1939_cfg_t. When the message slots
+ * or the tx queue are full, the stack drops the message or frame it generated
+ * and counts it in j1939_stats_t; application sends report J1939_RET_ERR_FULL
+ * instead.
+ *
+ * @{
+ */
 
 /** Storage for one received message. Allocated by the integrator, members are private. */
 typedef struct j1939_msg_slot {
@@ -73,7 +96,7 @@ typedef uint8_t j1939_ca_id_t;
 #define J1939_ADDR_SELF_CFG_MAX 247U /**< Last self-configurable address. */
 #define J1939_ADDR_TAKEN_LEN    15U  /**< Bytes of the self-configurable address bitmap. */
 
-/** Address claim state of a Controller Application (J1939/81). */
+/** Address claim state of a Controller Application (J1939/81). @ingroup grp_addr */
 typedef enum j1939_addr_state {
 	J1939_ADDR_STATE_UNCLAIMED = 0, /**< Address Claimed not sent yet; no address. */
 	J1939_ADDR_STATE_CLAIMING,      /**< Address Claimed sent, contention wait running. */
@@ -268,5 +291,7 @@ j1939_ret_t j1939_send(j1939_t *s, j1939_ca_id_t ca, const j1939_msg_t *msg);
 
 /** @return Event counters, or NULL if @p s is NULL. */
 const j1939_stats_t *j1939_stats_get(const j1939_t *s);
+
+/** @} */
 
 #endif /* J1939_STACK_H */

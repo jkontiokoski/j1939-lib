@@ -11,6 +11,11 @@
 
 #include <stdint.h>
 
+/**
+ * @addtogroup grp_stack
+ * @{
+ */
+
 #define J1939_MSG_SINGLE_FRAME_MAX 8U /**< Largest payload sent in one CAN frame. */
 
 /** A J1939 message, independent of how it travels on the bus. */
@@ -22,5 +27,7 @@ typedef struct j1939_msg {
 	uint16_t len;        /**< Payload length in bytes. */
 	const uint8_t *data; /**< Payload; may be NULL when len is 0. */
 } j1939_msg_t;
+
+/** @} */
 
 #endif /* J1939_MSG_H */
