@@ -13,6 +13,11 @@ COV_DIR    := $(BUILD_ROOT)/coverage
 
 COVERAGE_MIN := 90
 
+# Optional directory for machine-readable reports: JUnit results of test and coverage, the
+# coverage report as text and HTML. Unset, the targets only print their results.
+REPORT_DIR ?=
+REPORT_ABS  = $(abspath $(REPORT_DIR))
+
 EXAMPLES := addr_claim_demo pgn_listener bam_sender
 
 FORMAT_FILES = $(shell find include src tests port examples \
@@ -35,7 +40,8 @@ define cppcheck_run
 		if [ $$status -ne 0 ] || grep -Eq '$(LINT_FINDING)' $(LINT_DIR)/$(1).txt; then exit 1; fi
 endef
 
-.PHONY: all lib test coverage cross examples docs docs-internal check format format-check lint clean
+.PHONY: all lib test coverage cross examples docs docs-internal check dist format format-check lint \
+	clean
 
 all: lib
 
@@ -46,14 +52,18 @@ lib:
 test:
 	$(CMAKE) --preset test
 	$(CMAKE) --build --preset test
-	$(CTEST) --preset test
+	$(if $(REPORT_DIR),mkdir -p $(REPORT_ABS))
+	$(CTEST) --preset test $(if $(REPORT_DIR),--output-junit $(REPORT_ABS)/test-junit.xml)
 
 coverage:
 	$(CMAKE) --preset coverage
 	$(CMAKE) --build --preset coverage
-	$(CTEST) --preset coverage
+	$(if $(REPORT_DIR),mkdir -p $(REPORT_ABS)/coverage)
+	$(CTEST) --preset coverage $(if $(REPORT_DIR),--output-junit $(REPORT_ABS)/coverage-junit.xml)
 	gcovr --root . --object-directory $(COV_DIR) --filter src/ --filter include/ \
-		--txt --txt-summary --fail-under-line $(COVERAGE_MIN)
+		--txt $(if $(REPORT_DIR),$(REPORT_ABS)/coverage.txt) --txt-summary \
+		$(if $(REPORT_DIR),--html-details $(REPORT_ABS)/coverage/index.html) \
+		--fail-under-line $(COVERAGE_MIN)
 
 cross:
 	$(CMAKE) --preset arm
@@ -80,6 +90,10 @@ check:
 	$(MAKE) cross
 	$(MAKE) docs
 	$(MAKE) docs-internal
+
+# Release artifacts of the current commit in build/dist/; see RELEASING.md.
+dist:
+	sh tools/dist.sh
 
 format:
 	clang-format -i $(FORMAT_FILES)
