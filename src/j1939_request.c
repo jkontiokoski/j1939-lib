@@ -10,6 +10,7 @@
 #include "j1939_addr_priv.h"
 #include "j1939_dm_priv.h"
 #include "j1939_stack_priv.h"
+#include "j1939_txobj_priv.h"
 
 #define BYTE_MASK         0xFFU
 #define BYTE_SHIFT        8U
@@ -60,6 +61,8 @@ void j1939_request_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t 
 			j1939_addr_request_handle(s, da);
 		} else if (j1939_dm_request_handle(s, id, pgn)) {
 			/* Diagnostic message answered by the stack. */
+		} else if (j1939_txobj_request_handle(s, id, pgn)) {
+			/* Transmit object answered by the stack. */
 		} else if (j1939_stack_pgn_listed(s->req_pgns, s->req_pgns_len, pgn)) {
 			j1939_stack_deliver(s, id, data, len);
 		} else if ((da != J1939_ADDR_GLOBAL) && j1939_addr_claimed(s, da)) {
