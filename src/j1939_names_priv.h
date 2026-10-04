@@ -40,6 +40,17 @@ void j1939_names_claimed(j1939_t *s, uint64_t name, uint8_t address);
 void j1939_names_cannot_claim(j1939_t *s, uint64_t name);
 
 /**
+ * @brief Notes that the stack sent a global Request for Address Claimed.
+ *
+ * Its answers fill the table as the startup Request would, so the startup
+ * Request is no longer due: after a CA's request before claim, after a
+ * Request of the application, and after the startup Request itself.
+ *
+ * @param s  Stack.
+ */
+void j1939_names_global_request(j1939_t *s);
+
+/**
  * @brief Sends the pending Requests for Address Claimed and advances the hold timer.
  * @param s           Stack.
  * @param elapsed_us  Time since the previous j1939_process(), in microseconds.

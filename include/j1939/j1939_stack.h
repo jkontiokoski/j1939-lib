@@ -88,6 +88,8 @@ typedef struct j1939_ca_cfg {
 	uint64_t name;   /**< NAME, see j1939_name.h. Must be unique on the network. */
 	/** true: another node may move the CA with Commanded Address, see j1939_addr.h. */
 	bool accept_commanded;
+	/** true: ask for the other nodes' claims before claiming, see j1939_addr.h. */
+	bool request_before_claim;
 } j1939_ca_cfg_t;
 
 /** Handle of a Controller Application within its stack. */
@@ -103,18 +105,21 @@ typedef enum j1939_addr_state {
 	J1939_ADDR_STATE_CLAIMING,      /**< Address Claimed sent, contention wait running. */
 	J1939_ADDR_STATE_CLAIMED,       /**< Address claimed; the CA may transmit. */
 	J1939_ADDR_STATE_CANNOT_CLAIM,  /**< No address; Cannot Claim sent or pending. */
+	J1939_ADDR_STATE_REQUESTING,    /**< No address; collecting claims before claiming. */
 } j1939_addr_state_t;
 
 /** Controller Application state. Members are private. */
 typedef struct j1939_ca {
-	uint64_t name;             /**< NAME. */
-	j1939_addr_state_t state;  /**< Address claim state. */
-	uint32_t timer_us;         /**< Contention wait or Cannot Claim delay left. */
-	bool timer_fresh;          /**< timer_us started since the last j1939_process(). */
-	uint8_t address;           /**< Address held or being claimed; J1939_ADDR_NULL if none. */
+	uint64_t name;            /**< NAME. */
+	j1939_addr_state_t state; /**< Address claim state. */
+	uint32_t timer_us; /**< Pre-claim wait, contention wait or Cannot Claim delay left. */
+	bool timer_fresh;  /**< timer_us started since the last j1939_process(). */
+	uint8_t address;   /**< Address held or being claimed; J1939_ADDR_NULL if none. */
 	bool cannot_claim_pending; /**< A Cannot Claim is sent when timer_us expires. */
 	bool accept_commanded;     /**< See j1939_ca_cfg_t. */
 	uint8_t commanded;         /**< Commanded Address to apply; J1939_ADDR_NULL if none. */
+	bool preclaim_sent;        /**< REQUESTING: the Request for Address Claimed is queued. */
+	bool preferred_taken;      /**< REQUESTING: another node claimed the preferred address. */
 } j1939_ca_t;
 
 /** Event counters. */

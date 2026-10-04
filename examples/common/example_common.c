@@ -107,6 +107,9 @@ const char *example_state_name(j1939_addr_state_t state) {
 	case J1939_ADDR_STATE_CANNOT_CLAIM:
 		name = "CANNOT_CLAIM";
 		break;
+	case J1939_ADDR_STATE_REQUESTING:
+		name = "REQUESTING";
+		break;
 	default:
 		break;
 	}

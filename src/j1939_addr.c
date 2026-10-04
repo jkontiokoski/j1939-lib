@@ -14,6 +14,7 @@
 
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_name.h"
+#include "j1939/j1939_request.h"
 #include "j1939_addr_priv.h"
 #include "j1939_names_priv.h"
 #include "j1939_stack_priv.h"
@@ -22,6 +23,8 @@
 #define CLAIM_PRIO     6U    /**< Priority of Address Claimed and Cannot Claim. */
 #define CA_ADDRESS_MAX 0xFDU /**< Highest address a CA can hold (253). */
 #define BITS_PER_BYTE  8U    /**< Bits per byte of the taken-address bitmap. */
+#define REQ_BYTE_MASK  0xFFU /**< Byte of a PGN in a Request payload. */
+#define REQ_BYTE_SHIFT 8U    /**< Bits per byte of a PGN in a Request payload. */
 
 /**
  * @brief Tells whether an address is in the self-configurable range 128..247.
@@ -296,19 +299,89 @@ static bool timer_expired(j1939_ca_t *ca, uint32_t elapsed_us) {
 	return expired;
 }
 
+/**
+ * @brief Queues the global Request for Address Claimed of a CA in REQUESTING.
+ *
+ * The CA has no address, so the Request goes out from J1939_ADDR_NULL. The
+ * stack's own CAs answer it as every other node does.
+ *
+ * @param s   Stack.
+ * @param ca  Handle of the requesting CA.
+ * @return J1939_RET_OK, or J1939_RET_ERR_FULL if the tx queue is full.
+ */
+static j1939_ret_t preclaim_request(j1939_t *s, j1939_ca_id_t ca) {
+	const uint32_t pgn = J1939_PGN_ADDRESS_CLAIMED;
+	const uint8_t data[J1939_REQUEST_LEN] = {
+	        (uint8_t)(pgn & REQ_BYTE_MASK), (uint8_t)((pgn >> REQ_BYTE_SHIFT) & REQ_BYTE_MASK),
+	        (uint8_t)((pgn >> (2U * REQ_BYTE_SHIFT)) & REQ_BYTE_MASK)};
+	const j1939_msg_t msg = {J1939_PGN_REQUEST, J1939_PRIO_DEFAULT,          0U,
+	                         J1939_ADDR_GLOBAL, (uint16_t)J1939_REQUEST_LEN, data};
+
+	return j1939_addr_request_send(s, ca, &msg);
+}
+
+/**
+ * @brief Ends the wait of a CA in REQUESTING and starts its claim.
+ *
+ * An accepted Commanded Address is claimed as commanded. Otherwise the CA
+ * claims its preferred address, or a free self-configurable address instead
+ * if another node claimed the preferred one and the NAME is arbitrary
+ * address capable.
+ *
+ * @param s   Stack.
+ * @param ca  CA whose wait has run out.
+ */
+static void preclaim_end(j1939_t *s, j1939_ca_t *ca) {
+	ca->state = J1939_ADDR_STATE_UNCLAIMED;
+	if (!command_apply(s, ca)) {
+		if (ca->preferred_taken && j1939_name_arbitrary_address(ca->name)) {
+			uint8_t next = address_select(s);
+
+			if (next != J1939_ADDR_NULL) {
+				ca->address = next;
+			}
+		}
+		claim_start(s, ca);
+	}
+}
+
+/**
+ * @brief Runs the REQUESTING state of a CA: sends its Request, then waits.
+ * @param s           Stack.
+ * @param id          Handle of the CA.
+ * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
+ */
+static void preclaim_tick(j1939_t *s, j1939_ca_id_t id, uint32_t elapsed_us) {
+	j1939_ca_t *ca = &s->ca[id];
+
+	if (!ca->preclaim_sent) {
+		if (preclaim_request(s, id) == J1939_RET_OK) {
+			ca->preclaim_sent = true;
+			timer_start(ca, J1939_ADDR_PRECLAIM_WAIT_US);
+		}
+	} else if (timer_expired(ca, elapsed_us)) {
+		preclaim_end(s, ca);
+	} else {
+		/* Collecting the answers. */
+	}
+}
+
 void j1939_addr_init(j1939_t *s) {
 	(void)memset(s->addr_taken, 0, sizeof(s->addr_taken));
 }
 
 void j1939_addr_ca_init(j1939_ca_t *ca, const j1939_ca_cfg_t *cfg) {
 	ca->name = cfg->name;
-	ca->state = J1939_ADDR_STATE_UNCLAIMED;
+	ca->state = cfg->request_before_claim ? J1939_ADDR_STATE_REQUESTING
+	                                      : J1939_ADDR_STATE_UNCLAIMED;
 	ca->timer_us = 0U;
 	ca->timer_fresh = false;
 	ca->address = cfg->address;
 	ca->cannot_claim_pending = false;
 	ca->accept_commanded = cfg->accept_commanded;
 	ca->commanded = J1939_ADDR_NULL;
+	ca->preclaim_sent = false;
+	ca->preferred_taken = false;
 }
 
 void j1939_addr_process(j1939_t *s, uint32_t elapsed_us) {
@@ -330,6 +403,9 @@ void j1939_addr_process(j1939_t *s, uint32_t elapsed_us) {
 			break;
 		case J1939_ADDR_STATE_CLAIMED:
 			(void)command_apply(s, ca);
+			break;
+		case J1939_ADDR_STATE_REQUESTING:
+			preclaim_tick(s, i, elapsed_us);
 			break;
 		case J1939_ADDR_STATE_CANNOT_CLAIM:
 			if (!command_apply(s, ca) && ca->cannot_claim_pending &&
@@ -390,13 +466,18 @@ void j1939_addr_claim_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8
 			j1939_ca_t *ca = &s->ca[i];
 
 			/* The CA's own NAME is its own claim, e.g. from a driver with loopback. */
-			if (held(ca) && (ca->address == sa) && (ca->name != name)) {
+			if ((ca->state == J1939_ADDR_STATE_REQUESTING) && (ca->address == sa) &&
+			    (ca->name != name)) {
+				ca->preferred_taken = true;
+			} else if (held(ca) && (ca->address == sa) && (ca->name != name)) {
 				if (j1939_name_compare(ca->name, name) < 0) {
 					claim_repeat(s, ca);
 				} else {
 					taken_set(s, sa);
 					address_lost(s, ca);
 				}
+			} else {
+				/* Another address, or the CA's own claim. */
 			}
 		}
 		if (!j1939_addr_held(s, sa)) {
@@ -451,6 +532,9 @@ void j1939_addr_request_handle(j1939_t *s, uint8_t da) {
 			case J1939_ADDR_STATE_UNCLAIMED:
 				/* The claim goes out with the next j1939_process(). */
 				break;
+			case J1939_ADDR_STATE_REQUESTING:
+				/* No address yet: nothing to answer with. */
+				break;
 			case J1939_ADDR_STATE_CLAIMING:
 			case J1939_ADDR_STATE_CLAIMED:
 				claim_repeat(s, ca);
@@ -480,6 +564,9 @@ j1939_ret_t j1939_addr_request_send(j1939_t *s, j1939_ca_id_t ca, const j1939_ms
 		if (ret == J1939_RET_OK) {
 			/* The requester answers its own Request, as every other node does. */
 			j1939_addr_request_handle(s, msg->da);
+			if (msg->da == J1939_ADDR_GLOBAL) {
+				j1939_names_global_request(s);
+			}
 		}
 	}
 	return ret;

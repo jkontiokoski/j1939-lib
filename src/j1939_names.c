@@ -142,7 +142,9 @@ static bool names_lookup(const j1939_t *s, uint8_t address, uint64_t *name) {
 /**
  * @brief Chooses the CA that sends the global Request after j1939_names_init().
  *
- * The one place that decides whether the startup Request is due.
+ * The startup Request is due from the first CA that has claimed, unless a
+ * global Request for Address Claimed went out first, see
+ * j1939_names_global_request().
  *
  * @param s   Stack.
  * @param ca  The sending CA. Written only when the Request is due.
@@ -228,6 +230,10 @@ void j1939_names_cannot_claim(j1939_t *s, uint64_t name) {
 	if ((s->names.buf != NULL) && !names_own(s, name)) {
 		names_record(s, name, J1939_ADDR_NULL);
 	}
+}
+
+void j1939_names_global_request(j1939_t *s) {
+	s->names.startup_due = false;
 }
 
 void j1939_names_process(j1939_t *s, uint32_t elapsed_us) {
