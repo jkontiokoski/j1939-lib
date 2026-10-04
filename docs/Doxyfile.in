@@ -28,7 +28,6 @@ TOC_INCLUDE_HEADINGS   = 3
 EXTRACT_ALL            = NO
 # The port and lock contracts are static inline functions of the public API.
 EXTRACT_STATIC         = YES
-INTERNAL_DOCS          = @J1939_DOCS_INTERNAL@
 SOURCE_BROWSER         = @J1939_DOCS_INTERNAL@
 REFERENCED_BY_RELATION = @J1939_DOCS_INTERNAL@
 REFERENCES_RELATION    = @J1939_DOCS_INTERNAL@
@@ -46,7 +45,7 @@ WARN_IF_DOC_ERROR      = YES
 WARN_IF_INCOMPLETE_DOC = YES
 # Doxygen 1.9.8 reports documented parameters of declarations as missing.
 WARN_NO_PARAMDOC       = NO
-WARN_AS_ERROR          = @J1939_DOCS_WARN_AS_ERROR@
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
 
 #---------------------------------------------------------------------------
 # Input
@@ -55,7 +54,6 @@ INPUT                  = @J1939_DOCS_INPUT@
 FILE_PATTERNS          = *.h *.c *.md
 RECURSIVE              = NO
 USE_MDFILE_AS_MAINPAGE = "@J1939_DOCS_ROOT@/README.md"
-IMAGE_PATH             = "@J1939_DOCS_ROOT@/docs"
 
 #---------------------------------------------------------------------------
 # Preprocessor

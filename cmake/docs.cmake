@@ -6,9 +6,6 @@
 #   docs-internal  adds the implementation, with call and caller graphs
 # Both are generated from docs/Doxyfile.in.
 
-# The internal documentation fails on warnings, as the public one does.
-set(J1939_DOCS_INTERNAL_GATE ON)
-
 find_package(Doxygen 1.9.8 COMPONENTS dot)
 if(NOT DOXYGEN_FOUND OR NOT TARGET Doxygen::dot)
 	message(FATAL_ERROR "J1939_BUILD_DOCS needs Doxygen >= 1.9.8 and Graphviz (dot)")
@@ -42,16 +39,11 @@ foreach(_page IN LISTS _j1939_docs_pages)
 endforeach()
 string(APPEND _j1939_docs_public_input "\"${J1939_DOCS_ROOT}/include/j1939\"")
 
-# j1939_add_docs(<target> <output dir> <internal YES|NO> <fail on warnings ON|OFF> <input>)
-function(j1939_add_docs target output internal gate input)
+# j1939_add_docs(<target> <output dir> <internal YES|NO> <input>); both fail on any warning.
+function(j1939_add_docs target output internal input)
 	set(J1939_DOCS_OUTPUT "${output}")
 	set(J1939_DOCS_INTERNAL "${internal}")
 	set(J1939_DOCS_INPUT "${input}")
-	if(gate)
-		set(J1939_DOCS_WARN_AS_ERROR FAIL_ON_WARNINGS)
-	else()
-		set(J1939_DOCS_WARN_AS_ERROR NO)
-	endif()
 	configure_file("${J1939_DOCS_ROOT}/docs/Doxyfile.in"
 		"${CMAKE_CURRENT_BINARY_DIR}/Doxyfile.${target}" @ONLY)
 	add_custom_target(${target}
@@ -62,6 +54,6 @@ function(j1939_add_docs target output internal gate input)
 		VERBATIM)
 endfunction()
 
-j1939_add_docs(docs "${CMAKE_CURRENT_BINARY_DIR}/docs/public" NO ON "${_j1939_docs_public_input}")
+j1939_add_docs(docs "${CMAKE_CURRENT_BINARY_DIR}/docs/public" NO "${_j1939_docs_public_input}")
 j1939_add_docs(docs-internal "${CMAKE_CURRENT_BINARY_DIR}/docs/internal" YES
-	${J1939_DOCS_INTERNAL_GATE} "${_j1939_docs_public_input} \"${J1939_DOCS_ROOT}/src\"")
+	"${_j1939_docs_public_input} \"${J1939_DOCS_ROOT}/src\"")

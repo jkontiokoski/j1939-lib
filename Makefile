@@ -20,8 +20,11 @@ REPORT_ABS  = $(abspath $(REPORT_DIR))
 
 EXAMPLES := addr_claim_demo pgn_listener bam_sender
 
-FORMAT_FILES = $(shell find include src tests port examples \
-	-path tests/vendor -prune -o -type f \( -name '*.c' -o -name '*.h' \) -print 2>/dev/null)
+# Tracked sources only, so untracked work in progress does not fail format-check; outside a git
+# checkout (the release staging) every source file.
+FORMAT_FILES = $(shell git ls-files -- 'include/*.[ch]' 'src/*.[ch]' 'tests/*.[ch]' 'port/*.[ch]' \
+	'examples/*.[ch]' ':!:tests/vendor/*' 2>/dev/null || find include src tests port examples \
+	-path tests/vendor -prune -o -type f \( -name '*.c' -o -name '*.h' \) -print)
 CPPCHECK_FLAGS = --std=c99 --enable=all --inconclusive --error-exitcode=1 --inline-suppr \
 	--suppressions-list=cppcheck-suppressions.txt
 
@@ -111,7 +114,7 @@ lint:
 	$(call cppcheck_run,socketcan, \
 		-I include -I port/socketcan -i port/socketcan/j1939_port_fixture.c port/socketcan)
 	$(call cppcheck_run,examples,-I include -I port/socketcan -I examples/common \
-		examples/common examples/addr_claim_demo examples/pgn_listener examples/bam_sender)
+		-I examples/signals examples/common examples/signals $(addprefix examples/,$(EXAMPLES)))
 	sh tools/check-links.sh $(LINK_FILES) > $(LINT_DIR)/links.txt 2>&1; \
 		status=$$?; cat $(LINT_DIR)/links.txt; [ $$status -eq 0 ]
 
