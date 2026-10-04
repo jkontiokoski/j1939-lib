@@ -523,6 +523,7 @@ The API reference is generated with Doxygen and Graphviz from `docs/Doxyfile.in`
 
 The MISRA checks apply to the library core (`src/`, `include/`) and the mock port.
 The SocketCAN port and the example applications are operating system glue built on POSIX interfaces; they get the general cppcheck checks only.
+`make lint` fails on any finding cppcheck reports, not only on its exit code: cppcheck 2.13 does not set the exit code for whole-program checks such as MISRA rule 5.9 (identifiers with internal linkage unique across the library).
 Port test fixtures are test code and are not linted.
 
 | Suppression                                    | Scope                | Reason                                                                     |
@@ -584,7 +585,7 @@ Make targets:
 | `make docs`         | Generates the public documentation in `build/dev/docs/public/html/`, fails on any Doxygen warning |
 | `make docs-internal` | Generates the internal documentation in `build/dev/docs/internal/html/`, fails on any Doxygen warning |
 | `make check`        | Runs every gate in turn: `format-check`, `lint`, `test`, `coverage`, `cross`, `docs`, `docs-internal`; stops at the first failure |
-| `make lint`         | cppcheck: core and mock port with the MISRA addon, SocketCAN port and examples with the general checks |
+| `make lint`         | cppcheck: core and mock port with the MISRA addon, SocketCAN port and examples with the general checks; reports in `build/lint/`, any reported finding fails |
 | `make format`       | Formats all project sources                                              |
 | `make format-check` | Fails if any project source is not formatted                             |
 | `make clean`        | Removes `build/`                                                         |

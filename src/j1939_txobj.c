@@ -91,7 +91,7 @@ static bool pgn_stack_owned(uint32_t pgn) {
  *         destination other than J1939_ADDR_NULL, global for a single frame
  *         PDU2 PGN.
  */
-static bool entry_valid(const j1939_t *s, const j1939_txobj_cfg_t *c) {
+static bool tx_entry_valid(const j1939_t *s, const j1939_txobj_cfg_t *c) {
 	bool single = c->len <= FRAME_LEN;
 
 	return (c->buf != NULL) && (c->ca < s->ca_count) && j1939_stack_pgn_valid(c->pgn) &&
@@ -109,13 +109,13 @@ static bool entry_valid(const j1939_t *s, const j1939_txobj_cfg_t *c) {
  * @param len  Number of entries.
  * @return true if every entry is valid and no two have the same CA, PGN and destination.
  */
-static bool table_valid(const j1939_t *s, const j1939_txobj_cfg_t *cfg, uint16_t len) {
+static bool tx_table_valid(const j1939_t *s, const j1939_txobj_cfg_t *cfg, uint16_t len) {
 	bool valid = true;
 	uint16_t i;
 	uint16_t j;
 
 	for (i = 0U; valid && (i < len); i++) {
-		valid = entry_valid(s, &cfg[i]);
+		valid = tx_entry_valid(s, &cfg[i]);
 		for (j = 0U; valid && (j < i); j++) {
 			valid = (cfg[j].ca != cfg[i].ca) || (cfg[j].pgn != cfg[i].pgn) ||
 			        (cfg[j].da != cfg[i].da);
@@ -377,7 +377,7 @@ j1939_ret_t j1939_txobj_init(j1939_t *s, const j1939_txobj_cfg_t *cfg, j1939_txo
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((s != NULL) && (((cfg != NULL) && (obj != NULL)) || (len == 0U)) &&
-	    table_valid(s, cfg, len)) {
+	    tx_table_valid(s, cfg, len)) {
 		uint16_t i;
 
 		for (i = 0U; i < len; i++) {
