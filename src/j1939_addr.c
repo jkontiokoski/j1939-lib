@@ -1,6 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 /* Copyright (c) 2026 jkontiokoski */
 
+/**
+ * @file j1939_addr.c
+ * @brief Address claiming (J1939/81): claim state of each CA, arbitration on
+ *        the NAME, Cannot Claim and Commanded Address.
+ */
+
 #include "j1939/j1939_addr.h"
 
 #include <stddef.h>
@@ -12,19 +18,33 @@
 #include "j1939_stack_priv.h"
 #include "j1939_tp_priv.h"
 
-#define CLAIM_PRIO     6U
-#define CA_ADDRESS_MAX 0xFDU
-#define BITS_PER_BYTE  8U
+#define CLAIM_PRIO     6U    /**< Priority of Address Claimed and Cannot Claim. */
+#define CA_ADDRESS_MAX 0xFDU /**< Highest address a CA can hold (253). */
+#define BITS_PER_BYTE  8U    /**< Bits per byte of the taken-address bitmap. */
 
+/**
+ * @brief Tells whether an address is in the self-configurable range 128..247.
+ * @param address  Address.
+ * @return true for a self-configurable address.
+ */
 static bool self_cfg(uint8_t address) {
 	return (address >= J1939_ADDR_SELF_CFG_MIN) && (address <= J1939_ADDR_SELF_CFG_MAX);
 }
 
+/**
+ * @brief Tells whether a CA holds its address: claiming it or claimed.
+ * @param ca  CA.
+ * @return true in CLAIMING or CLAIMED state.
+ */
 static bool held(const j1939_ca_t *ca) {
 	return (ca->state == J1939_ADDR_STATE_CLAIMING) || (ca->state == J1939_ADDR_STATE_CLAIMED);
 }
 
-/* Records a self-configurable address claimed by another node. */
+/**
+ * @brief Records a self-configurable address claimed by another node.
+ * @param s        Stack.
+ * @param address  Claimed address; other ranges are not recorded.
+ */
 static void taken_set(j1939_t *s, uint8_t address) {
 	if (self_cfg(address)) {
 		uint32_t bit = (uint32_t)address - J1939_ADDR_SELF_CFG_MIN;
@@ -33,13 +53,24 @@ static void taken_set(j1939_t *s, uint8_t address) {
 	}
 }
 
+/**
+ * @brief Tells whether another node has claimed a self-configurable address.
+ * @param s        Stack.
+ * @param address  Self-configurable address (128..247).
+ * @return true if recorded with taken_set().
+ */
 static bool taken_get(const j1939_t *s, uint8_t address) {
 	uint32_t bit = (uint32_t)address - J1939_ADDR_SELF_CFG_MIN;
 
 	return (s->addr_taken[bit / BITS_PER_BYTE] & (uint8_t)(1U << (bit % BITS_PER_BYTE))) != 0U;
 }
 
-/* Returns true if a CA of the stack holds or is about to claim address. */
+/**
+ * @brief Tells whether a CA of the stack holds or is about to claim an address.
+ * @param s        Stack.
+ * @param address  Address.
+ * @return true if a CA of the stack uses @p address, whatever its claim state.
+ */
 static bool local_in_use(const j1939_t *s, uint8_t address) {
 	bool found = false;
 	uint8_t i;
@@ -50,7 +81,12 @@ static bool local_in_use(const j1939_t *s, uint8_t address) {
 	return found;
 }
 
-/* Returns the first self-configurable address neither taken nor used locally, or NULL. */
+/**
+ * @brief Chooses an address for an arbitrary address capable CA that lost its own.
+ * @param s  Stack.
+ * @return The first self-configurable address neither taken by another node
+ *         nor used by a CA of the stack, or J1939_ADDR_NULL if none is free.
+ */
 static uint8_t address_select(const j1939_t *s) {
 	uint8_t found = J1939_ADDR_NULL;
 	uint32_t a;
@@ -64,7 +100,15 @@ static uint8_t address_select(const j1939_t *s) {
 	return found;
 }
 
-/* Cannot Claim delay: 0..255 steps, from the NAME so that CAs spread without rand(). */
+/**
+ * @brief Computes the pseudo-random Cannot Claim delay of a CA.
+ *
+ * The step count is the XOR of the NAME's bytes, so that CAs with different
+ * NAMEs usually spread without a random source.
+ *
+ * @param name  NAME of the CA.
+ * @return 0..255 steps of J1939_ADDR_CANNOT_CLAIM_STEP_US, in microseconds.
+ */
 static uint32_t cannot_claim_delay(uint64_t name) {
 	uint8_t data[J1939_NAME_LEN];
 	uint8_t fold = 0U;
@@ -77,17 +121,27 @@ static uint32_t cannot_claim_delay(uint64_t name) {
 	return (uint32_t)fold * J1939_ADDR_CANNOT_CLAIM_STEP_US;
 }
 
-/*
- * Starts the contention wait or the Cannot Claim delay. The timer counts from
- * the next j1939_process(), also when a received frame or an API call starts
- * it between two calls.
+/**
+ * @brief Starts the contention wait or the Cannot Claim delay.
+ *
+ * The timer counts from the next j1939_process(), also when a received frame
+ * or an API call starts it between two calls.
+ *
+ * @param ca          CA.
+ * @param timeout_us  Duration in microseconds.
  */
 static void timer_start(j1939_ca_t *ca, uint32_t timeout_us) {
 	ca->timer_us = timeout_us;
 	ca->timer_fresh = true;
 }
 
-/* Queues Address Claimed from sa with the CA's NAME; sa J1939_ADDR_NULL makes it Cannot Claim. */
+/**
+ * @brief Queues Address Claimed with the CA's NAME.
+ * @param s   Stack.
+ * @param ca  CA.
+ * @param sa  Source address; J1939_ADDR_NULL makes it Cannot Claim.
+ * @return J1939_RET_OK, or J1939_RET_ERR_FULL if the tx queue is full.
+ */
 static j1939_ret_t claim_tx(j1939_t *s, const j1939_ca_t *ca, uint8_t sa) {
 	uint8_t data[J1939_NAME_LEN];
 	uint32_t id = 0U;
@@ -98,14 +152,26 @@ static j1939_ret_t claim_tx(j1939_t *s, const j1939_ca_t *ca, uint8_t sa) {
 	return j1939_stack_tx(s, id, data, (uint8_t)J1939_NAME_LEN);
 }
 
-/* Answers with the CA's Address Claimed; a full tx queue is counted. */
+/**
+ * @brief Sends the CA's Address Claimed again; a full tx queue is counted.
+ * @param s   Stack.
+ * @param ca  CA holding its address.
+ */
 static void claim_repeat(j1939_t *s, const j1939_ca_t *ca) {
 	if (claim_tx(s, ca, ca->address) != J1939_RET_OK) {
 		s->stats.tx_overflow++;
 	}
 }
 
-/* Sends the first Address Claimed for ca->address. Stays unclaimed if the tx queue is full. */
+/**
+ * @brief Sends the first Address Claimed for ca->address.
+ *
+ * Outside the self-configurable range the CA is claimed at once; inside it
+ * the contention wait starts. The CA stays unclaimed if the tx queue is full.
+ *
+ * @param s   Stack.
+ * @param ca  CA in UNCLAIMED state.
+ */
 static void claim_start(j1939_t *s, j1939_ca_t *ca) {
 	if (claim_tx(s, ca, ca->address) == J1939_RET_OK) {
 		if (self_cfg(ca->address)) {
@@ -117,7 +183,11 @@ static void claim_start(j1939_t *s, j1939_ca_t *ca) {
 	}
 }
 
-/* The CA gives up its address: the transport protocol sessions of that address end. */
+/**
+ * @brief Gives up the CA's address: the transport protocol sessions of that address end.
+ * @param s   Stack.
+ * @param ca  CA.
+ */
 static void address_release(j1939_t *s, j1939_ca_t *ca) {
 	if (ca->address != J1939_ADDR_NULL) {
 		j1939_tp_address_lost(s, ca->address);
@@ -125,7 +195,11 @@ static void address_release(j1939_t *s, j1939_ca_t *ca) {
 	ca->address = J1939_ADDR_NULL;
 }
 
-/* Gives up the address and schedules a Cannot Claim. */
+/**
+ * @brief Gives up the address and schedules a Cannot Claim.
+ * @param s   Stack.
+ * @param ca  CA.
+ */
 static void cannot_claim_enter(j1939_t *s, j1939_ca_t *ca) {
 	address_release(s, ca);
 	ca->state = J1939_ADDR_STATE_CANNOT_CLAIM;
@@ -133,7 +207,15 @@ static void cannot_claim_enter(j1939_t *s, j1939_ca_t *ca) {
 	timer_start(ca, cannot_claim_delay(ca->name));
 }
 
-/* The CA lost its address to a NAME of higher priority. */
+/**
+ * @brief Handles the loss of the CA's address to a NAME of higher priority.
+ *
+ * An arbitrary address capable CA claims a free self-configurable address;
+ * otherwise, or without a free one, it goes to CANNOT_CLAIM.
+ *
+ * @param s   Stack.
+ * @param ca  CA that lost its address.
+ */
 static void address_lost(j1939_t *s, j1939_ca_t *ca) {
 	uint8_t next = J1939_ADDR_NULL;
 
@@ -150,15 +232,27 @@ static void address_lost(j1939_t *s, j1939_ca_t *ca) {
 	}
 }
 
-/* Corrupted claim state: stop transmitting, drop a pending command and announce it. */
+/**
+ * @brief Handles a corrupted claim state: stop transmitting, drop a pending command and
+ *        announce Cannot Claim.
+ * @param s   Stack.
+ * @param ca  CA with the corrupted state.
+ */
 static void fail_safe(j1939_t *s, j1939_ca_t *ca) {
 	ca->commanded = J1939_ADDR_NULL;
 	cannot_claim_enter(s, ca);
 }
 
-/*
- * Applies a pending Commanded Address. Returns true if the CA gave up its
- * address for the commanded one; its claim then starts as after a loss.
+/**
+ * @brief Applies a pending Commanded Address.
+ *
+ * A command to the address the CA holds repeats its Address Claimed; a
+ * command to an address another CA of the stack uses is refused.
+ *
+ * @param s   Stack.
+ * @param ca  CA.
+ * @return true if the CA gave up its address for the commanded one; its claim
+ *         then starts as after a loss.
  */
 static bool command_apply(j1939_t *s, j1939_ca_t *ca) {
 	uint8_t next = ca->commanded;
@@ -185,7 +279,12 @@ static bool command_apply(j1939_t *s, j1939_ca_t *ca) {
 	return moved;
 }
 
-/* Returns true once timer_us has run out, and counts it down otherwise. A fresh timer waits. */
+/**
+ * @brief Counts the CA's timer down. A timer started since the previous call waits.
+ * @param ca          CA.
+ * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
+ * @return true once the timer has run out.
+ */
 static bool timer_expired(j1939_ca_t *ca, uint32_t elapsed_us) {
 	bool expired = false;
 

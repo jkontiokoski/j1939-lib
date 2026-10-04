@@ -6,8 +6,8 @@
 #   docs-internal  adds the implementation, with call and caller graphs
 # Both are generated from docs/Doxyfile.in.
 
-# The internal documentation fails on warnings once the implementation is documented.
-set(J1939_DOCS_INTERNAL_GATE OFF)
+# The internal documentation fails on warnings, as the public one does.
+set(J1939_DOCS_INTERNAL_GATE ON)
 
 find_package(Doxygen 1.9.8 COMPONENTS dot)
 if(NOT DOXYGEN_FOUND OR NOT TARGET Doxygen::dot)

@@ -1,6 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 /* Copyright (c) 2026 jkontiokoski */
 
+/**
+ * @file j1939_txobj.c
+ * @brief Transmit objects: PGNs the stack sends periodically, on change and on
+ *        Request.
+ */
+
 #include "j1939/j1939_txobj.h"
 
 #include <stddef.h>
@@ -15,20 +21,32 @@
 #include "j1939_stack_priv.h"
 #include "j1939_txobj_priv.h"
 
-#define FLAG_STARTED 0x01U /* the CA has claimed its address; the schedule runs */
-#define FLAG_DUE     0x02U /* periodic send due */
-#define FLAG_CHANGED 0x04U /* change waiting for its send */
-#define FLAG_ANSWER  0x08U /* answer to a Request pending */
-#define FLAG_FRESH   0x10U /* answer recorded since the last j1939_process() */
-#define PAD          0xFFU /* "not available" */
-#define FRAME_LEN    8U
-#define TP_BUF_SIZE  ((uint32_t)J1939_CFG_TP_BUF_SIZE)
-#define NO_EXPIRY    0U /* age of a send that is retried until it succeeds */
+#define FLAG_STARTED 0x01U /**< The CA has claimed its address; the schedule runs. */
+#define FLAG_DUE     0x02U /**< Periodic send due. */
+#define FLAG_CHANGED 0x04U /**< Change waiting for its send. */
+#define FLAG_ANSWER  0x08U /**< Answer to a Request pending. */
+#define FLAG_FRESH   0x10U /**< Answer recorded since the last j1939_process(). */
+#define PAD          0xFFU /**< Initial payload byte: "not available". */
+#define FRAME_LEN    8U    /**< Largest single frame payload. */
+#define TP_BUF_SIZE  ((uint32_t)J1939_CFG_TP_BUF_SIZE) /**< Largest object payload. */
+#define NO_EXPIRY    0U /**< Age of a send that is retried until it succeeds. */
 
+/**
+ * @brief Reads a state flag of an object.
+ * @param o     Object state.
+ * @param flag  One of the FLAG_ bits.
+ * @return true if set.
+ */
 static bool flag_get(const j1939_txobj_t *o, uint8_t flag) {
 	return (o->flags & flag) != 0U;
 }
 
+/**
+ * @brief Sets or clears a state flag of an object.
+ * @param o     Object state.
+ * @param flag  One of the FLAG_ bits.
+ * @param on    true to set, false to clear.
+ */
 static void flag_put(j1939_txobj_t *o, uint8_t flag, bool on) {
 	if (on) {
 		o->flags = (uint8_t)(o->flags | flag);
@@ -37,6 +55,11 @@ static void flag_put(j1939_txobj_t *o, uint8_t flag, bool on) {
 	}
 }
 
+/**
+ * @brief Advances a timer, saturating at UINT32_MAX.
+ * @param timer_us    Timer, in microseconds.
+ * @param elapsed_us  Time to add, in microseconds.
+ */
 static void timer_add(uint32_t *timer_us, uint32_t elapsed_us) {
 	if (elapsed_us > (UINT32_MAX - *timer_us)) {
 		*timer_us = UINT32_MAX;
@@ -45,7 +68,12 @@ static void timer_add(uint32_t *timer_us, uint32_t elapsed_us) {
 	}
 }
 
-/* PGNs whose messages the stack builds or answers itself. */
+/**
+ * @brief Tells whether the stack builds or answers the messages of a PGN itself.
+ * @param pgn  PGN.
+ * @return true for Request, Acknowledgement, TP.CM, TP.DT, Address Claimed,
+ *         Commanded Address, DM1, DM2, DM3 and DM11.
+ */
 static bool pgn_stack_owned(uint32_t pgn) {
 	return (pgn == J1939_PGN_REQUEST) || (pgn == J1939_PGN_ACK) || (pgn == J1939_PGN_TP_CM) ||
 	       (pgn == J1939_PGN_TP_DT) || (pgn == J1939_PGN_ADDRESS_CLAIMED) ||
@@ -53,6 +81,16 @@ static bool pgn_stack_owned(uint32_t pgn) {
 	       (pgn == J1939_PGN_DM2) || (pgn == J1939_PGN_DM3) || (pgn == J1939_PGN_DM11);
 }
 
+/**
+ * @brief Checks one entry of a transmit object table.
+ * @param s  Stack.
+ * @param c  Entry.
+ * @return true if it has a buffer, a known CA, a valid PGN and priority not
+ *         owned by the stack nor in req_pgns, a length of 1 to
+ *         J1939_CFG_TP_BUF_SIZE (above 8 only with a TP transmit buffer) and a
+ *         destination other than J1939_ADDR_NULL, global for a single frame
+ *         PDU2 PGN.
+ */
 static bool entry_valid(const j1939_t *s, const j1939_txobj_cfg_t *c) {
 	bool single = c->len <= FRAME_LEN;
 
@@ -64,6 +102,13 @@ static bool entry_valid(const j1939_t *s, const j1939_txobj_cfg_t *c) {
 	       !j1939_stack_pgn_listed(s->req_pgns, s->req_pgns_len, c->pgn);
 }
 
+/**
+ * @brief Checks a whole transmit object table.
+ * @param s    Stack.
+ * @param cfg  Entries.
+ * @param len  Number of entries.
+ * @return true if every entry is valid and no two have the same CA, PGN and destination.
+ */
 static bool table_valid(const j1939_t *s, const j1939_txobj_cfg_t *cfg, uint16_t len) {
 	bool valid = true;
 	uint16_t i;
@@ -79,23 +124,41 @@ static bool table_valid(const j1939_t *s, const j1939_txobj_cfg_t *cfg, uint16_t
 	return valid;
 }
 
-/* Sends the payload of an object to da. */
+/**
+ * @brief Sends the payload of an object.
+ * @param s   Stack.
+ * @param c   Object configuration.
+ * @param da  Destination.
+ * @return As j1939_send().
+ */
 static j1939_ret_t obj_send(j1939_t *s, const j1939_txobj_cfg_t *c, uint8_t da) {
 	const j1939_msg_t msg = {c->pgn, c->prio, 0U, da, c->len, c->buf};
 
 	return j1939_send(s, c->ca, &msg);
 }
 
-/* Destination of an answer: a single frame of a PDU2 PGN always goes to the global address. */
+/**
+ * @brief Chooses the destination of an answer to a Request.
+ * @param c          Object configuration.
+ * @param requester  Requester, or J1939_ADDR_GLOBAL for a global Request.
+ * @return J1939_ADDR_GLOBAL for a single frame of a PDU2 PGN, else @p requester.
+ */
 static uint8_t answer_da(const j1939_txobj_cfg_t *c, uint8_t requester) {
 	return ((c->len <= FRAME_LEN) && !j1939_pgn_is_pdu1(c->pgn)) ? J1939_ADDR_GLOBAL
 	                                                             : requester;
 }
 
-/*
- * Handles the result of a send that is retried while the tx queue is full or
- * the transport protocol busy, at most until age_us reaches
- * J1939_TXOBJ_RESPONSE_US. Returns true when the send is over, sent or given up.
+/**
+ * @brief Handles the result of a send that is retried while the tx queue is full or the
+ *        transport protocol busy.
+ *
+ * Retries are counted in txobj_tx_retry; a send given up, at the latest when
+ * @p age_us reaches J1939_TXOBJ_RESPONSE_US, in txobj_tx_dropped.
+ *
+ * @param s       Stack.
+ * @param ret     Result of the send.
+ * @param age_us  Age of the send; NO_EXPIRY for one retried until it succeeds.
+ * @return true when the send is over, sent or given up.
  */
 static bool obj_send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
 	bool done = true;
@@ -115,7 +178,14 @@ static bool obj_send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
 	return done;
 }
 
-/* The CA may not transmit: a pending answer is dropped, the schedule restarts with the claim. */
+/**
+ * @brief Stops an object whose CA may not transmit.
+ *
+ * A pending answer is dropped and counted; the schedule restarts with the next claim.
+ *
+ * @param s  Stack.
+ * @param o  Object state.
+ */
 static void obj_stop(j1939_t *s, j1939_txobj_t *o) {
 	if (flag_get(o, (uint8_t)FLAG_ANSWER)) {
 		s->stats.txobj_tx_dropped++;
@@ -123,7 +193,12 @@ static void obj_stop(j1939_t *s, j1939_txobj_t *o) {
 	o->flags = 0U;
 }
 
-/* The claim completed: periodic and change objects are sent in this call. */
+/**
+ * @brief Starts the schedule when the claim completes: periodic and change objects are sent
+ *        in this call.
+ * @param c  Object configuration.
+ * @param o  Object state.
+ */
 static void obj_start(const j1939_txobj_cfg_t *c, j1939_txobj_t *o) {
 	o->period_us = 0U;
 	o->since_us = UINT32_MAX;
@@ -132,6 +207,17 @@ static void obj_start(const j1939_txobj_cfg_t *c, j1939_txobj_t *o) {
 	flag_put(o, (uint8_t)FLAG_CHANGED, c->inhibit_us > 0U);
 }
 
+/**
+ * @brief Advances the object's timers and marks a periodic send due.
+ *
+ * A periodic send still due when the next one falls due is counted in
+ * txobj_tx_dropped. The period keeps its phase across late calls.
+ *
+ * @param s           Stack.
+ * @param c           Object configuration.
+ * @param o           Object state.
+ * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
+ */
 static void schedule_tick(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_t *o,
                           uint32_t elapsed_us) {
 	timer_add(&o->since_us, elapsed_us);
@@ -148,7 +234,17 @@ static void schedule_tick(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_t 
 	}
 }
 
-/* Sends a due periodic or change-triggered message to the object's destination. */
+/**
+ * @brief Sends a due periodic or change-triggered message to the object's destination.
+ *
+ * A change is sent once inhibit_us has passed since the object's last send.
+ * A send to the global address also serves a pending answer that would go
+ * to the global address.
+ *
+ * @param s  Stack.
+ * @param c  Object configuration.
+ * @param o  Object state.
+ */
 static void schedule_send(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_t *o) {
 	if (flag_get(o, (uint8_t)FLAG_DUE) ||
 	    (flag_get(o, (uint8_t)FLAG_CHANGED) && (o->since_us >= c->inhibit_us))) {
@@ -170,7 +266,13 @@ static void schedule_send(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_t 
 	}
 }
 
-/* Sends a pending answer to a Request, retried at most J1939_TXOBJ_RESPONSE_US. */
+/**
+ * @brief Sends a pending answer to a Request, retried at most J1939_TXOBJ_RESPONSE_US.
+ * @param s           Stack.
+ * @param c           Object configuration.
+ * @param o           Object state.
+ * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
+ */
 static void obj_answer_tick(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_t *o,
                             uint32_t elapsed_us) {
 	if (flag_get(o, (uint8_t)FLAG_ANSWER)) {
@@ -185,7 +287,12 @@ static void obj_answer_tick(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_
 	}
 }
 
-/* Records a Request; requests of several nodes are answered once, globally. */
+/**
+ * @brief Records a Request for the object; requests of several nodes are answered once,
+ *        globally.
+ * @param o          Object state.
+ * @param requester  Requester, or J1939_ADDR_GLOBAL for a global Request.
+ */
 static void obj_answer_request(j1939_txobj_t *o, uint8_t requester) {
 	if (!flag_get(o, (uint8_t)FLAG_ANSWER)) {
 		flag_put(o, (uint8_t)FLAG_ANSWER, true);
@@ -199,7 +306,12 @@ static void obj_answer_request(j1939_txobj_t *o, uint8_t requester) {
 	}
 }
 
-/* The Request addresses the CA: global, or to the address the CA holds. */
+/**
+ * @brief Tells whether a Request addresses a CA.
+ * @param ca  CA.
+ * @param da  Destination of the Request.
+ * @return true for a global Request or one to the address the CA holds.
+ */
 static bool obj_ca_addressed(const j1939_ca_t *ca, uint8_t da) {
 	return (da == J1939_ADDR_GLOBAL) ||
 	       ((ca->address == da) && ((ca->state == J1939_ADDR_STATE_CLAIMING) ||

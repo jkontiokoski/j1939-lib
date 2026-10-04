@@ -1,16 +1,26 @@
 /* SPDX-License-Identifier: MIT */
 /* Copyright (c) 2026 jkontiokoski */
 
+/**
+ * @file j1939_id.c
+ * @brief 29-bit identifier and PGN codec (J1939/21).
+ */
+
 #include "j1939/j1939_id.h"
 
 #include <stddef.h>
 
-#define PRIO_SHIFT 26U
-#define PRIO_MASK  0x7U
-#define PGN_SHIFT  8U
-#define PF_SHIFT   8U
-#define BYTE_MASK  0xFFU
+#define PRIO_SHIFT 26U   /**< Position of the priority in the identifier. */
+#define PRIO_MASK  0x7U  /**< Priority field mask, after shifting. */
+#define PGN_SHIFT  8U    /**< Position of the PGN (with PS) in the identifier. */
+#define PF_SHIFT   8U    /**< Position of the PDU format byte in a PGN. */
+#define BYTE_MASK  0xFFU /**< Mask of one byte. */
 
+/**
+ * @brief Extracts the PDU format byte of a PGN.
+ * @param pgn  PGN.
+ * @return PF, which decides PDU1 (below 240) or PDU2.
+ */
 static uint8_t pgn_pf(uint32_t pgn) {
 	return (uint8_t)((pgn >> PF_SHIFT) & BYTE_MASK);
 }

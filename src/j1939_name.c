@@ -1,32 +1,58 @@
 /* SPDX-License-Identifier: MIT */
 /* Copyright (c) 2026 jkontiokoski */
 
+/**
+ * @file j1939_name.c
+ * @brief NAME codec (J1939/81): fields, byte order and arbitration order.
+ */
+
 #include "j1939/j1939_name.h"
 
 #include <stddef.h>
 
-#define IDENTITY_SHIFT                0U
-#define MANUFACTURER_SHIFT            21U
-#define ECU_INSTANCE_SHIFT            32U
-#define FUNCTION_INSTANCE_SHIFT       35U
-#define FUNCTION_SHIFT                40U
-#define RESERVED_SHIFT                48U
-#define VEHICLE_SYSTEM_SHIFT          49U
-#define VEHICLE_SYSTEM_INSTANCE_SHIFT 56U
-#define INDUSTRY_GROUP_SHIFT          60U
-#define ARBITRARY_ADDRESS_SHIFT       63U
+/** @name Bit positions of the NAME fields
+ * @{ */
+#define IDENTITY_SHIFT                0U  /**< Identity number. */
+#define MANUFACTURER_SHIFT            21U /**< Manufacturer code. */
+#define ECU_INSTANCE_SHIFT            32U /**< ECU instance. */
+#define FUNCTION_INSTANCE_SHIFT       35U /**< Function instance. */
+#define FUNCTION_SHIFT                40U /**< Function. */
+#define RESERVED_SHIFT                48U /**< Reserved bit. */
+#define VEHICLE_SYSTEM_SHIFT          49U /**< Vehicle system. */
+#define VEHICLE_SYSTEM_INSTANCE_SHIFT 56U /**< Vehicle system instance. */
+#define INDUSTRY_GROUP_SHIFT          60U /**< Industry group. */
+#define ARBITRARY_ADDRESS_SHIFT       63U /**< Arbitrary address capable bit. */
+/** @} */
 
-#define BYTE_MASK  0xFFU
-#define BYTE_SHIFT 8U
+#define BYTE_MASK  0xFFU /**< Mask of one byte. */
+#define BYTE_SHIFT 8U    /**< Bits per byte. */
 
+/**
+ * @brief Places a field value at its position in the NAME.
+ * @param value  Field value, already range checked.
+ * @param shift  Bit position of the field.
+ * @return The value shifted into place.
+ */
 static uint64_t field_put(uint32_t value, uint32_t shift) {
 	return (uint64_t)value << shift;
 }
 
+/**
+ * @brief Extracts a field from a NAME.
+ * @param name   NAME.
+ * @param shift  Bit position of the field.
+ * @param max    Largest field value, an all-ones mask.
+ * @return The field value.
+ */
 static uint32_t field_get(uint64_t name, uint32_t shift, uint32_t max) {
 	return (uint32_t)((name >> shift) & (uint64_t)max);
 }
 
+/**
+ * @brief Checks every NAME field against its range.
+ * @param f  Fields.
+ * @return true if all fields fit their bit widths.
+ */
 static bool fields_valid(const j1939_name_fields_t *f) {
 	return (f->industry_group <= J1939_NAME_INDUSTRY_GROUP_MAX) &&
 	       (f->vehicle_system_instance <= J1939_NAME_VEHICLE_SYSTEM_INSTANCE_MAX) &&

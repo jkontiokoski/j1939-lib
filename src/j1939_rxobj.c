@@ -1,6 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 /* Copyright (c) 2026 jkontiokoski */
 
+/**
+ * @file j1939_rxobj.c
+ * @brief Receive objects: latest payload of a PGN from one sender, with timeout
+ *        supervision.
+ */
+
 #include "j1939/j1939_rxobj.h"
 
 #include <stddef.h>
@@ -12,21 +18,39 @@
 #include "j1939_rxobj_priv.h"
 #include "j1939_stack_priv.h"
 
-#define SA_MAX      0xFDU
-#define BUF_LEN_MAX ((uint16_t)J1939_CFG_TP_BUF_SIZE)
+#define SA_MAX      0xFDU /**< Highest source address a node can claim. */
+#define BUF_LEN_MAX ((uint16_t)J1939_CFG_TP_BUF_SIZE) /**< Largest payload an object can hold. */
 
-/* PGNs the stack handles itself; they never reach a receive object. */
+/**
+ * @brief Tells whether the stack handles a PGN itself, so that it never reaches a receive object.
+ * @param pgn  PGN.
+ * @return true for Request, Address Claimed, TP.CM and TP.DT.
+ */
 static bool pgn_owned(uint32_t pgn) {
 	return (pgn == J1939_PGN_REQUEST) || (pgn == J1939_PGN_ADDRESS_CLAIMED) ||
 	       (pgn == J1939_PGN_TP_CM) || (pgn == J1939_PGN_TP_DT);
 }
 
+/**
+ * @brief Checks one entry of a receive object table.
+ * @param c  Entry.
+ * @return true if it has a buffer, a valid PGN the stack does not own, a
+ *         source address of at most 253 and 1 <= min_len <= buf_len <=
+ *         J1939_CFG_TP_BUF_SIZE.
+ */
 static bool entry_valid(const j1939_rxobj_cfg_t *c) {
 	return (c->buf != NULL) && j1939_stack_pgn_valid(c->pgn) && !pgn_owned(c->pgn) &&
 	       (c->sa <= SA_MAX) && (c->min_len >= 1U) && (c->min_len <= c->buf_len) &&
 	       (c->buf_len <= BUF_LEN_MAX);
 }
 
+/**
+ * @brief Checks a whole receive object table.
+ * @param cfg  Configuration entries; may be NULL if @p len is 0.
+ * @param obj  State entries; may be NULL if @p len is 0.
+ * @param len  Number of entries.
+ * @return true if every entry is valid and no two have the same PGN and source address.
+ */
 static bool table_valid(const j1939_rxobj_cfg_t *cfg, const j1939_rxobj_t *obj, uint16_t len) {
 	bool valid = ((cfg != NULL) && (obj != NULL)) || (len == 0U);
 	uint16_t i;
@@ -41,7 +65,13 @@ static bool table_valid(const j1939_rxobj_cfg_t *cfg, const j1939_rxobj_t *obj, 
 	return valid;
 }
 
-/* Returns the index of the object for pgn and sa, or s->rxobj_len if there is none. */
+/**
+ * @brief Finds the receive object for a PGN and sender.
+ * @param s    Stack.
+ * @param pgn  PGN.
+ * @param sa   Source address.
+ * @return Its index, or s->rxobj_len if there is none.
+ */
 static uint16_t obj_find(const j1939_t *s, uint32_t pgn, uint8_t sa) {
 	uint16_t found = s->rxobj_len;
 	uint16_t i;

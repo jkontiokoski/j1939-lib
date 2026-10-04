@@ -1,7 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 /* Copyright (c) 2026 jkontiokoski */
 
-/* Optional frame queue, built as the j1939::queue target. See j1939_queue.h. */
+/**
+ * @file j1939_queue.c
+ * @brief Optional frame queue between two execution contexts, built as the
+ *        j1939::queue target. See j1939_queue.h.
+ */
 
 #include "j1939/j1939_queue.h"
 
@@ -22,7 +26,11 @@ j1939_ret_t j1939_queue_init(j1939_queue_t *q, j1939_port_frame_t *buf, uint16_t
 	return ret;
 }
 
-/* Producer side in the lock: the next free slot, or NULL if the queue is full. */
+/**
+ * @brief Producer side: finds the next free slot, with the index read in the lock.
+ * @param q  Queue.
+ * @return The free slot, or NULL if the queue is full.
+ */
 static j1939_port_frame_t *slot_free(j1939_queue_t *q) {
 	j1939_port_frame_t *slot = NULL;
 	uint16_t index = 0U;
@@ -37,7 +45,11 @@ static j1939_port_frame_t *slot_free(j1939_queue_t *q) {
 	return slot;
 }
 
-/* Producer side in the lock: publishes the free slot. */
+/**
+ * @brief Producer side: publishes the free slot, in the lock.
+ * @param q  Queue.
+ * @return J1939_RET_OK, or J1939_RET_ERR_FULL if the queue is full.
+ */
 static j1939_ret_t slot_publish(j1939_queue_t *q) {
 	bool ok;
 

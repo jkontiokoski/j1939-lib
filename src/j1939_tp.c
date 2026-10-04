@@ -1,6 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 /* Copyright (c) 2026 jkontiokoski */
 
+/**
+ * @file j1939_tp.c
+ * @brief J1939/21 transport protocol: BAM and RTS/CTS sessions in both directions.
+ */
+
 #include "j1939/j1939_tp.h"
 
 #include <stddef.h>
@@ -14,52 +19,77 @@
 #include "j1939_stack_priv.h"
 #include "j1939_tp_priv.h"
 
-#define FRAME_LEN   8U    /* TP.CM and TP.DT frames always carry 8 bytes. */
-#define PACKET_DATA 7U    /* Payload bytes per TP.DT packet. */
-#define PAD         0xFFU /* Reserved bytes, unused packet bytes, "no limit". */
-#define BYTE_MASK   0xFFU
-#define BYTE_SHIFT  8U
-#define TP_PRIO     7U /* Priority of the frames a responder sends, and of aborts. */
+#define FRAME_LEN   8U    /**< TP.CM and TP.DT frames always carry 8 bytes. */
+#define PACKET_DATA 7U    /**< Payload bytes per TP.DT packet. */
+#define PAD         0xFFU /**< Reserved bytes, unused packet bytes, "no limit". */
+#define BYTE_MASK   0xFFU /**< Mask of one byte. */
+#define BYTE_SHIFT  8U    /**< Bits per byte. */
+#define TP_PRIO     7U    /**< Priority of the frames a responder sends, and of aborts. */
 
-/* TP.CM control bytes. */
-#define CTRL_RTS   0x10U
-#define CTRL_CTS   0x11U
-#define CTRL_EOMA  0x13U
-#define CTRL_BAM   0x20U
-#define CTRL_ABORT 0xFFU
+/** @name TP.CM control bytes
+ * @{ */
+#define CTRL_RTS   0x10U /**< Request to Send. */
+#define CTRL_CTS   0x11U /**< Clear to Send. */
+#define CTRL_EOMA  0x13U /**< End of Message Acknowledgement. */
+#define CTRL_BAM   0x20U /**< Broadcast Announce Message. */
+#define CTRL_ABORT 0xFFU /**< Connection Abort. */
+/** @} */
 
-/* TP.CM byte positions. */
-#define CM_CTRL    0U
-#define CM_LEN_LO  1U
-#define CM_LEN_HI  2U
-#define CM_PACKETS 3U
-#define CM_LIMIT   4U
-#define CM_PGN     5U
-#define CTS_COUNT  1U
-#define CTS_NEXT   2U
+/** @name TP.CM byte positions
+ * @{ */
+#define CM_CTRL    0U /**< Control byte. */
+#define CM_LEN_LO  1U /**< Message size, low byte (RTS, BAM, EndOfMsgAck). */
+#define CM_LEN_HI  2U /**< Message size, high byte. */
+#define CM_PACKETS 3U /**< Total number of packets. */
+#define CM_LIMIT   4U /**< RTS: most packets per CTS; 0xFF for no limit. */
+#define CM_PGN     5U /**< First of the three PGN bytes. */
+#define CTS_COUNT  1U /**< CTS: number of packets requested. */
+#define CTS_NEXT   2U /**< CTS: next packet number to send. */
+/** @} */
 
-/* Accepted announcement (no abort reason). */
-#define REASON_NONE 0U
+#define REASON_NONE 0U /**< Accepted announcement: no abort reason. */
 
-/* Buffer states. */
-#define BUF_FREE      0U
-#define BUF_SESSION   1U
-#define BUF_DELIVERED 2U
+/** @name States of a TP buffer
+ * @{ */
+#define BUF_FREE      0U /**< Unused. */
+#define BUF_SESSION   1U /**< Owned by a session. */
+#define BUF_DELIVERED 2U /**< Holds a delivered message until its slot is released. */
+/** @} */
 
-#define BAM_GAP_US   ((uint32_t)J1939_CFG_TP_BAM_GAP_US)
-#define BAM_STALL_US (BAM_GAP_US + J1939_TP_TR_US)
-#define SESSIONS     ((uint8_t)J1939_CFG_TP_SESSIONS)
-#define BUF_SIZE     ((uint16_t)J1939_CFG_TP_BUF_SIZE)
+#define BAM_GAP_US   ((uint32_t)J1939_CFG_TP_BAM_GAP_US) /**< Gap between sent BAM packets. */
+#define BAM_STALL_US (BAM_GAP_US + J1939_TP_TR_US) /**< Longest wait for room for a BAM packet. */
+#define SESSIONS     ((uint8_t)J1939_CFG_TP_SESSIONS)  /**< Sessions in the pool. */
+#define BUF_SIZE     ((uint16_t)J1939_CFG_TP_BUF_SIZE) /**< Largest message a buffer holds. */
 
+/**
+ * @brief Reads the PGN of a TP.CM frame.
+ * @param data  The three PGN bytes, little endian.
+ * @return The PGN.
+ */
 static uint32_t cm_pgn_get(const uint8_t *data) {
 	return (uint32_t)data[0] | ((uint32_t)data[1] << BYTE_SHIFT) |
 	       ((uint32_t)data[2] << (2U * BYTE_SHIFT));
 }
 
+/**
+ * @brief Counts the TP.DT packets of a message.
+ * @param len  Message size in bytes.
+ * @return The number of 7-byte packets.
+ */
 static uint16_t packets_for(uint16_t len) {
 	return (uint16_t)((len + (PACKET_DATA - 1U)) / PACKET_DATA);
 }
 
+/**
+ * @brief Fills a TP.CM frame.
+ * @param f     Eight bytes.
+ * @param ctrl  Control byte.
+ * @param b1    Byte 1.
+ * @param b2    Byte 2.
+ * @param b3    Byte 3.
+ * @param b4    Byte 4.
+ * @param pgn   PGN of the message, in bytes 5 to 7.
+ */
 static void cm_build(uint8_t *f, uint8_t ctrl, uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4,
                      uint32_t pgn) {
 	f[CM_CTRL] = ctrl;
@@ -72,12 +102,27 @@ static void cm_build(uint8_t *f, uint8_t ctrl, uint8_t b1, uint8_t b2, uint8_t b
 	f[CM_PGN + 2U] = (uint8_t)((pgn >> (2U * BYTE_SHIFT)) & BYTE_MASK);
 }
 
-/* Announcement (RTS, BAM, EndOfMsgAck) carrying the message size. */
+/**
+ * @brief Fills an announcement (RTS, BAM, EndOfMsgAck) carrying the message size.
+ * @param f     Eight bytes.
+ * @param ctrl  Control byte.
+ * @param se    Session of the message.
+ */
 static void cm_build_size(uint8_t *f, uint8_t ctrl, const j1939_tp_session_t *se) {
 	cm_build(f, ctrl, (uint8_t)(se->len & BYTE_MASK), (uint8_t)(se->len >> BYTE_SHIFT),
 	         (uint8_t)se->packets, PAD, se->pgn);
 }
 
+/**
+ * @brief Queues a TP.CM or TP.DT frame.
+ * @param s     Stack.
+ * @param prio  Priority.
+ * @param pgn   J1939_PGN_TP_CM or J1939_PGN_TP_DT.
+ * @param sa    Source address.
+ * @param da    Destination address.
+ * @param f     Eight bytes.
+ * @return true if queued; false for a full tx queue or an invalid identifier.
+ */
 static bool tp_frame_send(j1939_t *s, uint8_t prio, uint32_t pgn, uint8_t sa, uint8_t da,
                           const uint8_t *f) {
 	uint32_t id = 0U;
@@ -89,13 +134,28 @@ static bool tp_frame_send(j1939_t *s, uint8_t prio, uint32_t pgn, uint8_t sa, ui
 	return ret == J1939_RET_OK;
 }
 
-/* Sends a TP.CM frame generated by the stack; a full tx queue drops and counts it. */
+/**
+ * @brief Sends a TP.CM frame generated by the stack at TP_PRIO; a full tx queue drops and
+ *        counts it.
+ * @param s   Stack.
+ * @param sa  Source address.
+ * @param da  Destination address.
+ * @param f   Eight bytes.
+ */
 static void tp_ctrl_send(j1939_t *s, uint8_t sa, uint8_t da, const uint8_t *f) {
 	if (!tp_frame_send(s, TP_PRIO, J1939_PGN_TP_CM, sa, da, f)) {
 		s->stats.tx_overflow++;
 	}
 }
 
+/**
+ * @brief Sends a Connection Abort.
+ * @param s       Stack.
+ * @param sa      Source address.
+ * @param da      Destination address.
+ * @param reason  Abort reason, see J1939_TP_ABORT_BUSY and the following.
+ * @param pgn     PGN of the aborted message.
+ */
 static void tp_abort_send(j1939_t *s, uint8_t sa, uint8_t da, uint8_t reason, uint32_t pgn) {
 	uint8_t f[FRAME_LEN];
 
@@ -103,21 +163,47 @@ static void tp_abort_send(j1939_t *s, uint8_t sa, uint8_t da, uint8_t reason, ui
 	tp_ctrl_send(s, sa, da, f);
 }
 
+/**
+ * @brief Starts the session timer.
+ * @param se          Session.
+ * @param timeout_us  Timeout in microseconds.
+ * @param fresh       true when started between two calls, so the timer counts from the next.
+ */
 static void tp_timer_start(j1939_tp_session_t *se, uint32_t timeout_us, bool fresh) {
 	se->timer_us = 0U;
 	se->timeout_us = timeout_us;
 	se->fresh = fresh;
 }
 
+/**
+ * @brief Tells whether the session timer has reached its timeout.
+ * @param se  Session.
+ * @return true once expired.
+ */
 static bool tp_timer_expired(const j1939_tp_session_t *se) {
 	return se->timer_us >= se->timeout_us;
 }
 
-/* A delivered buffer is held while its message slot is unreleased and still refers to it. */
+/**
+ * @brief Tells whether a delivered buffer is still held.
+ *
+ * A delivered buffer is held while its message slot is unreleased and still refers to it.
+ *
+ * @param s    Stack.
+ * @param buf  Buffer in BUF_DELIVERED state.
+ * @return true if still held.
+ */
 static bool tp_buf_held(j1939_t *s, const j1939_tp_buf_t *buf) {
 	return j1939_ring_holds(&s->msgs.ring, buf->slot) && (s->msgs.buf[buf->slot].tp_buf == buf);
 }
 
+/**
+ * @brief Takes a free buffer from a pool, first freeing delivered buffers no longer held.
+ * @param s     Stack.
+ * @param pool  Buffers.
+ * @param len   Entries in @p pool.
+ * @return A free buffer, or NULL if none is free.
+ */
 static j1939_tp_buf_t *tp_buf_alloc(j1939_t *s, j1939_tp_buf_t *pool, uint16_t len) {
 	j1939_tp_buf_t *found = NULL;
 	uint16_t i;
@@ -135,6 +221,14 @@ static j1939_tp_buf_t *tp_buf_alloc(j1939_t *s, j1939_tp_buf_t *pool, uint16_t l
 	return found;
 }
 
+/**
+ * @brief Finds the open session of a direction and pair of addresses.
+ * @param s       Stack.
+ * @param tx      true for a sending session.
+ * @param local   Address of the stack's side; J1939_ADDR_GLOBAL for a received BAM.
+ * @param remote  Address of the peer; J1939_ADDR_GLOBAL for a sent BAM.
+ * @return The session, or NULL.
+ */
 static j1939_tp_session_t *session_find(j1939_t *s, bool tx, uint8_t local, uint8_t remote) {
 	j1939_tp_session_t *found = NULL;
 	uint8_t i;
@@ -150,7 +244,15 @@ static j1939_tp_session_t *session_find(j1939_t *s, bool tx, uint8_t local, uint
 	return found;
 }
 
-/* Connection mode session between local and remote for pgn, or NULL. */
+/**
+ * @brief Finds the open session between two addresses for a PGN.
+ * @param s       Stack.
+ * @param tx      true for a sending session.
+ * @param local   Address of the stack's side.
+ * @param remote  Address of the peer.
+ * @param pgn     PGN of the message.
+ * @return The session, or NULL.
+ */
 static j1939_tp_session_t *session_match(j1939_t *s, bool tx, uint8_t local, uint8_t remote,
                                          uint32_t pgn) {
 	j1939_tp_session_t *se = session_find(s, tx, local, remote);
@@ -161,10 +263,14 @@ static j1939_tp_session_t *session_match(j1939_t *s, bool tx, uint8_t local, uin
 	return se;
 }
 
-/*
- * Reserves an unused session and a buffer from pool. Returns NULL and sets
- * reason to J1939_TP_ABORT_BUSY (no session) or J1939_TP_ABORT_RESOURCES
- * (no buffer) if either is missing.
+/**
+ * @brief Reserves an unused session and a buffer from a pool.
+ * @param s         Stack.
+ * @param pool      Buffers to take from.
+ * @param pool_len  Entries in @p pool.
+ * @param reason    REASON_NONE on success, J1939_TP_ABORT_BUSY without a free
+ *                  session, J1939_TP_ABORT_RESOURCES without a free buffer.
+ * @return The session, or NULL if either is missing.
  */
 static j1939_tp_session_t *session_new(j1939_t *s, j1939_tp_buf_t *pool, uint16_t pool_len,
                                        uint8_t *reason) {
@@ -192,7 +298,14 @@ static j1939_tp_session_t *session_new(j1939_t *s, j1939_tp_buf_t *pool, uint16_
 	return found;
 }
 
-/* Sets the message and peer of a session returned by session_new(). */
+/**
+ * @brief Sets the message and peer of a session returned by session_new().
+ * @param se      Session.
+ * @param tx      true for a sending session.
+ * @param local   Address of the stack's side.
+ * @param remote  Address of the peer.
+ * @param msg     Message: PGN, priority and size.
+ */
 static void session_open(j1939_tp_session_t *se, bool tx, uint8_t local, uint8_t remote,
                          const j1939_msg_t *msg) {
 	se->tx = tx;
@@ -208,6 +321,10 @@ static void session_open(j1939_tp_session_t *se, bool tx, uint8_t local, uint8_t
 	se->holds = 0U;
 }
 
+/**
+ * @brief Ends a session; a buffer still owned by it becomes free.
+ * @param se  Session.
+ */
 static void session_close(j1939_tp_session_t *se) {
 	if (se->buf->state == BUF_SESSION) {
 		se->buf->state = BUF_FREE;
@@ -216,7 +333,11 @@ static void session_close(j1939_tp_session_t *se) {
 	se->state = J1939_TP_IDLE;
 }
 
-/* Ends a session without its message, counting it. */
+/**
+ * @brief Ends a session without its message, counting it in tp_tx_aborted or tp_rx_aborted.
+ * @param s   Stack.
+ * @param se  Session.
+ */
 static void session_drop(j1939_t *s, j1939_tp_session_t *se) {
 	if (se->tx) {
 		s->stats.tp_tx_aborted++;
@@ -226,28 +347,50 @@ static void session_drop(j1939_t *s, j1939_tp_session_t *se) {
 	session_close(se);
 }
 
-/* Ends a connection mode session with a Connection Abort to the peer. */
+/**
+ * @brief Ends a connection mode session with a Connection Abort to the peer.
+ * @param s       Stack.
+ * @param se      Session.
+ * @param reason  Abort reason.
+ */
 static void session_abort(j1939_t *s, j1939_tp_session_t *se, uint8_t reason) {
 	tp_abort_send(s, se->local, se->remote, reason, se->pgn);
 	session_drop(s, se);
 }
 
-/* Returns true if pgn goes to the application; Commanded Address may be for the stack only. */
+/**
+ * @brief Tells whether a received multi-packet PGN goes to the application.
+ * @param s    Stack.
+ * @param pgn  PGN.
+ * @return true if listed in rx_pgns; Commanded Address and receive objects may take a PGN
+ *         for the stack only.
+ */
 static bool tp_for_app(const j1939_t *s, uint32_t pgn) {
 	return j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, pgn);
 }
 
-/* Returns true if the completed message of the session finds a message slot, or needs none. */
+/**
+ * @brief Tells whether the completed message of a session can be delivered.
+ * @param s   Stack.
+ * @param se  Session.
+ * @return true if a message slot is free, or the message needs none.
+ */
 static bool tp_msg_slot_free(j1939_t *s, const j1939_tp_session_t *se) {
 	uint16_t index;
 
 	return !tp_for_app(s, se->pgn) || j1939_ring_head(&s->msgs.ring, &index);
 }
 
-/*
- * Hands the completed message to the application; its buffer stays reserved
- * until the pop. A receive object for it is updated whether or not a message
- * slot is free. A Commanded Address also goes to address management.
+/**
+ * @brief Hands a completed message to the stack and the application.
+ *
+ * A receive object for it is updated whether or not a message slot is free.
+ * The buffer of a message delivered to the application stays reserved until
+ * the pop. A Commanded Address also goes to address management.
+ *
+ * @param s   Stack.
+ * @param se  Session.
+ * @return false if the message needs a message slot and none is free.
  */
 static bool tp_deliver(j1939_t *s, j1939_tp_session_t *se) {
 	uint16_t index;
@@ -279,9 +422,17 @@ static bool tp_deliver(j1939_t *s, j1939_tp_session_t *se) {
 	return ok;
 }
 
-/*
- * Checks an RTS or BAM. Returns REASON_NONE if the message can be received,
- * otherwise the abort reason. A message larger than the buffers is counted.
+/**
+ * @brief Checks an RTS or BAM.
+ *
+ * A message larger than the buffers is counted in tp_rx_refused.
+ *
+ * @param s        Stack.
+ * @param len      Announced message size.
+ * @param packets  Announced packet count.
+ * @param pgn      Announced PGN.
+ * @param sa       Sender.
+ * @return REASON_NONE if the message can be received, otherwise the abort reason.
  */
 static uint8_t announce_check(j1939_t *s, uint16_t len, uint8_t packets, uint32_t pgn, uint8_t sa) {
 	uint8_t reason = REASON_NONE;
@@ -302,6 +453,11 @@ static uint8_t announce_check(j1939_t *s, uint16_t len, uint8_t packets, uint32_
 	return reason;
 }
 
+/**
+ * @brief Responder: sends a CTS with 0 packets, which holds the connection open.
+ * @param s   Stack.
+ * @param se  Session.
+ */
 static void hold_send(j1939_t *s, const j1939_tp_session_t *se) {
 	uint8_t f[FRAME_LEN];
 
@@ -309,10 +465,15 @@ static void hold_send(j1939_t *s, const j1939_tp_session_t *se) {
 	tp_ctrl_send(s, se->local, se->remote, f);
 }
 
-/*
- * Responder: requests the next packets. The CTS for the packets that
- * complete the message is held back (CTS with 0 packets) while all message
- * slots are in use.
+/**
+ * @brief Responder: requests the next packets.
+ *
+ * The CTS for the packets that complete the message is held back (CTS with
+ * 0 packets) while all message slots are in use.
+ *
+ * @param s      Stack.
+ * @param se     Receive session.
+ * @param fresh  true when called between two j1939_process() calls.
  */
 static void window_request(j1939_t *s, j1939_tp_session_t *se, bool fresh) {
 	uint16_t n = (uint16_t)((se->packets - se->next) + 1U);
@@ -336,7 +497,15 @@ static void window_request(j1939_t *s, j1939_tp_session_t *se, bool fresh) {
 	}
 }
 
-/* Opens a receive session; returns the reason if none could be opened. */
+/**
+ * @brief Opens a receive session for an RTS or BAM.
+ * @param s      Stack.
+ * @param id     Identifier of the announcement.
+ * @param d      Its payload.
+ * @param local  Own address for RTS, J1939_ADDR_GLOBAL for BAM.
+ * @param out    The new session, or NULL.
+ * @return REASON_NONE, or the reason no session was opened.
+ */
 static uint8_t rx_open(j1939_t *s, uint32_t id, const uint8_t *d, uint8_t local,
                        j1939_tp_session_t **out) {
 	j1939_msg_t msg;
@@ -358,6 +527,16 @@ static uint8_t rx_open(j1939_t *s, uint32_t id, const uint8_t *d, uint8_t local,
 	return reason;
 }
 
+/**
+ * @brief Responder: handles an RTS addressed to a claimed address of the stack.
+ *
+ * An RTS for another PGN while a connection with the originator is open is
+ * refused; a repeated RTS for the same PGN restarts the connection.
+ *
+ * @param s   Stack.
+ * @param id  Identifier of the RTS.
+ * @param d   Its payload.
+ */
 static void rts_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 	uint8_t own = j1939_id_da_get(id);
 	uint8_t peer = j1939_id_sa_get(id);
@@ -386,6 +565,12 @@ static void rts_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 	}
 }
 
+/**
+ * @brief Handles a BAM; a new one from a sender replaces its unfinished one.
+ * @param s   Stack.
+ * @param id  Identifier of the BAM.
+ * @param d   Its payload.
+ */
 static void bam_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 	j1939_tp_session_t *se = session_find(s, false, J1939_ADDR_GLOBAL, j1939_id_sa_get(id));
 
@@ -400,6 +585,12 @@ static void bam_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 	}
 }
 
+/**
+ * @brief Originator: handles a CTS for an open connection.
+ * @param s   Stack.
+ * @param se  Sending session.
+ * @param d   Payload of the CTS.
+ */
 static void cts_handle(j1939_t *s, j1939_tp_session_t *se, const uint8_t *d) {
 	uint16_t n = d[CTS_COUNT];
 	uint16_t next = d[CTS_NEXT];
@@ -428,6 +619,13 @@ static void cts_handle(j1939_t *s, j1939_tp_session_t *se, const uint8_t *d) {
 	}
 }
 
+/**
+ * @brief Ends the sessions a received Connection Abort concerns: same peer and PGN.
+ * @param s     Stack.
+ * @param own   Destination of the abort.
+ * @param peer  Its sender.
+ * @param pgn   PGN in the abort.
+ */
 static void abort_handle(j1939_t *s, uint8_t own, uint8_t peer, uint32_t pgn) {
 	j1939_tp_session_t *se = session_match(s, true, own, peer, pgn);
 
@@ -440,6 +638,12 @@ static void abort_handle(j1939_t *s, uint8_t own, uint8_t peer, uint32_t pgn) {
 	}
 }
 
+/**
+ * @brief Dispatches a received TP.CM frame by its control byte.
+ * @param s   Stack.
+ * @param id  Identifier of the frame.
+ * @param d   Its payload.
+ */
 static void cm_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 	uint8_t own = j1939_id_da_get(id);
 	uint8_t peer = j1939_id_sa_get(id);
@@ -481,6 +685,11 @@ static void cm_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 	}
 }
 
+/**
+ * @brief Copies the next expected TP.DT packet into the session's buffer.
+ * @param se  Receive session.
+ * @param d   Payload of the packet.
+ */
 static void packet_store(j1939_tp_session_t *se, const uint8_t *d) {
 	uint16_t offset = (uint16_t)((se->next - 1U) * PACKET_DATA);
 	uint16_t n = (uint16_t)(se->len - offset);
@@ -492,6 +701,14 @@ static void packet_store(j1939_tp_session_t *se, const uint8_t *d) {
 	se->next++;
 }
 
+/**
+ * @brief Responder: delivers a completed message and acknowledges it with EndOfMsgAck.
+ *
+ * Without a free message slot the connection is aborted (reason 2) instead.
+ *
+ * @param s   Stack.
+ * @param se  Receive session.
+ */
 static void rx_complete(j1939_t *s, j1939_tp_session_t *se) {
 	if (tp_deliver(s, se)) {
 		uint8_t f[FRAME_LEN];
@@ -504,6 +721,12 @@ static void rx_complete(j1939_t *s, j1939_tp_session_t *se) {
 	}
 }
 
+/**
+ * @brief Handles a received TP.DT packet; packets already received are ignored.
+ * @param s   Stack.
+ * @param id  Identifier of the packet.
+ * @param d   Its payload.
+ */
 static void dt_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 	j1939_tp_session_t *se = session_find(s, false, j1939_id_da_get(id), j1939_id_sa_get(id));
 	uint16_t seq = d[0];
@@ -550,6 +773,12 @@ static void dt_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 	}
 }
 
+/**
+ * @brief Queues the session's next TP.DT packet.
+ * @param s   Stack.
+ * @param se  Sending session.
+ * @return true if queued.
+ */
 static bool dt_send(j1939_t *s, const j1939_tp_session_t *se) {
 	uint8_t f[FRAME_LEN];
 	uint16_t offset = (uint16_t)((se->next - 1U) * PACKET_DATA);
@@ -564,6 +793,15 @@ static bool dt_send(j1939_t *s, const j1939_tp_session_t *se) {
 	return tp_frame_send(s, se->prio, J1939_PGN_TP_DT, se->local, se->remote, f);
 }
 
+/**
+ * @brief Sends the next BAM packet once the gap has passed.
+ *
+ * A packet that finds no room in the tx queue for BAM_STALL_US ends the
+ * broadcast: receivers would have timed out.
+ *
+ * @param s   Stack.
+ * @param se  Sending BAM session.
+ */
 static void bam_tick(j1939_t *s, j1939_tp_session_t *se) {
 	if (tp_timer_expired(se)) {
 		if (dt_send(s, se)) {
@@ -582,7 +820,11 @@ static void bam_tick(j1939_t *s, j1939_tp_session_t *se) {
 	}
 }
 
-/* Originator: sends the requested packets as far as the tx queue has room. */
+/**
+ * @brief Originator: sends the requested packets as far as the tx queue has room.
+ * @param s   Stack.
+ * @param se  Sending session in TX_DATA state.
+ */
 static void data_tick(j1939_t *s, j1939_tp_session_t *se) {
 	uint16_t n = (uint16_t)((se->last - se->next) + 1U);
 	bool sent = true;
@@ -608,6 +850,15 @@ static void data_tick(j1939_t *s, j1939_tp_session_t *se) {
 	}
 }
 
+/**
+ * @brief Responder: continues a held connection once a message slot is free.
+ *
+ * Otherwise the hold CTS is repeated every Th, at most J1939_TP_HOLD_MAX
+ * times, then the connection is aborted.
+ *
+ * @param s   Stack.
+ * @param se  Receive session in RX_HOLD state.
+ */
 static void hold_tick(j1939_t *s, j1939_tp_session_t *se) {
 	if (tp_msg_slot_free(s, se)) {
 		window_request(s, se, false);
@@ -624,6 +875,11 @@ static void hold_tick(j1939_t *s, j1939_tp_session_t *se) {
 	}
 }
 
+/**
+ * @brief Advances a session by its state: sends due packets, handles timeouts.
+ * @param s   Stack.
+ * @param se  Session.
+ */
 static void session_tick(j1939_t *s, j1939_tp_session_t *se) {
 	switch (se->state) {
 	case J1939_TP_TX_BAM:
@@ -653,6 +909,11 @@ static void session_tick(j1939_t *s, j1939_tp_session_t *se) {
 	}
 }
 
+/**
+ * @brief Marks every buffer of a pool free.
+ * @param pool  Buffers; may be NULL if @p len is 0.
+ * @param len   Entries in @p pool.
+ */
 static void tp_pool_init(j1939_tp_buf_t *pool, uint16_t len) {
 	uint16_t i;
 

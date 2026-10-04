@@ -481,7 +481,7 @@ j1939_txobj_set(&stack, 0U, payload, 8U);         /* whenever the values change 
   /* Copyright (c) 2026 jkontiokoski */
   ```
 
-- Public declarations carry Doxygen comments.
+- Every declaration carries a Doxygen comment: public and internal functions, types, struct members and macros, and a `@file` block per source file.
 
 ### Documentation
 
@@ -490,11 +490,11 @@ The API reference is generated with Doxygen and Graphviz from `docs/Doxyfile.in`
 | Build    | Target               | Input                                         | Graphs                     | Warnings                     |
 | -------- | -------------------- | --------------------------------------------- | -------------------------- | ---------------------------- |
 | Public   | `make docs`          | `include/j1939/`, `README.md`, `docs/*.md`    | include and dependency     | fail the build               |
-| Internal | `make docs-internal` | public input and `src/`, with source browsing | also call and caller graphs | reported, do not fail the build |
+| Internal | `make docs-internal` | public input and `src/`, with source browsing | also call and caller graphs | fail the build               |
 
-- The public build is a quality gate: every public declaration is documented, documented functions describe all their parameters, and broken references or Markdown links fail it.
+- Both builds are quality gates: every declaration in their input is documented, documented functions describe all their parameters, and broken references or Markdown links fail them.
 - The port and lock contracts are `static inline` declarations and appear in the public reference; `j1939_port_contract.h` has its own page.
-- `src/` comments are not in Doxygen form yet, so the internal build shows the implementation's structure, source and call graphs but not its comments; whether its warnings fail the build is the `J1939_DOCS_INTERNAL_GATE` switch in `cmake/docs.cmake`.
+- The internal build documents every function and macro of `src/`, static and module-internal ones included, for reviewers. A `*_priv.h` function is documented at its declaration; Doxygen merges it with the definition. `J1939_DOCS_INTERNAL_GATE` in `cmake/docs.cmake` makes its warnings fail the build.
 - `WARN_NO_PARAMDOC` is off: Doxygen 1.9.8 reports documented parameters of declarations as missing. `WARN_IF_INCOMPLETE_DOC` checks the parameters instead.
 - The narrative documents are written for GitHub first. Doxygen anchors are global across all pages, so an in-page link needs an `<a id="...">` anchor whose name is unique in the project.
 
@@ -570,7 +570,7 @@ Make targets:
 | `make cross`        | Compiles the library and the frame queue for Cortex-M0+ in `build-arm/`  |
 | `make examples`     | Builds the SocketCAN example applications in `build-examples/`           |
 | `make docs`         | Generates the public documentation in `build-docs/public/html/`, fails on any Doxygen warning |
-| `make docs-internal` | Generates the internal documentation in `build-docs/internal/html/`     |
+| `make docs-internal` | Generates the internal documentation in `build-docs/internal/html/`, fails on any Doxygen warning |
 | `make lint`         | cppcheck: core and mock port with the MISRA addon, SocketCAN port and examples with the general checks |
 | `make format`       | Formats all project sources                                              |
 | `make format-check` | Fails if any project source is not formatted                             |
