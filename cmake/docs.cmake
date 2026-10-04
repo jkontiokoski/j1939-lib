@@ -43,6 +43,6 @@ function(j1939_add_docs target output internal gate input)
 		VERBATIM)
 endfunction()
 
-j1939_add_docs(docs "${CMAKE_CURRENT_BINARY_DIR}/public" NO ON "${_j1939_docs_public_input}")
-j1939_add_docs(docs-internal "${CMAKE_CURRENT_BINARY_DIR}/internal" YES
+j1939_add_docs(docs "${CMAKE_CURRENT_BINARY_DIR}/docs/public" NO ON "${_j1939_docs_public_input}")
+j1939_add_docs(docs-internal "${CMAKE_CURRENT_BINARY_DIR}/docs/internal" YES
 	${J1939_DOCS_INTERNAL_GATE} "${_j1939_docs_public_input} \"${J1939_DOCS_ROOT}/src\"")

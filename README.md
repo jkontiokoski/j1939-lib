@@ -23,7 +23,7 @@ The example applications in `examples/` run on Linux SocketCAN and are the start
 ```sh
 sudo ip link add dev vcan0 type vcan && sudo ip link set up vcan0
 make examples
-cd build-examples/examples
+cd build/dev/examples
 
 ./pgn_listener -a 0x90 0xFECA 0xEF00 &    # prints DM1 and Proprietary A messages sent to it
 ./bam_sender -a 0x80 -d 0x90 -c 3         # DM1 with BAM, 100 bytes with RTS/CTS to 0x90

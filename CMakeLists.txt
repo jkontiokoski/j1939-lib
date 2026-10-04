@@ -20,7 +20,14 @@ option(J1939_BUILD_TESTS "Build the test suite" ${PROJECT_IS_TOP_LEVEL})
 option(J1939_WERROR "Treat compiler warnings as errors" ${PROJECT_IS_TOP_LEVEL})
 option(J1939_SANITIZE "Instrument with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(J1939_COVERAGE "Instrument for gcov coverage" OFF)
-option(J1939_BUILD_EXAMPLES "Build the SocketCAN example applications (Linux)" OFF)
+# The examples run on Linux SocketCAN: built by default in a top-level build on a Linux host.
+if(PROJECT_IS_TOP_LEVEL AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_CROSSCOMPILING)
+	set(_j1939_examples_default ON)
+else()
+	set(_j1939_examples_default OFF)
+endif()
+option(J1939_BUILD_EXAMPLES "Build the SocketCAN example applications (Linux)"
+	${_j1939_examples_default})
 option(J1939_BUILD_DOCS "Add the docs and docs-internal targets (Doxygen, Graphviz)" OFF)
 set(J1939_PORT_DIR "" CACHE PATH "Port directory containing j1939_target.h")
 option(J1939_COMPILE_COMMANDS "Generate compile_commands.json for tooling such as clangd"

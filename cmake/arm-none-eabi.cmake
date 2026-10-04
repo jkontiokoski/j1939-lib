@@ -2,7 +2,8 @@
 # Copyright (c) 2026 jkontiokoski
 
 # Compile-only portability check for a bare-metal Cortex-M0+ target.
-# Usage: cmake -B build-arm --toolchain cmake/arm-none-eabi.cmake -DJ1939_BUILD_TESTS=OFF
+# Usage: cmake --preset arm (see CMakePresets.json), or
+#        cmake -B build/arm --toolchain cmake/arm-none-eabi.cmake -DJ1939_BUILD_TESTS=OFF
 
 set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_PROCESSOR arm)
