@@ -88,6 +88,7 @@ A new deviation goes into `cppcheck-suppressions.txt` or `cppcheck-misra-suppres
 ## Documentation
 
 - **One place per fact.** What a function or module does, its rules and limits, is documented in its header: that is the API reference. Pages in `docs/` explain how to do a task and why the design is as it is, and link to the reference instead of repeating it.
+- **Topics.** Each module's description is a Doxygen topic. The groups are defined in reading order in `j1939.h`; each header adds its description and declarations with `@addtogroup` and closes the group before its include guard ends.
 - **Doxygen gates.** Every declaration carries a Doxygen comment: public and internal functions, types, struct members and macros, and a `@file` block per source file. Both documentation builds fail on any warning:
 
   | Build    | Target               | Input                                         | Graphs                      |

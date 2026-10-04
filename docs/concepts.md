@@ -77,6 +77,8 @@ Transmitting:
 
 ## Where to find what
 
+The API reference groups the headers into topics, one per module. The guides, starting with [Addressing](guides/addressing.md), show how to use each feature.
+
 | Header | Content | Main types |
 | --- | --- | --- |
 | `j1939.h` | Umbrella header, version | |

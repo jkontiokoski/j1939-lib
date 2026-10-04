@@ -31,7 +31,7 @@ LINT_DIR := $(BUILD_ROOT)/lint
 LINT_FINDING := ^[^ ]+:[0-9]+:[0-9]+: (error|warning|style|performance|portability|information):
 # Markdown files whose relative links are checked; files left out of the source archive are
 # checked only where they exist.
-LINK_FILES = $(wildcard README.md CONTRIBUTING.md RELEASING.md docs/*.md)
+LINK_FILES = $(wildcard README.md CONTRIBUTING.md RELEASING.md docs/*.md docs/guides/*.md)
 
 # $(call cppcheck_run,<report name>,<arguments>): runs cppcheck, keeps its output in
 # $(LINT_DIR)/<report name>.txt and fails on its exit code or on any reported finding. cppcheck

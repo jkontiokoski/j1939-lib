@@ -126,3 +126,8 @@ cd build/dev/examples && ./addr_claim_demo
 ```
 
 [Example applications](examples.md) describes each program and what to watch on the bus.
+
+## Next steps
+
+- The guides cover the features one task at a time: [Addressing](guides/addressing.md), [Messages](guides/messages.md), [Message objects](guides/message-objects.md), [Signals](guides/signals.md) and [Diagnostics](guides/diagnostics.md).
+- [Concepts](concepts.md) explains the design behind the loop above.
