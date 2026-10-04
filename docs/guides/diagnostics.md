@@ -41,7 +41,7 @@ Whenever the fault set changes, hand the complete lists to the stack:
 
 ```c
 const j1939_diag_dtc_t now[] = {
-	{.spn = 100U, .fmi = 1U, .oc = 3U, .cm = J1939_DIAG_CM_V4},   /* engine oil pressure low */
+	{.spn = 520202U, .fmi = 1U, .oc = 3U, .cm = J1939_DIAG_CM_V4}, /* invented proprietary SPN, below normal */
 };
 (void)j1939_dm_active_set(&stack, ca, now, 1U);
 (void)j1939_dm_prev_set(&stack, ca, previously_active, n_prev);
@@ -61,7 +61,7 @@ const j1939_diag_lamps_t lamps = {
 ## Decide on clear requests
 
 DM3 clears the previously active DTCs, DM11 the active ones.
-Clearing erases evidence of faults, so in a safety-rated system it is a decision of the application's fault management (operating state, access rights, non-volatile memory), not of the protocol layer.
+Clearing erases evidence of faults, so in a safety-related system it is a decision of the application's fault management (operating state, access rights, non-volatile memory), not of the protocol layer.
 The stack therefore only reports the request; poll it from the main loop:
 
 ```c

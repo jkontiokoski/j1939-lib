@@ -41,7 +41,7 @@ const j1939_msg_t *msg;
 
 while ((msg = j1939_msg_peek(&stack)) != NULL) {
 	switch (msg->pgn) {
-	case 0xFEF1U:               /* msg->sa, msg->len and msg->data describe the message */
+	case 0xFF20U:               /* msg->sa, msg->len and msg->data describe the message */
 		break;
 	default:
 		break;
@@ -63,8 +63,8 @@ A Request for one of them arrives as a message with `pgn` `J1939_PGN_REQUEST`:
 uint32_t requested;
 
 if ((msg->pgn == J1939_PGN_REQUEST) && (j1939_request_pgn_get(msg, &requested) == J1939_RET_OK) &&
-    (requested == 0xFEEBU)) {
-	const j1939_msg_t answer = {.pgn = 0xFEEBU, .prio = 6U, .da = J1939_ADDR_GLOBAL,
+    (requested == 0xFF22U)) {
+	const j1939_msg_t answer = {.pgn = 0xFF22U, .prio = 6U, .da = J1939_ADDR_GLOBAL,
 	                            .len = ident_len, .data = ident};
 	(void)j1939_send(&stack, ca, &answer);
 }
@@ -77,7 +77,7 @@ PGNs sent by a transmit object are answered by the stack and must not be in `req
 ## Send a Request
 
 ```c
-(void)j1939_request_send(&stack, ca, 0xFEE5U, 0x00U);  /* ask node 0x00 for engine hours */
+(void)j1939_request_send(&stack, ca, 0xFF21U, 0x20U);  /* ask node 0x20 for its counters */
 ```
 
 The answer arrives like any received message, so list the requested PGN in `rx_pgns`.
