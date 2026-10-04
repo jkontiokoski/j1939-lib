@@ -228,7 +228,7 @@ The loopback test `test_socketcan_vcan` then runs as part of `make test`.
 ### Example applications
 
 The examples in `examples/` run on a SocketCAN interface, `vcan0` unless `-i` names another.
-Build them with `make examples` (or `-DJ1939_BUILD_EXAMPLES=ON`); the binaries are in `build-examples/examples/`.
+Build them with `make examples`; on a Linux host they are part of every top-level build (`J1939_BUILD_EXAMPLES`), and the binaries of the `dev` preset are in `build/dev/examples/`.
 Watch the traffic with `candump -ta vcan0` in another shell.
 
 | Example           | Shows                                                                                              |

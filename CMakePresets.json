@@ -1,0 +1,101 @@
+{
+	"version": 3,
+	"cmakeMinimumRequired": {
+		"major": 3,
+		"minor": 21,
+		"patch": 0
+	},
+	"configurePresets": [
+		{
+			"name": "base",
+			"hidden": true,
+			"binaryDir": "${sourceDir}/build/${presetName}"
+		},
+		{
+			"name": "dev",
+			"inherits": "base",
+			"displayName": "Development",
+			"description": "Debug build: library, tests, examples (Linux), documentation targets on request",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"J1939_BUILD_TESTS": "ON"
+			}
+		},
+		{
+			"name": "test",
+			"inherits": "base",
+			"displayName": "Tests with sanitizers",
+			"description": "Debug build with AddressSanitizer and UndefinedBehaviorSanitizer",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"J1939_BUILD_TESTS": "ON",
+				"J1939_SANITIZE": "ON",
+				"J1939_BUILD_EXAMPLES": "OFF"
+			}
+		},
+		{
+			"name": "coverage",
+			"inherits": "base",
+			"displayName": "Tests with coverage",
+			"description": "Debug build instrumented for gcov",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"J1939_BUILD_TESTS": "ON",
+				"J1939_COVERAGE": "ON",
+				"J1939_BUILD_EXAMPLES": "OFF"
+			}
+		},
+		{
+			"name": "arm",
+			"inherits": "base",
+			"displayName": "Cortex-M0+ portability check",
+			"description": "Compiles the library and the frame queue with arm-none-eabi-gcc",
+			"toolchainFile": "${sourceDir}/cmake/arm-none-eabi.cmake",
+			"cacheVariables": {
+				"J1939_BUILD_TESTS": "OFF"
+			}
+		}
+	],
+	"buildPresets": [
+		{
+			"name": "dev",
+			"configurePreset": "dev"
+		},
+		{
+			"name": "test",
+			"configurePreset": "test"
+		},
+		{
+			"name": "coverage",
+			"configurePreset": "coverage"
+		},
+		{
+			"name": "arm",
+			"configurePreset": "arm",
+			"targets": ["j1939", "j1939_queue"]
+		}
+	],
+	"testPresets": [
+		{
+			"name": "dev",
+			"configurePreset": "dev",
+			"output": {
+				"outputOnFailure": true
+			}
+		},
+		{
+			"name": "test",
+			"configurePreset": "test",
+			"output": {
+				"outputOnFailure": true
+			}
+		},
+		{
+			"name": "coverage",
+			"configurePreset": "coverage",
+			"output": {
+				"outputOnFailure": true
+			}
+		}
+	]
+}

@@ -93,7 +93,9 @@ docs/                 project documentation
                         Doxyfile.in             Doxygen configuration template of both documentation builds
                         vendor/                 vendored doxygen-awesome-css stylesheet and its license
 CMakeLists.txt        build definition
-Makefile              convenience wrapper around CMake
+CMakePresets.json     build configurations: dev, test, coverage, arm
+Makefile              convenience wrapper around the presets
+.clangd               points clangd at the dev build's compilation database
 cppcheck-suppressions.txt        general static analysis deviations
 cppcheck-misra-suppressions.txt  MISRA deviations
 .clang-format         formatting rules
@@ -555,26 +557,37 @@ CMake options:
 | `J1939_SANITIZE`    | OFF                   | AddressSanitizer + UndefinedBehaviorSanitizer        |
 | `J1939_COVERAGE`    | OFF                   | gcov instrumentation                                 |
 | `J1939_COMPILE_COMMANDS` | ON when top level | Writes `compile_commands.json` into the build directory |
-| `J1939_BUILD_EXAMPLES` | OFF                 | Builds the example applications (Linux only) against a SocketCAN build of the library, whatever `J1939_PORT_DIR` selects |
+| `J1939_BUILD_EXAMPLES` | ON when top level on a Linux host, OFF otherwise | Builds the example applications (Linux only) against a SocketCAN build of the library, whatever `J1939_PORT_DIR` selects |
 | `J1939_BUILD_DOCS`  | OFF                   | Adds the `docs` and `docs-internal` targets; requires Doxygen ≥ 1.9.8 and Graphviz |
 
-clangd finds the compilation database of the `make` build in `build/` without further configuration.
+Build configurations are CMake presets in `CMakePresets.json`; each has its own build tree under `build/`, because the toolchain and the instrumentation flags are fixed per tree:
+
+| Preset     | Build tree       | Configuration                                                    |
+| ---------- | ---------------- | ---------------------------------------------------------------- |
+| `dev`      | `build/dev`      | Debug: library, tests, examples on Linux, documentation targets on request |
+| `test`     | `build/test`     | Debug with AddressSanitizer and UndefinedBehaviorSanitizer, tests |
+| `coverage` | `build/coverage` | Debug with gcov instrumentation, tests                           |
+| `arm`      | `build/arm`      | Cortex-M0+ toolchain, library and frame queue only               |
+
+Each preset works directly with CMake: `cmake --preset test`, `cmake --build --preset test`, `ctest --preset test` (no test preset for `arm`).
+`.clangd` points clangd at the compilation database of `build/dev`.
 
 Make targets:
 
 | Target              | Action                                                                   |
 | ------------------- | ------------------------------------------------------------------------ |
-| `make`              | Debug build in `build/`                                                  |
-| `make test`         | Builds with sanitizers in `build-test/` and runs `ctest`                 |
-| `make coverage`     | Builds with coverage in `build-coverage/`, runs tests, fails under 90 % line coverage |
-| `make cross`        | Compiles the library and the frame queue for Cortex-M0+ in `build-arm/`  |
-| `make examples`     | Builds the SocketCAN example applications in `build-examples/`           |
-| `make docs`         | Generates the public documentation in `build-docs/public/html/`, fails on any Doxygen warning |
-| `make docs-internal` | Generates the internal documentation in `build-docs/internal/html/`, fails on any Doxygen warning |
+| `make`              | Builds the `dev` preset in `build/dev/`                                  |
+| `make test`         | Builds the `test` preset (sanitizers) in `build/test/` and runs its tests |
+| `make coverage`     | Builds the `coverage` preset in `build/coverage/`, runs the tests, fails under 90 % line coverage |
+| `make cross`        | Builds the `arm` preset: the library and the frame queue for Cortex-M0+ in `build/arm/` |
+| `make examples`     | Builds the SocketCAN example applications of the `dev` preset, in `build/dev/examples/` |
+| `make docs`         | Generates the public documentation in `build/dev/docs/public/html/`, fails on any Doxygen warning |
+| `make docs-internal` | Generates the internal documentation in `build/dev/docs/internal/html/`, fails on any Doxygen warning |
+| `make check`        | Runs every gate in turn: `format-check`, `lint`, `test`, `coverage`, `cross`, `docs`, `docs-internal`; stops at the first failure |
 | `make lint`         | cppcheck: core and mock port with the MISRA addon, SocketCAN port and examples with the general checks |
 | `make format`       | Formats all project sources                                              |
 | `make format-check` | Fails if any project source is not formatted                             |
-| `make clean`        | Removes all build directories                                            |
+| `make clean`        | Removes `build/`                                                         |
 
 ### Versioning and version control
 

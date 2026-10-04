@@ -1,6 +1,5 @@
 # Build directories
 /build/
-/build-*/
 
 # Build artefacts outside CMake build directories
 *.o

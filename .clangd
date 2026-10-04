@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 jkontiokoski
+
+# clangd reads the compilation database of the dev preset (make, cmake --preset dev).
+CompileFlags:
+  CompilationDatabase: build/dev
