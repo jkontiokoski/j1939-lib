@@ -47,6 +47,7 @@ It will serve this purpose after the library is published, but also for the auth
 ### Tooling notes
 
 - cppcheck (2.13) suppressions lists accept `//` comments only; `#` lines fail with "Failed to add suppression. No id". An unmatched suppression fails `make lint`, so add suppressions only when they match something.
+- cppcheck 2.13 does not set its exit code for whole-program findings (e.g. MISRA 5.9, static names unique across files); `make lint` therefore also fails on any finding in its output. When two branches add static helpers, check the combined result for name collisions.
 
 ### Workflow
 

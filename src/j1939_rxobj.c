@@ -38,7 +38,7 @@ static bool pgn_owned(uint32_t pgn) {
  *         source address of at most 253 and 1 <= min_len <= buf_len <=
  *         J1939_CFG_TP_BUF_SIZE.
  */
-static bool entry_valid(const j1939_rxobj_cfg_t *c) {
+static bool rx_entry_valid(const j1939_rxobj_cfg_t *c) {
 	return (c->buf != NULL) && j1939_stack_pgn_valid(c->pgn) && !pgn_owned(c->pgn) &&
 	       (c->sa <= SA_MAX) && (c->min_len >= 1U) && (c->min_len <= c->buf_len) &&
 	       (c->buf_len <= BUF_LEN_MAX);
@@ -51,13 +51,13 @@ static bool entry_valid(const j1939_rxobj_cfg_t *c) {
  * @param len  Number of entries.
  * @return true if every entry is valid and no two have the same PGN and source address.
  */
-static bool table_valid(const j1939_rxobj_cfg_t *cfg, const j1939_rxobj_t *obj, uint16_t len) {
+static bool rx_table_valid(const j1939_rxobj_cfg_t *cfg, const j1939_rxobj_t *obj, uint16_t len) {
 	bool valid = ((cfg != NULL) && (obj != NULL)) || (len == 0U);
 	uint16_t i;
 	uint16_t k;
 
 	for (i = 0U; valid && (i < len); i++) {
-		valid = entry_valid(&cfg[i]);
+		valid = rx_entry_valid(&cfg[i]);
 		for (k = 0U; valid && (k < i); k++) {
 			valid = (cfg[k].pgn != cfg[i].pgn) || (cfg[k].sa != cfg[i].sa);
 		}
@@ -96,7 +96,7 @@ j1939_ret_t j1939_rxobj_init(j1939_t *s, const j1939_rxobj_cfg_t *cfg, j1939_rxo
                              uint16_t len) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((s != NULL) && table_valid(cfg, obj, len)) {
+	if ((s != NULL) && rx_table_valid(cfg, obj, len)) {
 		uint16_t i;
 
 		for (i = 0U; i < len; i++) {

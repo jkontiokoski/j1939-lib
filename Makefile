@@ -20,6 +20,21 @@ FORMAT_FILES = $(shell find include src tests port examples \
 CPPCHECK_FLAGS = --std=c99 --enable=all --inconclusive --error-exitcode=1 --inline-suppr \
 	--suppressions-list=cppcheck-suppressions.txt
 
+# cppcheck reports, one per run of make lint.
+LINT_DIR := $(BUILD_ROOT)/lint
+# A reported finding: <file>:<line>:<column>: <severity>: ...
+LINT_FINDING := ^[^ ]+:[0-9]+:[0-9]+: (error|warning|style|performance|portability|information):
+
+# $(call cppcheck_run,<report name>,<arguments>): runs cppcheck, keeps its output in
+# $(LINT_DIR)/<report name>.txt and fails on its exit code or on any reported finding. cppcheck
+# 2.13 leaves the exit code at 0 for findings of whole-program checks such as MISRA rule 5.9, so
+# the report is checked as well.
+define cppcheck_run
+	cppcheck $(CPPCHECK_FLAGS) $(2) > $(LINT_DIR)/$(1).txt 2>&1; \
+		status=$$?; cat $(LINT_DIR)/$(1).txt; \
+		if [ $$status -ne 0 ] || grep -Eq '$(LINT_FINDING)' $(LINT_DIR)/$(1).txt; then exit 1; fi
+endef
+
 .PHONY: all lib test coverage cross examples docs docs-internal check format format-check lint clean
 
 all: lib
@@ -73,12 +88,13 @@ format-check:
 	clang-format --dry-run --Werror $(FORMAT_FILES)
 
 lint:
-	cppcheck $(CPPCHECK_FLAGS) --addon=misra --suppressions-list=cppcheck-misra-suppressions.txt \
-		-I include -I port/mock -i port/mock/j1939_port_fixture.c src include port/mock
-	cppcheck $(CPPCHECK_FLAGS) \
-		-I include -I port/socketcan -i port/socketcan/j1939_port_fixture.c port/socketcan
-	cppcheck $(CPPCHECK_FLAGS) -I include -I port/socketcan -I examples/common \
-		examples/common examples/addr_claim_demo examples/pgn_listener examples/bam_sender
+	@mkdir -p $(LINT_DIR)
+	$(call cppcheck_run,core,--addon=misra --suppressions-list=cppcheck-misra-suppressions.txt \
+		-I include -I port/mock -i port/mock/j1939_port_fixture.c src include port/mock)
+	$(call cppcheck_run,socketcan, \
+		-I include -I port/socketcan -i port/socketcan/j1939_port_fixture.c port/socketcan)
+	$(call cppcheck_run,examples,-I include -I port/socketcan -I examples/common \
+		examples/common examples/addr_claim_demo examples/pgn_listener examples/bam_sender)
 
 clean:
 	rm -rf $(BUILD_ROOT)
