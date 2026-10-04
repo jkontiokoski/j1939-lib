@@ -17,7 +17,8 @@
  * - A global Request for any other PGN is ignored.
  *
  * Requests for DM1, DM2, DM3 and DM11 to a CA with diagnostics enabled are
- * handled by the stack before these rules, see j1939_dm.h.
+ * handled by the stack before these rules, see j1939_dm.h, and so are
+ * Requests for the PGN of a transmit object, see j1939_txobj.h.
  */
 
 #ifndef J1939_REQUEST_H

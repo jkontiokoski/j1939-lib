@@ -24,6 +24,7 @@
 #include "j1939/j1939_signal.h"
 #include "j1939/j1939_stack.h"
 #include "j1939/j1939_tp.h"
+#include "j1939/j1939_txobj.h"
 
 #define J1939_VERSION_MAJOR 0
 #define J1939_VERSION_MINOR 1

@@ -104,6 +104,8 @@ typedef struct j1939_stats {
 	uint32_t dm_tx_dropped;  /**< DM1, DM2 or acknowledgement sends given up, see j1939_dm.h. */
 	uint32_t rxobj_rejected; /**< Payloads a receive object refused for their length. */
 	uint32_t rxobj_timeout;  /**< Receive objects that timed out, see j1939_rxobj.h. */
+	uint32_t txobj_tx_retry; /**< Transmit object sends deferred, see j1939_txobj.h. */
+	uint32_t txobj_tx_dropped; /**< Transmit object sends given up, see j1939_txobj.h. */
 } j1939_stats_t;
 
 /** Transmit frame queue. Members are private. */
@@ -121,6 +123,8 @@ typedef struct j1939_msg_queue {
 struct j1939_dm;        /* Diagnostic state of a CA, see j1939_dm.h. */
 struct j1939_rxobj_cfg; /* Receive object configuration, see j1939_rxobj.h. */
 struct j1939_rxobj;     /* Receive object state, see j1939_rxobj.h. */
+struct j1939_txobj_cfg; /* Transmit object configuration, see j1939_txobj.h. */
+struct j1939_txobj;     /* Transmit object state, see j1939_txobj.h. */
 
 /** Stack instance. Allocated by the integrator, members are private. */
 typedef struct j1939 {
@@ -141,6 +145,9 @@ typedef struct j1939 {
 	const struct j1939_rxobj_cfg *rxobj_cfg; /**< Receive object table; NULL if none. */
 	struct j1939_rxobj *rxobj;               /**< Receive object states; NULL if none. */
 	uint16_t rxobj_len;                      /**< Receive objects. */
+	const struct j1939_txobj_cfg *txobj_cfg; /**< Transmit objects; NULL while none are set. */
+	struct j1939_txobj *txobj;               /**< State of the transmit objects. */
+	uint16_t txobj_len;                      /**< Number of transmit objects. */
 } j1939_t;
 
 /**
@@ -204,9 +211,9 @@ j1939_ret_t j1939_tx_pop(j1939_t *s);
 /**
  * @brief Advances the stack's timers and queues the frames that are due.
  *
- * Runs address claiming, the transport protocol, diagnostics and the
- * supervision of the receive objects with the time passed since the
- * previous call.
+ * Runs address claiming, the transport protocol, diagnostics, the
+ * supervision of the receive objects and the transmit objects with the time
+ * passed since the previous call.
  *
  * @param s           Stack.
  * @param elapsed_us  Time since the previous call, in microseconds.
