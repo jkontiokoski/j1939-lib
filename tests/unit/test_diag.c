@@ -24,9 +24,9 @@ static const j1939_diag_lamps_t lamps_off = {
         .protect_flash = J1939_DIAG_FLASH_OFF,
 };
 
-/* SPN 1208, FMI 3, OC 10: the worked example of J1939/73 5.7.1.11. */
-static const j1939_diag_dtc_t dtc_1208 = {1208U, 3U, 10U, J1939_DIAG_CM_V4};
-static const uint8_t dtc_1208_bytes[J1939_DIAG_DTC_LEN] = {0xB8U, 0x04U, 0x03U, 0x0AU};
+/* An invented proprietary DTC: SPN 520205 (0x7F00D) uses all three SPN bytes. */
+static const j1939_diag_dtc_t dtc_ref = {520205U, 3U, 10U, J1939_DIAG_CM_V4};
+static const uint8_t dtc_ref_bytes[J1939_DIAG_DTC_LEN] = {0x0DU, 0xF0U, 0xE3U, 0x0AU};
 
 static void assert_dtc_equal(const j1939_diag_dtc_t *expected, const j1939_diag_dtc_t *actual) {
 	TEST_ASSERT_EQUAL_HEX32(expected->spn, actual->spn);
@@ -78,7 +78,7 @@ static void test_dtc_known_vectors(void) {
 		j1939_diag_dtc_t dtc;
 		uint8_t bytes[J1939_DIAG_DTC_LEN];
 	} vectors[] = {
-	        {{1208U, 3U, 10U, J1939_DIAG_CM_V4}, {0xB8U, 0x04U, 0x03U, 0x0AU}},
+	        {{520205U, 3U, 10U, J1939_DIAG_CM_V4}, {0x0DU, 0xF0U, 0xE3U, 0x0AU}},
 	        {{0U, 0U, 0U, J1939_DIAG_CM_V4}, {0x00U, 0x00U, 0x00U, 0x00U}},
 	        {{0x7FFFFU, 31U, 127U, J1939_DIAG_CM_V4}, {0xFFU, 0xFFU, 0xFFU, 0x7FU}},
 	        /* Each field alone at its maximum lands in its own bits only. */
@@ -157,8 +157,8 @@ static void test_dtc_decode_encode_all_high_bytes(void) {
 
 /* CM = 1: fields are read at their version 4 positions and the CM bit is reported. */
 static void test_dtc_decode_legacy_conversion_method(void) {
-	const uint8_t in[J1939_DIAG_DTC_LEN] = {0xB8U, 0x04U, 0x03U, 0x8AU};
-	const j1939_diag_dtc_t expected = {1208U, 3U, 10U, J1939_DIAG_CM_LEGACY};
+	const uint8_t in[J1939_DIAG_DTC_LEN] = {0x0DU, 0xF0U, 0xE3U, 0x8AU};
+	const j1939_diag_dtc_t expected = {520205U, 3U, 10U, J1939_DIAG_CM_LEGACY};
 	uint8_t out[J1939_DIAG_DTC_LEN] = {GUARD, GUARD, GUARD, GUARD};
 	j1939_diag_dtc_t dtc;
 
@@ -177,7 +177,7 @@ static void test_dtc_encode_rejects_out_of_range(void) {
 	        {0U, 0U, 0U, J1939_DIAG_CM_LEGACY},   {0U, 0U, 0U, 2U},
 	};
 	uint8_t out[J1939_DIAG_DTC_LEN] = {GUARD, GUARD, GUARD, GUARD};
-	j1939_diag_dtc_t dtc = dtc_1208;
+	j1939_diag_dtc_t dtc = dtc_ref;
 	size_t i;
 
 	for (i = 0U; i < (sizeof(invalid) / sizeof(invalid[0])); i++) {
@@ -185,11 +185,11 @@ static void test_dtc_encode_rejects_out_of_range(void) {
 		assert_guard(out, sizeof(out));
 	}
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_diag_dtc_encode(NULL, out));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_diag_dtc_encode(&dtc_1208, NULL));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_diag_dtc_encode(&dtc_ref, NULL));
 	assert_guard(out, sizeof(out));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_diag_dtc_decode(NULL, &dtc));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_diag_dtc_decode(dtc_1208_bytes, NULL));
-	assert_dtc_equal(&dtc_1208, &dtc);
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_diag_dtc_decode(dtc_ref_bytes, NULL));
+	assert_dtc_equal(&dtc_ref, &dtc);
 }
 
 static void test_lamps_known_vector(void) {
@@ -299,7 +299,7 @@ static void test_dm_build_no_dtc(void) {
 
 	/* A DTC array is ignored when the count is 0. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_diag_dm_build(&lamps_off, &dtc_1208, 0U, buf, 8U, &len));
+	                  j1939_diag_dm_build(&lamps_off, &dtc_ref, 0U, buf, 8U, &len));
 	TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, buf, sizeof(expected));
 }
 
@@ -309,18 +309,18 @@ static void test_dm_build_one_dtc(void) {
 	                                  J1939_DIAG_LAMP_ON,   J1939_DIAG_LAMP_OFF,
 	                                  J1939_DIAG_FLASH_OFF, J1939_DIAG_FLASH_OFF,
 	                                  J1939_DIAG_FLASH_OFF, J1939_DIAG_FLASH_OFF};
-	const uint8_t expected[] = {0x04U, 0xFFU, 0xB8U, 0x04U, 0x03U, 0x0AU, 0xFFU, 0xFFU};
+	const uint8_t expected[] = {0x04U, 0xFFU, 0x0DU, 0xF0U, 0xE3U, 0x0AU, 0xFFU, 0xFFU};
 	uint16_t len = 0U;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_diag_dm_build(&lamps, &dtc_1208, 1U, buf, 8U, &len));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_diag_dm_build(&lamps, &dtc_ref, 1U, buf, 8U, &len));
 	TEST_ASSERT_EQUAL_UINT16(8U, len);
 	TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, buf, sizeof(expected));
 	assert_guard(&buf[8], 8U);
 }
 
 static void test_dm_build_two_dtcs(void) {
-	const j1939_diag_dtc_t list[] = {dtc_1208, {0x7FFFFU, 31U, 127U, J1939_DIAG_CM_V4}};
-	const uint8_t expected[] = {0x00U, 0xFFU, 0xB8U, 0x04U, 0x03U,
+	const j1939_diag_dtc_t list[] = {dtc_ref, {0x7FFFFU, 31U, 127U, J1939_DIAG_CM_V4}};
+	const uint8_t expected[] = {0x00U, 0xFFU, 0x0DU, 0xF0U, 0xE3U,
 	                            0x0AU, 0xFFU, 0xFFU, 0xFFU, 0x7FU};
 	uint16_t len = 0U;
 
@@ -366,7 +366,7 @@ static void test_dm_build_parse_many(void) {
 }
 
 static void test_dm_build_buffer_too_small(void) {
-	const j1939_diag_dtc_t list[] = {dtc_1208, dtc_1208};
+	const j1939_diag_dtc_t list[] = {dtc_ref, dtc_ref};
 	uint16_t len = 0xBEEFU;
 
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_FULL,
@@ -387,7 +387,7 @@ static void test_dm_build_buffer_too_small(void) {
 }
 
 static void test_dm_build_rejects_invalid(void) {
-	j1939_diag_dtc_t list[] = {dtc_1208, dtc_1208, dtc_1208};
+	j1939_diag_dtc_t list[] = {dtc_ref, dtc_ref, dtc_ref};
 	j1939_diag_lamps_t lamps = lamps_off;
 	uint16_t len = 0xBEEFU;
 
@@ -407,7 +407,7 @@ static void test_dm_build_rejects_invalid(void) {
 	list[2].fmi = 32U;
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG,
 	                  j1939_diag_dm_build(&lamps_off, list, 3U, buf, sizeof(buf), &len));
-	list[2] = dtc_1208;
+	list[2] = dtc_ref;
 	list[1].cm = J1939_DIAG_CM_LEGACY;
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG,
 	                  j1939_diag_dm_build(&lamps_off, list, 3U, buf, sizeof(buf), &len));
@@ -465,14 +465,14 @@ static void test_dm_parse_no_dtc_marker_ignores_oc_and_cm(void) {
 }
 
 static void test_dm_parse_one_dtc(void) {
-	const uint8_t data[] = {0x47U, 0x72U, 0xB8U, 0x04U, 0x03U, 0x0AU, 0xFFU, 0xFFU};
+	const uint8_t data[] = {0x47U, 0x72U, 0x0DU, 0xF0U, 0xE3U, 0x0AU, 0xFFU, 0xFFU};
 	j1939_diag_lamps_t lamps;
 	uint16_t count = 0U;
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_diag_dm_parse(data, sizeof(data), &lamps, parsed, 1U, &count));
 	TEST_ASSERT_EQUAL_UINT16(1U, count);
-	assert_dtc_equal(&dtc_1208, &parsed[0]);
+	assert_dtc_equal(&dtc_ref, &parsed[0]);
 	TEST_ASSERT_EQUAL_UINT8(J1939_DIAG_LAMP_ON, lamps.mil);
 	TEST_ASSERT_EQUAL_UINT8(J1939_DIAG_LAMP_NA, lamps.protect);
 	TEST_ASSERT_EQUAL_UINT8(J1939_DIAG_FLASH_FAST, lamps.mil_flash);
@@ -483,15 +483,15 @@ static void test_dm_parse_one_dtc(void) {
 	count = 0U;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_diag_dm_parse(data, 6U, &lamps, parsed, 1U, &count));
 	TEST_ASSERT_EQUAL_UINT16(1U, count);
-	assert_dtc_equal(&dtc_1208, &parsed[0]);
+	assert_dtc_equal(&dtc_ref, &parsed[0]);
 }
 
 /* In a list of several DTCs the zero DTC is not the marker; a legacy CM is reported. */
 static void test_dm_parse_list_content(void) {
 	const uint8_t data[] = {0x00U, 0xFFU, 0x00U, 0x00U, 0x00U,
-	                        0x00U, 0xB8U, 0x04U, 0x03U, 0x8AU};
+	                        0x00U, 0x0DU, 0xF0U, 0xE3U, 0x8AU};
 	const j1939_diag_dtc_t zero = {0U, 0U, 0U, J1939_DIAG_CM_V4};
-	const j1939_diag_dtc_t legacy = {1208U, 3U, 10U, J1939_DIAG_CM_LEGACY};
+	const j1939_diag_dtc_t legacy = {520205U, 3U, 10U, J1939_DIAG_CM_LEGACY};
 	j1939_diag_lamps_t lamps;
 	uint16_t count = 0U;
 
@@ -524,7 +524,7 @@ static void test_dm_parse_rejects_malformed_length(void) {
 
 /* Eight bytes are one padded DTC only if both padding bytes are 0xFF. */
 static void test_dm_parse_rejects_bad_padding(void) {
-	uint8_t data[] = {0x00U, 0xFFU, 0xB8U, 0x04U, 0x03U, 0x0AU, 0xFFU, 0xFFU};
+	uint8_t data[] = {0x00U, 0xFFU, 0x0DU, 0xF0U, 0xE3U, 0x0AU, 0xFFU, 0xFFU};
 	j1939_diag_lamps_t lamps;
 	uint16_t count = 0xBEEFU;
 
@@ -543,8 +543,8 @@ static void test_dm_parse_rejects_bad_padding(void) {
 }
 
 static void test_dm_parse_storage_too_small(void) {
-	const uint8_t data[] = {0x00U, 0xFFU, 0xB8U, 0x04U, 0x03U, 0x0AU, 0xB8U,
-	                        0x04U, 0x03U, 0x0BU, 0xB8U, 0x04U, 0x03U, 0x0CU};
+	const uint8_t data[] = {0x00U, 0xFFU, 0x0DU, 0xF0U, 0xE3U, 0x0AU, 0x0DU,
+	                        0xF0U, 0xE3U, 0x0BU, 0x0DU, 0xF0U, 0xE3U, 0x0CU};
 	j1939_diag_lamps_t lamps = lamps_off;
 	uint16_t count = 0U;
 
@@ -574,7 +574,7 @@ static void test_dm_parse_storage_too_small(void) {
 }
 
 static void test_dm_parse_rejects_null(void) {
-	const uint8_t data[] = {0x00U, 0xFFU, 0xB8U, 0x04U, 0x03U, 0x0AU, 0xFFU, 0xFFU};
+	const uint8_t data[] = {0x00U, 0xFFU, 0x0DU, 0xF0U, 0xE3U, 0x0AU, 0xFFU, 0xFFU};
 	j1939_diag_lamps_t lamps;
 	uint16_t count = 0xBEEFU;
 
@@ -600,10 +600,10 @@ static void test_dm_build_parse_zero_and_one(void) {
 	TEST_ASSERT_EQUAL_UINT16(0U, count);
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_diag_dm_build(&lamps_off, &dtc_1208, 1U, buf, 8U, &len));
+	                  j1939_diag_dm_build(&lamps_off, &dtc_ref, 1U, buf, 8U, &len));
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_diag_dm_parse(buf, len, &lamps, parsed, 1U, &count));
 	TEST_ASSERT_EQUAL_UINT16(1U, count);
-	assert_dtc_equal(&dtc_1208, &parsed[0]);
+	assert_dtc_equal(&dtc_ref, &parsed[0]);
 }
 
 int main(void) {

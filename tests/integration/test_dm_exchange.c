@@ -33,8 +33,8 @@ typedef struct node {
 
 static const uint32_t tool_pgns[] = {J1939_PGN_DM1, J1939_PGN_DM2, J1939_PGN_ACK};
 
-static const j1939_diag_dtc_t dtc_a = {110U, 0U, 1U, J1939_DIAG_CM_V4};
-static const j1939_diag_dtc_t dtc_b = {190U, 2U, 4U, J1939_DIAG_CM_V4};
+static const j1939_diag_dtc_t dtc_a = {520213U, 0U, 1U, J1939_DIAG_CM_V4};
+static const j1939_diag_dtc_t dtc_b = {520214U, 2U, 4U, J1939_DIAG_CM_V4};
 static const j1939_diag_dtc_t dtc_c = {0x7FFF0U, 31U, 126U, J1939_DIAG_CM_V4};
 
 static node_t ecu;
