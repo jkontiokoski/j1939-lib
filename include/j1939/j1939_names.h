@@ -45,7 +45,9 @@
  *   from that CA. Every node answers it, so nodes that claimed before this
  *   one came online are listed too. The answers arrive within a few
  *   milliseconds; the receive path from the CAN driver must hold one frame
- *   per node on the bus.
+ *   per node on the bus. It is not sent if a global Request for Address
+ *   Claimed already went out since j1939_names_init(): a CA's request before
+ *   claim (j1939_addr.h) or one sent with j1939_request_send().
  * - When j1939_names_name_get() finds no NAME at an address: a Request to that
  *   address, sent by the next j1939_process(), from a CA that has claimed its
  *   address, otherwise from J1939_ADDR_NULL. At most one such Request is

@@ -23,12 +23,13 @@
  * elapsed time passed to j1939_process(); a wait started by a received frame
  * or an API call counts from the next call.
  *
- * | State (j1939_addr_state_t) | Address held | May transmit                   |
- * | -------------------------- | ------------ | ------------------------------ |
- * | UNCLAIMED                  | No           | Request for Address Claimed    |
- * | CLAIMING                   | Yes          | Request for Address Claimed    |
- * | CLAIMED                    | Yes          | Everything                     |
- * | CANNOT_CLAIM               | No           | Request for Address Claimed    |
+ * | State (j1939_addr_state_t) | Address held | May transmit                    |
+ * | -------------------------- | ------------ | ------------------------------- |
+ * | REQUESTING                 | No           | Its Request for Address Claimed |
+ * | UNCLAIMED                  | No           | Request for Address Claimed     |
+ * | CLAIMING                   | Yes          | Request for Address Claimed     |
+ * | CLAIMED                    | Yes          | Everything                      |
+ * | CANNOT_CLAIM               | No           | Request for Address Claimed     |
  *
  * - The first j1939_process() after j1939_ca_add() sends Address Claimed (PGN
  *   60928, to the global address, the NAME as data) from the preferred
@@ -67,6 +68,27 @@
  *   CANNOT_CLAIM and drops a pending command.
  * - A CA in CANNOT_CLAIM claims again only after an accepted Commanded
  *   Address.
+ *
+ * Request before claim (j1939_ca_cfg_t::request_before_claim) lets a CA see
+ * the address map before it claims, for example a node that joins a running
+ * network:
+ *
+ * 1. The CA starts in REQUESTING. The first j1939_process() sends a global
+ *    Request for Address Claimed from J1939_ADDR_NULL, retried by later calls
+ *    while the tx queue is full.
+ * 2. The CA waits J1939_ADDR_PRECLAIM_WAIT_US. The claims that answer the
+ *    Request update the self-configurable address record and the NAME table
+ *    (j1939_names.h), and the CA notes whether another node claims its
+ *    preferred address, in any address range.
+ * 3. The CA then claims as described above: the preferred address if no other
+ *    node claimed it; otherwise a free self-configurable address if its NAME
+ *    is arbitrary address capable and one is free; otherwise the preferred
+ *    address anyway, where arbitration on the NAME decides.
+ *
+ * While REQUESTING the CA sends nothing else and does not answer Requests for
+ * Address Claimed, since it has no address. A Commanded Address accepted
+ * during the wait is applied when the wait ends: the CA claims the commanded
+ * address instead of choosing one.
  *
  * Received Address Claimed messages, including Cannot Claim, are also
  * delivered to the application if PGN 60928 is in the rx_pgns list.
@@ -107,6 +129,14 @@
 #define J1939_ADDR_COMMAND_LEN      9U      /**< Commanded Address payload: NAME, address. */
 
 #define J1939_ADDR_CLAIM_WAIT_US 250000U /**< Contention wait for self-configurable addresses. */
+
+/**
+ * Wait between the Request for Address Claimed of a CA in REQUESTING and its
+ * claim. A library choice, to be confirmed against J1939-81: it covers the
+ * response time Tr (200 ms) within which nodes answer the Request, with
+ * margin, and the 0..153 ms delay after which a node in Cannot Claim answers.
+ */
+#define J1939_ADDR_PRECLAIM_WAIT_US 250000U
 
 /** Cannot Claim delay unit; the delay is 0..255 units, 0..153 ms. */
 #define J1939_ADDR_CANNOT_CLAIM_STEP_US 600U

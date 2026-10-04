@@ -71,6 +71,21 @@ default:
 - `j1939_send()` returns `J1939_RET_ERR_NO_ADDRESS` while the CA has no address, so sends need no separate check.
 - Requests for Address Claimed from other nodes are answered by the stack.
 
+## Look before claiming
+
+A CA normally claims its preferred address straight away and relies on arbitration on the NAME.
+On a network that is already running, that can push a working node off its address.
+With `request_before_claim` the CA first asks every node for its claim, waits `J1939_ADDR_PRECLAIM_WAIT_US` (250 ms) and then claims an address nobody holds:
+
+```c
+j1939_ca_add(&stack, &(j1939_ca_cfg_t){.address = 0x80U, .name = name, .request_before_claim = true}, &ca);
+```
+
+- Use it for nodes that join a running network, and for arbitrary address capable CAs on busy networks: such a CA claims a free self-configurable address directly when its preferred one is taken.
+- A CA without `arbitrary_address` claims its preferred address anyway; the NAME decides as usual.
+- The claim starts 250 ms later, and the state is `J1939_ADDR_STATE_REQUESTING` meanwhile.
+- With a NAME table, the answers fill it, and the table's own startup Request is not sent.
+
 ## Know who sent a message
 
 A source address says where a message came from, not who sent it: addresses are assigned at start-up and can change.
