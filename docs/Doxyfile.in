@@ -16,6 +16,9 @@ FULL_PATH_NAMES        = YES
 STRIP_FROM_PATH        = "@J1939_DOCS_ROOT@"
 STRIP_FROM_INC_PATH    = "@J1939_DOCS_ROOT@/include"
 OPTIMIZE_OUTPUT_FOR_C  = YES
+# Structs are documented under their typedef names (j1939_cfg_t), the names the
+# API uses, so that these names link in the pages.
+TYPEDEF_HIDES_STRUCT   = YES
 MARKDOWN_SUPPORT       = YES
 TOC_INCLUDE_HEADINGS   = 3
 
