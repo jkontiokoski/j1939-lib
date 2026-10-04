@@ -4,21 +4,6 @@
 /**
  * @file j1939_request.h
  * @brief J1939/21 Request (PGN 59904) and Acknowledgement (PGN 59392).
- *
- * Received Requests are handled by j1939_process():
- *
- * - A Request for a PGN in the stack's req_pgns list is delivered to the
- *   application as a message with pgn J1939_PGN_REQUEST. The application
- *   reads the requested PGN with j1939_request_pgn_get() and answers with
- *   j1939_send(): to the requester for a destination specific Request of a
- *   PDU1 PGN, to the global address otherwise.
- * - A destination specific Request for any other PGN is answered by the
- *   stack with a NACK, sent to the global address.
- * - A global Request for any other PGN is ignored.
- *
- * Requests for DM1, DM2, DM3 and DM11 to a CA with diagnostics enabled are
- * handled by the stack before these rules, see j1939_dm.h, and so are
- * Requests for the PGN of a transmit object, see j1939_txobj.h.
  */
 
 #ifndef J1939_REQUEST_H
@@ -29,6 +14,34 @@
 #include "j1939/j1939_msg.h"
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_stack.h"
+
+/**
+ * @addtogroup grp_request
+ *
+ * The stack handles a Request when j1939_rx() receives it, in this order:
+ *
+ * 1. A Request for Address Claimed is answered by address claiming for every
+ *    CA it concerns, see @ref grp_addr.
+ * 2. A Request for DM1, DM2, DM3 or DM11 to a CA with diagnostics enabled is
+ *    handled by the diagnostics, see @ref grp_diag.
+ * 3. A Request for the PGN of a transmit object of a CA it addresses is
+ *    answered by the stack, see @ref grp_txobj.
+ * 4. A Request for a PGN in the stack's req_pgns list is delivered to the
+ *    application as a message with pgn J1939_PGN_REQUEST. The application
+ *    reads the requested PGN with j1939_request_pgn_get() and answers with
+ *    j1939_send(): to the requester for a destination specific Request of a
+ *    PDU1 PGN, to the global address otherwise.
+ * 5. A destination specific Request for any other PGN is answered by the
+ *    stack with a NACK, sent to the global address with the requester in byte
+ *    5, as J1939/21 specifies. A CA still in its contention wait sends no
+ *    NACK.
+ * 6. A global Request for any other PGN is ignored.
+ *
+ * A Request shorter than J1939_REQUEST_LEN bytes is ignored. Requests handled
+ * in steps 1 to 3 are not delivered to the application.
+ *
+ * @{
+ */
 
 #define J1939_PGN_REQUEST 0xEA00U /**< Request, PGN 59904. */
 #define J1939_PGN_ACK     0xE800U /**< Acknowledgement, PGN 59392. */
@@ -64,5 +77,7 @@ j1939_ret_t j1939_request_send(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, uint8
  *         at least J1939_REQUEST_LEN bytes or a pointer is NULL.
  */
 j1939_ret_t j1939_request_pgn_get(const j1939_msg_t *msg, uint32_t *pgn);
+
+/** @} */
 
 #endif /* J1939_REQUEST_H */

@@ -4,47 +4,6 @@
 /**
  * @file j1939_dm.h
  * @brief J1939/73 diagnostics of a Controller Application: DM1, DM2, DM3 and DM11.
- *
- * j1939_dm_init() enables diagnostics for a CA. The application copies its
- * diagnostic state into the stack; the stack transmits it:
- *
- * - j1939_dm_active_set(), j1939_dm_prev_set() and j1939_dm_lamps_set()
- *   copy the active DTCs, the previously active DTCs and the lamp status.
- *   The stack keeps the DTCs in the order given.
- * - DM1 (active DTCs) is sent by j1939_process() to the global address once
- *   per J1939_DM1_PERIOD_US, the first time as soon as the CA has claimed its
- *   address. A DM1 with two or more DTCs is sent with BAM.
- * - A change of the active DTC set (a DTC becoming active or leaving the
- *   set) sends a DM1 with the next j1939_process(), outside the periodic
- *   schedule. J1939/73 recommends at most one reported state change per DTC
- *   per second: a DTC whose change triggered a DM1 within the last
- *   J1939_DM1_PERIOD_US does not trigger another one; its new state goes out
- *   with the next DM1. The DTCs recently reported are remembered in the
- *   hold records of j1939_dm_cfg_t; while every record is in use, a change
- *   triggers no DM1 and waits for the periodic one. Changes of the lamp
- *   status or of an occurrence count trigger no DM1.
- * - A Request (PGN 59904) for DM1 or DM2, global or to the CA's address, is
- *   answered by the stack and not delivered to the application. Both are
- *   PDU2 PGNs: a single frame answer goes to the global address. A
- *   multi-packet answer goes with BAM to the global address for a global
- *   Request, and with RTS/CTS to the requester for a destination specific
- *   one. Requests from several requesters while an answer is pending are
- *   answered once, to the global address.
- * - A Request for DM3 (clear previously active DTCs) or DM11 (clear active
- *   DTCs) is accepted only if enabled in j1939_dm_cfg_t. The stack does not
- *   clear anything by itself: it reports the request through
- *   j1939_dm_clear_get(), and the application decides with
- *   j1939_dm_clear_confirm(). Without that option the Request is handled as
- *   for any other unsupported PGN (NACK when destination specific).
- *
- * Only a CA that has claimed its address transmits. While a CA has not
- * claimed an address, pending answers are discarded and counted.
- *
- * DM1, DM2 and acknowledgements that find the tx queue full or the CA's
- * broadcast busy are retried with every j1939_process() and counted in
- * j1939_stats_t::dm_tx_retry. DM2 answers and acknowledgements not sent
- * within J1939_DM_RESPONSE_US, and periodic DM1s still unsent when the next
- * one is due, are counted in j1939_stats_t::dm_tx_dropped.
  */
 
 #ifndef J1939_DM_H
@@ -56,6 +15,66 @@
 #include "j1939/j1939_diag.h"
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_stack.h"
+
+/**
+ * @addtogroup grp_diag
+ *
+ * j1939_dm_init() enables diagnostics for a CA. The application owns its
+ * fault memory (detection, occurrence counts, moving a DTC from active to
+ * previously active) and copies the result into the stack; the stack
+ * transmits it:
+ *
+ * - j1939_dm_active_set(), j1939_dm_prev_set() and j1939_dm_lamps_set() copy
+ *   the active DTCs, the previously active DTCs and the lamp status. The
+ *   stack keeps the DTCs in the order given.
+ * - DM1 (active DTCs) is sent by j1939_process() to the global address once
+ *   per J1939_DM1_PERIOD_US, also without DTCs. The first DM1 goes out in the
+ *   call in which the CA's claim completes; the period counts from the next
+ *   call and keeps its phase across late calls. A DM1 with two or more DTCs
+ *   is sent with BAM.
+ * - A change of the active DTC set (a DTC becoming active or leaving the set)
+ *   sends a DM1 with the next j1939_process(), outside the periodic schedule.
+ *   J1939/73 recommends at most one reported state change per DTC per second:
+ *   a DTC whose change triggered a DM1 within the last J1939_DM1_PERIOD_US
+ *   does not trigger another one; its new state goes out with the next DM1.
+ *   The DTCs recently reported are remembered in the hold records of
+ *   j1939_dm_cfg_t; while every record is in use, a change triggers no DM1
+ *   and waits for the periodic one, so at most hold_len change-triggered DM1s
+ *   go out per second. Changes of the lamp status or of an occurrence count
+ *   trigger no DM1.
+ * - A Request (PGN 59904) for DM1 or DM2, global or to the CA's address, is
+ *   answered by the stack and not delivered to the application. Both are PDU2
+ *   PGNs: a single frame answer goes to the global address. A multi-packet
+ *   answer goes with BAM to the global address for a global Request, and with
+ *   RTS/CTS to the requester for a destination specific one. Requests from
+ *   several requesters while an answer is pending are answered once, to the
+ *   global address. The periodic and change-triggered DM1 always go to the
+ *   global address.
+ * - A Request for DM3 (clear previously active DTCs) or DM11 (clear active
+ *   DTCs) is accepted only if enabled in j1939_dm_cfg_t. The stack does not
+ *   clear anything by itself: it reports the request through
+ *   j1939_dm_clear_get(), and the application decides with
+ *   j1939_dm_clear_confirm(). A request from another requester while one is
+ *   in progress is answered with Cannot Respond; a global one is covered by
+ *   the request in progress. Without the option the Request is handled as for
+ *   any other unsupported PGN: NACK when destination specific, delivered if
+ *   the PGN is in req_pgns.
+ *
+ * Only a CA that has claimed its address transmits. While a CA has not
+ * claimed an address, pending answers are discarded and counted.
+ *
+ * DM1, DM2 and acknowledgements that find the tx queue full or the CA's
+ * broadcast busy are retried with every j1939_process() and counted in
+ * j1939_stats_t::dm_tx_retry. DM2 answers and acknowledgements not sent
+ * within J1939_DM_RESPONSE_US, and periodic DM1s still unsent when the next
+ * one is due, are counted in j1939_stats_t::dm_tx_dropped. A BAM of many DTCs
+ * can outlast a DM1 period: size the DTC lists for what the bus carries.
+ *
+ * Not supported: DM1 on several networks, lamp changes as a DM1 trigger, and
+ * the OBD rule that DM11 is accepted only globally.
+ *
+ * @{
+ */
 
 #define J1939_DM1_PERIOD_US 1000000U /**< DM1 period, and the per-DTC change hold time. */
 
@@ -232,5 +251,7 @@ j1939_ret_t j1939_dm_clear_get(const j1939_t *s, j1939_ca_id_t ca, uint32_t *pgn
  *         unknown CA or another PGN.
  */
 j1939_ret_t j1939_dm_clear_confirm(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, bool accept);
+
+/** @} */
 
 #endif /* J1939_DM_H */

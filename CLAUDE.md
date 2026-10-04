@@ -10,7 +10,7 @@ Use this name when making copyright stamps.
 
 - The user documentation is maintained in the 'docs/' directory, with README.md as its main page.
 It is released: `make docs` builds it into the HTML reference that `make dist` ships.
-- One place per fact: what a module or function does, its rules and limits, is documented in its header (the API reference).
+- One place per fact: what a module or function does, its rules and limits, is documented in its header (the API reference), grouped into one Doxygen topic per module.
 The pages in 'docs/' explain how to do a task and why the design is as it is, and link to the reference instead of repeating it.
 - Each page serves one audience, opens with two or three sentences on what it covers and for whom, and stays short (a guide at most about 150 lines, no page over about 250).
 `docs/Doxyfile.in` and the list in README.md hold the pages in reading order.
@@ -19,6 +19,7 @@ The pages in 'docs/' explain how to do a task and why the design is as it is, an
 - Do not maintain a 'history' of the project in the documentation after changing a design.
 Always keep the documentation to represent the current status of the project.
 Additional 'this is this, not that' type of documentation are not to be written.
+- No diagrams (ASCII art or Mermaid): the generated documentation cannot render them. Use tables for structure and numbered steps for flows.
 
 ### Scope
 
@@ -36,6 +37,7 @@ It will serve this purpose after the library is published, but also for the auth
 
 ### Other pages
 
+- `docs/guides/`: one task-oriented guide per feature (addressing, messages, message objects, signals, diagnostics).
 - `docs/getting-started.md` (integration and the main loop), `docs/configuration.md` (settings and buffer sizing), `docs/examples.md` (the example applications), `docs/safety.md` (coding standard, deviations, verification and release evidence, for reviewers).
 
 

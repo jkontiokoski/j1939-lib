@@ -4,6 +4,18 @@
 /**
  * @file j1939_id.h
  * @brief J1939/21 29-bit identifier and PGN codec.
+ */
+
+#ifndef J1939_ID_H
+#define J1939_ID_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "j1939/j1939_ret.h"
+
+/**
+ * @addtogroup grp_id
  *
  * Identifier layout (bit 28 is the most significant):
  *
@@ -22,15 +34,9 @@
  * always sent to all nodes.
  *
  * All functions are pure.
+ *
+ * @{
  */
-
-#ifndef J1939_ID_H
-#define J1939_ID_H
-
-#include <stdbool.h>
-#include <stdint.h>
-
-#include "j1939/j1939_ret.h"
 
 #define J1939_ID_MASK      0x1FFFFFFFU /**< Valid bits of a 29-bit identifier. */
 #define J1939_PGN_MAX      0x3FFFFU    /**< Largest 18-bit PGN. */
@@ -69,5 +75,7 @@ bool j1939_pgn_is_pdu1(uint32_t pgn);
  *         @p id is NULL.
  */
 j1939_ret_t j1939_id_build(uint8_t prio, uint32_t pgn, uint8_t da, uint8_t sa, uint32_t *id);
+
+/** @} */
 
 #endif /* J1939_ID_H */

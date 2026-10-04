@@ -26,12 +26,16 @@ set(_j1939_docs_pages
 	docs/getting-started.md
 	docs/concepts.md
 	docs/configuration.md
+	docs/guides/addressing.md
+	docs/guides/messages.md
+	docs/guides/message-objects.md
+	docs/guides/signals.md
+	docs/guides/diagnostics.md
 	docs/porting.md
 	docs/examples.md
 	docs/porting-bxcan.md
 	docs/safety.md
-	docs/scope.md
-	docs/architecture.md)
+	docs/scope.md)
 set(_j1939_docs_public_input "")
 foreach(_page IN LISTS _j1939_docs_pages)
 	string(APPEND _j1939_docs_public_input "\"${J1939_DOCS_ROOT}/${_page}\" ")

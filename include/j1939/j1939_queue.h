@@ -4,6 +4,19 @@
 /**
  * @file j1939_queue.h
  * @brief Optional helper: CAN frame queue between two execution contexts.
+ */
+
+#ifndef J1939_QUEUE_H
+#define J1939_QUEUE_H
+
+#include <stdint.h>
+
+#include "j1939/j1939_port_contract.h"
+#include "j1939/j1939_ret.h"
+#include "j1939/j1939_ring.h"
+
+/**
+ * @addtogroup grp_queue
  *
  * The stack does not use this queue. It is for integrators whose CAN driver
  * has no frame FIFO of its own, typically bare metal, where a receive
@@ -37,16 +50,9 @@
  * It is built as its own library target, j1939::queue, and needs the lock
  * declared below in the port's j1939_target.h. A port that does not use the
  * queue does not define the lock.
+ *
+ * @{
  */
-
-#ifndef J1939_QUEUE_H
-#define J1939_QUEUE_H
-
-#include <stdint.h>
-
-#include "j1939/j1939_port_contract.h"
-#include "j1939/j1939_ret.h"
-#include "j1939/j1939_ring.h"
 
 /* j1939_port_lock_t: lock object embedded in each queue, typedef by the port. */
 
@@ -139,5 +145,7 @@ j1939_ret_t j1939_queue_pop(j1939_queue_t *q);
  * @return Frame count, 0 if @p q is NULL.
  */
 uint16_t j1939_queue_count(j1939_queue_t *q);
+
+/** @} */
 
 #endif /* J1939_QUEUE_H */

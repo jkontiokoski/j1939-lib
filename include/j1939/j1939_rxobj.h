@@ -4,27 +4,6 @@
 /**
  * @file j1939_rxobj.h
  * @brief Receive objects: the latest payload of one PGN from one sender, with timeout supervision.
- *
- * j1939_rxobj_init() gives the stack a table of receive objects. Each object
- * names a PGN and the source address it is received from:
- *
- * - j1939_rx() copies every matching message into the object's buffer,
- *   single frame or completed transport protocol message, overwriting the
- *   previous one. The message is still delivered through the message slots
- *   if its PGN is in j1939_cfg_t::rx_pgns.
- * - A payload shorter than min_len or longer than buf_len is rejected and
- *   counted in j1939_stats_t::rxobj_rejected; the buffer keeps the previous
- *   payload and the age keeps running.
- * - j1939_process() advances the age of each received payload. A reception
- *   counts from the next j1939_process(). An object whose age reaches
- *   timeout_us is timed out, counted once per timeout in
- *   j1939_stats_t::rxobj_timeout. The next reception makes it valid again.
- * - The application reads the state with j1939_rxobj_get() and decodes the
- *   payload in place from its buffer, e.g. with j1939_signal_decode(). The
- *   buffer changes only during j1939_rx() and j1939_process().
- *
- * Only messages that pass the stack's destination filter reach an object:
- * global ones and those addressed to an address a CA of the stack holds.
  */
 
 #ifndef J1939_RXOBJ_H
@@ -35,6 +14,37 @@
 
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_stack.h"
+
+/**
+ * @addtogroup grp_rxobj
+ *
+ * j1939_rxobj_init() gives the stack a table of receive objects. Each object
+ * names a PGN and the source address it is received from:
+ *
+ * - j1939_rx() copies every matching message into the object's buffer, single
+ *   frame or completed transport protocol message, overwriting the previous
+ *   one. The message is still delivered through the message slots if its PGN
+ *   is in j1939_cfg_t::rx_pgns; the object is updated even when no message
+ *   slot is free.
+ * - A payload shorter than min_len or longer than buf_len is rejected and
+ *   counted in j1939_stats_t::rxobj_rejected; the buffer keeps the previous
+ *   payload and the age keeps running, so a malformed message never hides a
+ *   timeout.
+ * - j1939_process() advances the age of each received payload. A reception
+ *   counts from the next j1939_process(). An object whose age reaches
+ *   timeout_us is timed out, counted once per timeout in
+ *   j1939_stats_t::rxobj_timeout. The next reception makes it valid again.
+ * - The application reads the state with j1939_rxobj_get() and decodes the
+ *   payload in place from its buffer, e.g. with j1939_signal_decode(). The
+ *   buffer changes only during j1939_rx() and j1939_process().
+ *
+ * Only messages that pass the stack's destination filter reach an object:
+ * global ones and those addressed to an address a CA of the stack holds.
+ * Senders are identified by source address: when a node loses its address,
+ * the node that claims it next reaches the same object.
+ *
+ * @{
+ */
 
 /** Configuration of a receive object. Constant integrator data, e.g. generated. */
 typedef struct j1939_rxobj_cfg {
@@ -75,8 +85,8 @@ typedef struct j1939_rxobj {
  * @brief Gives the stack its receive objects.
  *
  * Every object starts in J1939_RXOBJ_NO_DATA. May be called again to replace
- * or reset the table; @p len 0 removes it. The configuration and state
- * arrays must outlive the stack.
+ * or reset the table; @p len 0 removes it, and so does j1939_init(). The
+ * configuration and state arrays must outlive the stack.
  *
  * @param s    Stack.
  * @param cfg  Configuration of each object. May be NULL if @p len is 0.
@@ -103,5 +113,7 @@ j1939_ret_t j1939_rxobj_init(j1939_t *s, const j1939_rxobj_cfg_t *cfg, j1939_rxo
  * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer or an unknown index.
  */
 j1939_ret_t j1939_rxobj_get(j1939_t *s, uint16_t index, j1939_rxobj_status_t *status);
+
+/** @} */
 
 #endif /* J1939_RXOBJ_H */

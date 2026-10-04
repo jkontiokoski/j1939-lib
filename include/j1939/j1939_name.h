@@ -4,6 +4,18 @@
 /**
  * @file j1939_name.h
  * @brief J1939/81 NAME codec.
+ */
+
+#ifndef J1939_NAME_H
+#define J1939_NAME_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "j1939/j1939_ret.h"
+
+/**
+ * @addtogroup grp_name
  *
  * The NAME is a 64-bit value that identifies a Controller Application.
  * Field layout (bit 63 is the most significant):
@@ -25,15 +37,9 @@
  * In address arbitration the numerically lower NAME has the higher priority.
  *
  * All functions are pure.
+ *
+ * @{
  */
-
-#ifndef J1939_NAME_H
-#define J1939_NAME_H
-
-#include <stdbool.h>
-#include <stdint.h>
-
-#include "j1939/j1939_ret.h"
 
 #define J1939_NAME_LEN 8U /**< Bytes of a NAME on the bus. */
 
@@ -104,5 +110,7 @@ j1939_ret_t j1939_name_to_bytes(uint64_t name, uint8_t *data);
  * @return J1939_RET_OK, or J1939_RET_ERR_ARG if a pointer is NULL.
  */
 j1939_ret_t j1939_name_from_bytes(const uint8_t *data, uint64_t *name);
+
+/** @} */
 
 #endif /* J1939_NAME_H */

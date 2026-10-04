@@ -46,14 +46,15 @@ for (;;) {
 1. [Getting started](docs/getting-started.md): add the library to a project, set up a stack, run the main loop.
 2. [Concepts](docs/concepts.md): design principles, layers, data flow, which header holds what.
 3. [Configuration](docs/configuration.md): compile-time settings and buffer sizing.
-4. [Porting](docs/porting.md): the contract between the library and a CAN driver.
-5. [Example applications](docs/examples.md): the SocketCAN examples and the traffic they produce.
-6. [STM32 bxCAN sketch](docs/porting-bxcan.md): a bare-metal port, worked through.
-7. [Safety and quality](docs/safety.md): coding standard, verification and release evidence, for reviewers.
-8. [Scope](docs/scope.md): features and roadmap.
-9. [Module rules](docs/architecture.md): the detailed behaviour of each protocol module.
+4. Guides: [Addressing](docs/guides/addressing.md), [Messages](docs/guides/messages.md), [Message objects](docs/guides/message-objects.md), [Signals](docs/guides/signals.md), [Diagnostics](docs/guides/diagnostics.md).
+5. [Porting](docs/porting.md): the contract between the library and a CAN driver.
+6. [Example applications](docs/examples.md): the SocketCAN examples and the traffic they produce.
+7. [STM32 bxCAN sketch](docs/porting-bxcan.md): a bare-metal port, worked through.
+8. [Safety and quality](docs/safety.md): coding standard, verification and release evidence, for reviewers.
+9. [Scope](docs/scope.md): features and roadmap.
 
 The API reference is generated from the headers with `make docs` and is part of every release.
+Its topics hold the exact rules of each module: address claiming, Requests, the transport protocol, message objects, signals and diagnostics.
 
 ## Releases
 

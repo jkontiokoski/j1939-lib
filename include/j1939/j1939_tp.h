@@ -4,36 +4,6 @@
 /**
  * @file j1939_tp.h
  * @brief J1939/21 transport protocol: broadcast (BAM) and connection mode (RTS/CTS).
- *
- * The transport protocol carries messages of 9 to 1785 bytes. It runs inside
- * the stack and has no API of its own:
- *
- * - j1939_send() hands a message longer than 8 bytes to the transport
- *   protocol. It is copied into a transmit buffer (j1939_cfg_t::tp_tx_buf),
- *   so the caller may reuse its data after the call. A message to
- *   J1939_ADDR_GLOBAL is broadcast with BAM, a message to a node is sent with
- *   RTS/CTS.
- * - j1939_process() receives multi-packet messages into reassembly buffers
- *   (j1939_cfg_t::tp_rx_buf) and delivers complete messages through the
- *   message slots, where msg->data points into the buffer. The buffer stays
- *   reserved until the message is released with j1939_msg_pop(). Only PGNs in
- *   rx_pgns are received, PGNs a receive object takes from the sender (see
- *   j1939_rxobj.h), and Commanded Address while a CA accepts it, see
- *   j1939_addr.h. A message for a receive object only needs no message slot.
- * - Timers advance only through j1939_process(). A timer started by an event
- *   counts from the next j1939_process() call, so a timeout expires between
- *   its nominal value and one call period later, and the BAM packet gap is
- *   never shorter than J1939_CFG_TP_BAM_GAP_US.
- *
- * Sessions come from a pool of J1939_CFG_TP_SESSIONS per stack, shared by
- * both directions. A stack runs at most one session per direction and pair
- * of addresses: one BAM per sender and one RTS/CTS connection per originator
- * and responder.
- *
- * Frames the stack generates (CTS, EndOfMsgAck, Connection Abort) are
- * dropped and counted in j1939_stats_t::tx_overflow when the tx queue is
- * full; the protocol timers then end the session. Data packets wait for room
- * in the tx queue for at most J1939_TP_TR_US.
  */
 
 #ifndef J1939_TP_H
@@ -43,6 +13,83 @@
 #include <stdint.h>
 
 #include "j1939/j1939_config.h"
+
+/**
+ * @addtogroup grp_tp
+ *
+ * The transport protocol carries messages of 9 to 1785 bytes. It runs inside
+ * the stack and has no API of its own:
+ *
+ * - j1939_send() hands a message longer than 8 bytes to the transport
+ *   protocol. It is copied into a transmit buffer (j1939_cfg_t::tp_tx_buf),
+ *   so the caller may reuse its data after the call. A message to
+ *   J1939_ADDR_GLOBAL is broadcast with BAM, a message to a node is sent with
+ *   RTS/CTS. The CA must have claimed its address, as for a single frame.
+ * - j1939_rx() reassembles multi-packet messages in reassembly buffers
+ *   (j1939_cfg_t::tp_rx_buf) and delivers complete messages through the
+ *   message slots, where msg->data points into the buffer. The buffer stays
+ *   reserved until the message is released with j1939_msg_pop().
+ * - Only PGNs in rx_pgns are received, PGNs a receive object takes from the
+ *   sender (@ref grp_rxobj), and Commanded Address while a CA accepts it
+ *   (@ref grp_addr). An RTS for another PGN is answered with Connection Abort
+ *   (J1939_TP_ABORT_OTHER), a BAM for it is ignored. A message only for a
+ *   receive object or for address claiming needs no message slot, so the
+ *   responder never holds for it.
+ * - TP.CM and TP.DT frames that are not 8 bytes long, or come from address
+ *   254 or 255, are dropped.
+ * - A received message's msg->prio is the priority of its RTS or BAM, msg->da
+ *   the responder's address for RTS/CTS and J1939_ADDR_GLOBAL for BAM. The
+ *   originator sends RTS, BAM and data packets with the message priority;
+ *   CTS, EndOfMsgAck and Connection Abort use priority 7.
+ * - Timers advance only through j1939_process(). A timer started by an event
+ *   counts from the next j1939_process() call, so a timeout expires between
+ *   its nominal value and one call period later.
+ *
+ * Sessions come from a pool of J1939_CFG_TP_SESSIONS per stack, shared by
+ * both directions. A stack runs at most one session per direction and pair of
+ * addresses: one BAM per sender and one RTS/CTS connection per originator and
+ * responder.
+ *
+ * - Address claiming: CTS, EndOfMsgAck and Connection Abort go out only from
+ *   a claimed address, so an RTS to a CA still in its contention wait is not
+ *   answered and the originator times out. BAM reception sends nothing and
+ *   does not depend on the claim. When a CA loses its address or moves to
+ *   another one, the sessions of its old address end without Connection Abort
+ *   and are counted in j1939_stats_t::tp_tx_aborted and tp_rx_aborted.
+ * - BAM data packets go out one per j1939_process() call, never less than
+ *   J1939_CFG_TP_BAM_GAP_US apart. Call j1939_process() often enough to keep
+ *   the gap below 200 ms.
+ * - The originator sends the packets a CTS requests as far as the tx queue
+ *   has room, and waits for room at most J1939_TP_TR_US. It honours CTS with
+ *   0 packets (hold, J1939_TP_T4_US) and retransmission requests.
+ * - The responder asks for all remaining packets in one CTS, limited by the
+ *   RTS's packets-per-CTS value. While all message slots are in use it holds
+ *   the connection before requesting the packets that complete the message:
+ *   CTS with 0 packets every J1939_TP_TH_US, at most J1939_TP_HOLD_MAX times,
+ *   then Connection Abort (J1939_TP_ABORT_RESOURCES). A completed RTS/CTS
+ *   message that still finds no free message slot is answered with Connection
+ *   Abort (J1939_TP_ABORT_RESOURCES) instead of EndOfMsgAck, so the
+ *   originator learns that it was lost.
+ * - An RTS is refused with J1939_TP_ABORT_BUSY without a free session, with
+ *   J1939_TP_ABORT_RESOURCES without a free buffer or when larger than
+ *   J1939_CFG_TP_BUF_SIZE, with J1939_TP_ABORT_TOO_LARGE when larger than
+ *   1785 bytes, and with J1939_TP_ABORT_OTHER when its size and packet count
+ *   do not match.
+ * - On reception a packet already received is ignored; a skipped sequence
+ *   number aborts a connection (J1939_TP_ABORT_BAD_SEQ) and drops a BAM; a
+ *   data packet while holding aborts (J1939_TP_ABORT_UNEXPECTED_DT). A
+ *   repeated RTS for the same PGN from an open originator restarts the
+ *   connection without an abort; an RTS for another PGN is refused with
+ *   J1939_TP_ABORT_BUSY and the open connection continues. A new BAM from a
+ *   sender replaces its unfinished one. A Connection Abort ends the matching
+ *   session (same peer and PGN).
+ *
+ * Frames the stack generates (CTS, EndOfMsgAck, Connection Abort) are dropped
+ * and counted in j1939_stats_t::tx_overflow when the tx queue is full; the
+ * protocol timers then end the session.
+ *
+ * @{
+ */
 
 #define J1939_PGN_TP_CM 0xEC00U /**< TP.CM connection management, PGN 60416. */
 #define J1939_PGN_TP_DT 0xEB00U /**< TP.DT data transfer, PGN 60160. */
@@ -132,5 +179,7 @@ typedef struct j1939_tp {
 	uint16_t tx_buf_len;                                /**< Entries in tx_buf. */
 	uint16_t rx_buf_len;                                /**< Entries in rx_buf. */
 } j1939_tp_t;
+
+/** @} */
 
 #endif /* J1939_TP_H */
