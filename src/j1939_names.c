@@ -114,15 +114,7 @@ static void names_record(j1939_t *s, uint64_t name, uint8_t address) {
 	}
 }
 
-/**
- * @brief Looks up the NAME at an address without sending a Request.
- * @param s        Stack with a table.
- * @param address  Source address, 0..253.
- * @param name     NAME. Written only if found.
- * @return true if another node of the table holds @p address and no CA of
- *         the stack does.
- */
-static bool names_lookup(const j1939_t *s, uint8_t address, uint64_t *name) {
+bool j1939_names_lookup(const j1939_t *s, uint8_t address, uint64_t *name) {
 	const j1939_names_tab_t *t = &s->names;
 	bool found = false;
 
@@ -260,7 +252,7 @@ j1939_ret_t j1939_names_name_get(j1939_t *s, uint8_t address, uint64_t *name) {
 	if ((s != NULL) && (name != NULL) && (address <= NAMES_ADDRESS_MAX)) {
 		if (s->names.buf == NULL) {
 			ret = J1939_RET_ERR_STATE;
-		} else if (names_lookup(s, address, name)) {
+		} else if (j1939_names_lookup(s, address, name)) {
 			ret = J1939_RET_OK;
 		} else {
 			if ((s->names.request == J1939_ADDR_NULL) && !j1939_addr_held(s, address)) {

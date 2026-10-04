@@ -51,6 +51,16 @@ void j1939_names_cannot_claim(j1939_t *s, uint64_t name);
 void j1939_names_global_request(j1939_t *s);
 
 /**
+ * @brief Looks up the NAME at an address without sending a Request.
+ * @param s        Stack with a table (s->names.buf not NULL).
+ * @param address  Source address, 0..253.
+ * @param name     NAME. Written only if found.
+ * @return true if another node of the table holds @p address and no CA of
+ *         the stack does.
+ */
+bool j1939_names_lookup(const j1939_t *s, uint8_t address, uint64_t *name);
+
+/**
  * @brief Sends the pending Requests for Address Claimed and advances the hold timer.
  * @param s           Stack.
  * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
