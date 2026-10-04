@@ -2,7 +2,13 @@
 
 A SAE J1939 protocol stack in C99 for embedded and Linux systems.
 Like CANopenNode for CANopen, it is portable across CAN drivers: the stack works directly on the integrator's own frame type, bound at compile time.
-It is written for safety-rated systems (ISO 13849): no dynamic memory, no function pointers, statically bounded loops.
+It is designed so that it can be used in safety-related systems such as those built to ISO 13849: no dynamic memory, no function pointers, statically bounded loops.
+
+## Notice
+
+- The library aims to be usable in ISO 13849 safety-related systems, but it is not safety certified by any means. Qualifying it for a product is the integrator's task; [Safety and quality](docs/safety.md) describes what the project provides for that.
+- It does not claim compliance with the SAE J1939 standard. Its goal is an easy to understand, portable library for working with the protocol.
+- SAE and J1939 are trademarks of SAE International. This project is not affiliated with or endorsed by SAE International.
 
 ## Features
 

@@ -8,7 +8,7 @@ Read it before designing an integration or reviewing the code.
 | Principle | What it means | Why |
 | --- | --- | --- |
 | Portable C99 | The core needs only `<stdint.h>`, `<stdbool.h>`, `<stddef.h>` and `<string.h>` | Runs on any target, from Cortex-M0+ to Linux |
-| Statically auditable | No function pointers, recursion, VLAs or stdio; every loop has a static bound; state machines are `switch` statements with an error-handling `default` | Control flow and resource use can be analysed without running the code, as safety-rated systems (ISO 13849) require |
+| Statically auditable | No function pointers, recursion, VLAs or stdio; every loop has a static bound; state machines are `switch` statements with an error-handling `default` | Control flow and resource use can be analysed without running the code, which reviews of safety-related systems (e.g. ISO 13849) expect |
 | No dynamic memory | The application supplies every buffer | Memory use is fixed at build time |
 | Native CAN frames | The library has no frame type of its own; the port's compile-time accessors read the driver's type | No conversion, no binding at runtime |
 | Never calls out | Received frames are pushed in; outgoing frames and received messages are pulled out | No callbacks: the application decides when stack work happens |
