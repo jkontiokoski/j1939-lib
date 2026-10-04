@@ -1,7 +1,10 @@
 # Safety and quality
 
-This page is for reviewers and assessors who qualify the library for a safety-rated system, for example under ISO 13849.
+This page is for reviewers and assessors who qualify the library for a safety-related system, for example under ISO 13849.
 It describes how the code is written and checked, what each release documents as evidence, and what remains the application's responsibility.
+
+The library aims to be usable in such systems, but it is not safety certified by any means and does not claim compliance with the SAE J1939 standard.
+Its goal is an easy to understand, portable library for working with the protocol; the evidence below supports an integrator's own qualification and does not replace it.
 
 ## Coding standard
 

@@ -7,9 +7,9 @@ It is for integrators; the exact rules are in the API reference, topics *Receive
 
 | Need | Use |
 | --- | --- |
-| The current value of a state-like PGN (EEC1, ET1) and whether it is still arriving | Receive object |
+| The current value of a state-like PGN (a status sent periodically) and whether it is still arriving | Receive object |
 | Every occurrence of a message, in order (commands, events, diagnostic traffic) | Message slot (`rx_pgns`), see [Messages](messages.md) |
-| A PGN sent periodically, on change or on Request, as the J1939DA defines it | Transmit object |
+| A PGN sent periodically, on change or on Request | Transmit object |
 | A one-off message | `j1939_send()`, see [Messages](messages.md) |
 
 A PGN may use a receive object and a message slot at the same time; the object is updated even when the slots are full.
@@ -19,13 +19,13 @@ A PGN may use a receive object and a message slot at the same time; the object i
 Describe the received PGNs in a `const` table, typically generated, and give the stack a state array of the same length:
 
 ```c
-enum { RX_EEC1, RX_COUNT };                       /* handles: indexes into the table */
+enum { RX_PUMP, RX_COUNT };                       /* handles: indexes into the table */
 
-static uint8_t eec1_buf[8];
+static uint8_t pump_buf[8];
 static const j1939_rxobj_cfg_t rx_cfg[RX_COUNT] = {
-	[RX_EEC1] = {.buf = eec1_buf, .buf_len = 8U, .min_len = 8U,
-	             .pgn = 0xF004U, .sa = 0x00U,      /* EEC1 from the engine at address 0 */
-	             .timeout_us = 100000U},           /* five times its 20 ms period */
+	[RX_PUMP] = {.buf = pump_buf, .buf_len = 8U, .min_len = 8U,
+	             .pgn = 0xFF20U, .sa = 0x20U,      /* pump status from the controller at 0x20 */
+	             .timeout_us = 500000U},           /* five times its 100 ms period */
 };
 static j1939_rxobj_t rx_obj[RX_COUNT];
 
@@ -39,8 +39,8 @@ j1939_rxobj_status_t st;
 int64_t rpm;
 j1939_signal_class_t cls;
 
-if ((j1939_rxobj_get(&stack, RX_EEC1, &st) == J1939_RET_OK) && (st.state == J1939_RXOBJ_VALID) &&
-    (j1939_signal_decode(&sig_engine_speed, eec1_buf, st.len, &rpm, &cls) == J1939_RET_OK) &&
+if ((j1939_rxobj_get(&stack, RX_PUMP, &st) == J1939_RET_OK) && (st.state == J1939_RXOBJ_VALID) &&
+    (j1939_signal_decode(&sig_pump_speed, pump_buf, st.len, &rpm, &cls) == J1939_RET_OK) &&
     (cls == J1939_SIGNAL_VALID)) {
 	/* use rpm */
 }
@@ -61,12 +61,12 @@ if ((j1939_rxobj_get(&stack, RX_EEC1, &st) == J1939_RET_OK) && (st.state == J193
 Describe the transmitted PGNs the same way, after the CAs are added:
 
 ```c
-enum { TX_EEC1, TX_IDENT, TX_COUNT };
+enum { TX_PUMP, TX_IDENT, TX_COUNT };
 
-static uint8_t eec1_tx[8], ident_tx[20];
+static uint8_t pump_tx[8], ident_tx[20];
 static const j1939_txobj_cfg_t tx_cfg[TX_COUNT] = {
-	[TX_EEC1] = {.buf = eec1_tx, .len = 8U, .pgn = 0xF004U, .prio = 3U,
-	             .da = J1939_ADDR_GLOBAL, .ca = 0U, .period_us = 20000U},
+	[TX_PUMP] = {.buf = pump_tx, .len = 8U, .pgn = 0xFF20U, .prio = 6U,
+	             .da = J1939_ADDR_GLOBAL, .ca = 0U, .period_us = 100000U},
 	[TX_IDENT] = {.buf = ident_tx, .len = 20U, .pgn = 0xFF22U, .prio = 6U,
 	              .da = J1939_ADDR_GLOBAL, .ca = 0U},                  /* on Request only */
 };
@@ -89,8 +89,8 @@ Write new values by encoding a whole payload and handing it over; the stack copi
 uint8_t payload[8];
 
 (void)memset(payload, 0xFF, sizeof(payload));    /* "not available" for unset parameters */
-(void)j1939_signal_encode(&sig_engine_speed, payload, sizeof(payload), rpm);
-(void)j1939_txobj_set(&stack, TX_EEC1, payload, sizeof(payload));
+(void)j1939_signal_encode(&sig_pump_speed, payload, sizeof(payload), rpm);
+(void)j1939_txobj_set(&stack, TX_PUMP, payload, sizeof(payload));
 ```
 
 - Until the first `j1939_txobj_set()` the object sends all 0xFF, so receivers see the node with no values yet.

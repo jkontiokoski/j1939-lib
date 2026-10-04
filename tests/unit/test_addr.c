@@ -110,7 +110,7 @@ static void expect_state(j1939_ca_id_t ca, j1939_addr_state_t state, uint8_t add
 
 static j1939_ret_t send_bc(j1939_ca_id_t ca) {
 	static const uint8_t payload[8] = {0};
-	const j1939_msg_t msg = {.pgn = 0xFEF1U,
+	const j1939_msg_t msg = {.pgn = 0xFF10U,
 	                         .prio = 6U,
 	                         .sa = 0U,
 	                         .da = J1939_ADDR_GLOBAL,
@@ -458,7 +458,7 @@ static void test_request_send_uses_null_address_until_claimed(void) {
 	const j1939_port_frame_t *f;
 
 	/* Only a Request for Address Claimed may be sent without an address. */
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_NO_ADDRESS, j1939_request_send(&s, ca, 0xFEF1U, OTHER));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_NO_ADDRESS, j1939_request_send(&s, ca, 0xFF10U, OTHER));
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL));
 	f = j1939_tx_peek(&s);

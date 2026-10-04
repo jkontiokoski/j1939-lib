@@ -59,8 +59,8 @@ static j1939_port_frame_t tx_buf[16];
 static j1939_msg_slot_t msg_buf[8];
 static j1939_tp_buf_t tp_tx_buf[1];                    /* multi-packet sends */
 static j1939_tp_buf_t tp_rx_buf[2];                    /* multi-packet reassembly */
-static const uint32_t rx_pgns[] = {0xFEF1U, 0xE800U};  /* delivered to the application */
-static const uint32_t req_pgns[] = {0xFEEBU};          /* answered on Request by the application */
+static const uint32_t rx_pgns[] = {0xFF20U, 0xE800U};  /* delivered to the application */
+static const uint32_t req_pgns[] = {0xFF22U};          /* answered on Request by the application */
 static j1939_t stack;
 static j1939_ca_id_t ca;
 

@@ -28,10 +28,10 @@
 
 #define BAM 0x20U
 
-static const j1939_diag_dtc_t dtc_a = {100U, 3U, 1U, J1939_DIAG_CM_V4};
+static const j1939_diag_dtc_t dtc_a = {520210U, 3U, 1U, J1939_DIAG_CM_V4};
 static const j1939_diag_dtc_t dtc_b = {0x7FFFFU, 31U, 126U, J1939_DIAG_CM_V4};
-static const j1939_diag_dtc_t dtc_c = {5000U, 1U, 127U, J1939_DIAG_CM_V4};
-static const j1939_diag_dtc_t dtc_d = {6000U, 2U, 2U, J1939_DIAG_CM_V4};
+static const j1939_diag_dtc_t dtc_c = {520211U, 1U, 127U, J1939_DIAG_CM_V4};
+static const j1939_diag_dtc_t dtc_d = {520212U, 2U, 2U, J1939_DIAG_CM_V4};
 
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
@@ -310,7 +310,7 @@ static void test_dm1_period_boundaries(void) {
 }
 
 static void test_dm1_with_one_dtc_and_lamps(void) {
-	const uint8_t expected[8] = {0x04U, 0xF3U, 100U, 0U, 3U, 1U, 0xFFU, 0xFFU};
+	const uint8_t expected[8] = {0x04U, 0xF3U, 0x12U, 0xF0U, 0xE3U, 1U, 0xFFU, 0xFFU};
 
 	start();
 	lamps.amber_warning = J1939_DIAG_LAMP_ON;

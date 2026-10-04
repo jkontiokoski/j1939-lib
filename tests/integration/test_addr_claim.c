@@ -86,7 +86,7 @@ static void monitor_expect(uint8_t sa, uint64_t name) {
 
 static j1939_ret_t send_bc(node_t *n) {
 	static const uint8_t payload[8] = {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U};
-	const j1939_msg_t msg = {.pgn = 0xFEF1U,
+	const j1939_msg_t msg = {.pgn = 0xFF10U,
 	                         .prio = 6U,
 	                         .sa = 0U,
 	                         .da = J1939_ADDR_GLOBAL,

@@ -183,7 +183,7 @@ static void expect_state(j1939_ca_id_t ca, j1939_addr_state_t state, uint8_t add
 
 static j1939_ret_t send_bc(j1939_ca_id_t ca) {
 	static const uint8_t payload[8] = {0};
-	const j1939_msg_t msg = {.pgn = 0xFEF1U,
+	const j1939_msg_t msg = {.pgn = 0xFF10U,
 	                         .prio = 6U,
 	                         .sa = 0U,
 	                         .da = J1939_ADDR_GLOBAL,
@@ -223,7 +223,7 @@ static void test_accepted_command_moves_ca(void) {
 	tx_expect_empty();
 	expect_state(ca, J1939_ADDR_STATE_CLAIMED, NEW);
 	TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(ca));
-	TEST_ASSERT_EQUAL_HEX32(make_id(6U, 0xFEF1U, J1939_ADDR_GLOBAL, NEW),
+	TEST_ASSERT_EQUAL_HEX32(make_id(6U, 0xFF10U, J1939_ADDR_GLOBAL, NEW),
 	                        j1939_port_frame_id_get(j1939_tx_peek(&s)));
 	tx_drain();
 

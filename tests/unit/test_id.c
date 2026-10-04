@@ -12,11 +12,11 @@ void tearDown(void) {
 }
 
 static void test_decode_pdu2(void) {
-	/* EEC1-style broadcast: prio 3, PGN 0xF004, SA 0x00 */
-	const uint32_t id = 0x0CF00400U;
+	/* PDU2 broadcast: prio 3, PGN 0xFF20, SA 0x00 */
+	const uint32_t id = 0x0CFF2000U;
 
 	TEST_ASSERT_EQUAL_UINT8(3U, j1939_id_prio_get(id));
-	TEST_ASSERT_EQUAL_HEX32(0xF004U, j1939_id_pgn_get(id));
+	TEST_ASSERT_EQUAL_HEX32(0xFF20U, j1939_id_pgn_get(id));
 	TEST_ASSERT_EQUAL_HEX8(J1939_ADDR_GLOBAL, j1939_id_da_get(id));
 	TEST_ASSERT_EQUAL_HEX8(0x00U, j1939_id_sa_get(id));
 }
@@ -33,7 +33,7 @@ static void test_decode_pdu1(void) {
 
 static void test_decode_data_pages(void) {
 	/* DP = 1 */
-	TEST_ASSERT_EQUAL_HEX32(0x1FEF1U, j1939_id_pgn_get(0x19FEF100U));
+	TEST_ASSERT_EQUAL_HEX32(0x1FF10U, j1939_id_pgn_get(0x19FF1000U));
 	/* EDP = 1 */
 	TEST_ASSERT_EQUAL_HEX32(0x2EA00U, j1939_id_pgn_get(0x1AEA1234U));
 	/* EDP = 1, DP = 1 */
@@ -65,8 +65,8 @@ static void test_pdu_format_boundary(void) {
 static void test_build_known_ids(void) {
 	uint32_t id = 0U;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_id_build(3U, 0xF004U, J1939_ADDR_GLOBAL, 0x00U, &id));
-	TEST_ASSERT_EQUAL_HEX32(0x0CF00400U, id);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_id_build(3U, 0xFF20U, J1939_ADDR_GLOBAL, 0x00U, &id));
+	TEST_ASSERT_EQUAL_HEX32(0x0CFF2000U, id);
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_id_build(6U, 0xEA00U, 0x12U, 0x34U, &id));
 	TEST_ASSERT_EQUAL_HEX32(0x18EA1234U, id);
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
@@ -79,13 +79,13 @@ static void test_build_known_ids(void) {
 static void test_build_rejects_invalid_arguments(void) {
 	uint32_t id = 0xDEADBEEFU;
 
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_id_build(8U, 0xF004U, 0xFFU, 0x00U, &id));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_id_build(8U, 0xFF20U, 0xFFU, 0x00U, &id));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_id_build(6U, 0x40000U, 0xFFU, 0x00U, &id));
 	/* PDU1 PGN with a non-zero lowest byte */
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_id_build(6U, 0xEA01U, 0x12U, 0x00U, &id));
 	/* PDU2 PGN with a specific destination */
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_id_build(6U, 0xF004U, 0x12U, 0x00U, &id));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_id_build(6U, 0xF004U, 0xFFU, 0x00U, NULL));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_id_build(6U, 0xFF20U, 0x12U, 0x00U, &id));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_id_build(6U, 0xFF20U, 0xFFU, 0x00U, NULL));
 	TEST_ASSERT_EQUAL_HEX32(0xDEADBEEFU, id);
 }
 

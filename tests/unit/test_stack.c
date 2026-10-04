@@ -12,9 +12,9 @@
 #define OWN_A   0x10U
 #define OWN_B   0x11U
 #define OTHER   0x42U
-#define PGN_BC  0xFEF1U /* PDU2 broadcast */
+#define PGN_BC  0xFF10U /* PDU2 broadcast */
 #define PGN_DS  0xEF00U /* PDU1 proprietary A */
-#define PGN_OFF 0xFEEEU /* not in the rx list */
+#define PGN_OFF 0xFF11U /* not in the rx list */
 
 static const uint32_t rx_pgns[] = {PGN_BC, PGN_DS};
 static j1939_port_frame_t tx_buf[TX_LEN];

@@ -85,6 +85,12 @@ The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
 `make lint` runs cppcheck three times (core and mock port with the MISRA addon, the SocketCAN port, the examples), keeps each report in `build/lint/` and fails on any finding in it.
 A new deviation goes into `cppcheck-suppressions.txt` or `cppcheck-misra-suppressions.txt` (comments with `//` only; an unmatched suppression fails the check) and into the deviation table of `docs/safety.md`.
 
+## SAE material
+
+- No J1939DA content (PGN and SPN definitions, parameter names, scaling, rates) and no text from the SAE standards in code, docs or tests. Protocol constants needed to work on the bus (protocol PGNs, codes, timers, bit layouts) are written in our own words.
+- Examples and tests use invented identifiers: Proprietary B PGNs (0xFF00-0xFFFF) and SPNs from the proprietary range (520192-524287).
+- Standards documents and DA exports never go into the repository, issues or pull requests.
+
 ## Documentation
 
 - **One place per fact.** What a function or module does, its rules and limits, is documented in its header: that is the API reference. Pages in `docs/` explain how to do a task and why the design is as it is, and link to the reference instead of repeating it.
