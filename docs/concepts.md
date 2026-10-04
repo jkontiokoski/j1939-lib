@@ -18,55 +18,34 @@ Read it before designing an integration or reviewing the code.
 
 ## Layering
 
-Each layer depends only on the layers below it.
+Each layer uses only the layers below it.
 
-```
- Application: pulls received messages, reads receive objects, queues messages to send, writes transmit objects, signal access, DM1
- ──────────────────────────────────────────────────────────────────────────────
- j1939_diag (J1939/73)   j1939_signal (J1939/71 + DA schema)              optional modules
- ──────────────────────────────────────────────────────────────────────────────
- j1939_dm (J1939/73): DM1/DM2 transmission, DM3/DM11 handling per CA
- j1939_rxobj: receive objects, latest payload per PGN and sender, timeout supervision
- j1939_txobj: transmit objects sent periodically, on change and on Request
- j1939_addr (J1939/81)   j1939_tp (J1939/21 TP.BAM / TP.CM)               protocol core
- j1939_stack: j1939_t, frame rx, tx queue, CA objects, DA/PGN filtering, message slots
- j1939_request: Request (PGN 59904) and Acknowledgement (PGN 59392)
- ──────────────────────────────────────────────────────────────────────────────
- j1939_id / j1939_name: pure codecs on uint32_t / uint64_t                no state, no I/O
- j1939_ring: FIFO indices over integrator storage                         no I/O
- ──────────────────────────────────────────────────────────────────────────────
- PORT BOUNDARY (compile time): j1939_target.h, supplied by the port
- ──────────────────────────────────────────────────────────────────────────────
- port/socketcan, port/mock, integrator ports
-```
+| Layer | Modules | Role |
+| --- | --- | --- |
+| Optional modules | `j1939_diag`, `j1939_signal` | DTC and DM1/DM2 payload codec; SPN descriptors, scaling and value ranges |
+| Protocol core | `j1939_dm`, `j1939_rxobj`, `j1939_txobj`, `j1939_addr`, `j1939_tp`, `j1939_stack`, `j1939_request` | Diagnostics per CA, message objects, address claiming, transport protocol, frame handling and message slots, Request and Acknowledgement |
+| Codecs | `j1939_id`, `j1939_name`, `j1939_ring` | Identifier and NAME codecs, FIFO indices; no state, no I/O |
+| Port | `j1939_target.h` | The integrator's frame type and accessors, bound at compile time |
 
 The optional frame queue (`j1939_queue.h`) sits outside these layers: integrator code uses it to hand frames from a driver interrupt to the stack's context.
 
 ## Data flow
 
-```
-                        RECEIVE                                              TRANSMIT
- CAN driver FIFO / ISR                                       application: signal values (engineering units)
-   │ native frames (j1939_port_frame_t)                         │ j1939_signal_encode() into a local payload
-   ▼                                                            ▼
- [j1939_queue: optional, only between contexts]          j1939_txobj_set(idx, payload)      j1939_send(msg)
-   │                                                            │ copy into obj buf              │ one-off
-   ▼                                                            ▼                                │
- j1939_rx(frame) ── filter ─┬─ protocol (claim, Request,   tx object: payload + schedule          │
-                            │   TP, DM): handled by stack       │ j1939_process(): period /        │
-                            ├─ rx object (pgn, sa):             │ change / Request due             │
-                            │   latest payload, overwritten,    ▼                                  ▼
-                            │   timeout-supervised         j1939_send() ── single frame or TP ──► tx queue (native frames)
-                            └─ message slot (rx_pgns):                                              │ j1939_tx_peek/pop
-                                FIFO of every message                                               ▼
-   ▲ TP reassembly feeds both rx objects and slots                                            CAN driver
-   │
- application: j1939_rxobj_get() → state ok → j1939_signal_decode(sig, buf, len)
-              j1939_msg_peek() → j1939_signal_msg_decode(sig, msg)
-```
+Receiving:
+
+1. The integrator takes a frame from the CAN driver, optionally through `j1939_queue` when the driver delivers it in another context, and passes it to `j1939_rx()`.
+2. The stack handles protocol PGNs itself: address claiming, Requests, the transport protocol and diagnostics.
+3. A frame, or a completed multi-packet message, whose PGN and sender match a receive object updates that object. One whose PGN is in `rx_pgns` is stored in a message slot.
+4. The application reads objects with `j1939_rxobj_get()` and messages with `j1939_msg_peek()` / `j1939_msg_pop()`, and decodes signals with `j1939_signal_decode()`.
+
+Transmitting:
+
+1. The application encodes signals into a payload and either writes it to a transmit object with `j1939_txobj_set()` or sends it once with `j1939_send()`.
+2. `j1939_process()` sends transmit objects when their period, a change or a Request makes them due, through `j1939_send()`.
+3. `j1939_send()` builds a single frame or starts a transport protocol transfer; the frames go into the tx queue.
+4. The integrator drains the tx queue to the driver with `j1939_tx_peek()` / `j1939_tx_pop()`.
 
 - **Frames** are the integrator's native type and exist only at the edges: `j1939_rx()` reads one in place, the tx queue holds the frames the stack builds. Everything above works on payloads; the transport protocol splits and joins frames.
-- **The frame queue** is an optional FIFO of native frames from an interrupt to the stack's context, before `j1939_rx()`. The tx queue is the stack's own frame FIFO toward the driver.
 - **Signals** (`j1939_signal_t`) are pure codecs over a payload byte array. The stack moves payloads; the application, or a generated service, encodes and decodes them.
 - **Message slots or receive objects**: a slot holds every received message of a PGN in `rx_pgns`, in order, until `j1939_msg_pop()`, and the slots can overflow. A receive object holds the latest payload of one PGN from one sender, never overflows and tells whether it is current. State-like PGNs (EEC1, ET1) suit objects; events that must not be missed (commands, Commanded Address, diagnostic traffic) suit slots. A PGN may use both.
 - **`j1939_send()` or transmit objects**: `j1939_send()` sends once, now. A transmit object keeps its payload, and the stack sends it periodically, on change and on Request.
