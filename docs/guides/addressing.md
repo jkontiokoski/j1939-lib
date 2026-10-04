@@ -109,6 +109,7 @@ if (j1939_names_name_get(&stack, msg->sa, &sender) == J1939_RET_OK) {
 - The answers to the startup Request arrive back to back, one frame per node: size the driver's receive FIFO for them.
 - Poll `j1939_names_changes()` to notice changes; list the nodes with `j1939_names_count()` and `j1939_names_at()`.
 - Entries do not expire: a node that left the bus stays listed until another node claims its address.
+- A receive object can follow a node by its NAME instead of its address, see [Message objects](message-objects.md).
 
 ## Move a CA with Commanded Address
 

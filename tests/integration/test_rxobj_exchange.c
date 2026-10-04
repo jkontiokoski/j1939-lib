@@ -46,8 +46,8 @@ static test_bus_t bus;
 static uint8_t status_buf[8];
 static uint8_t info_buf[20];
 static const j1939_rxobj_cfg_t objs_cfg[OBJ_COUNT] = {
-        {status_buf, PGN_STATUS, TIMEOUT_US, 8U, 8U, ADDR_ECU},
-        {info_buf, PGN_INFO, 0U, 20U, 9U, ADDR_ECU},
+        {status_buf, PGN_STATUS, TIMEOUT_US, 8U, 8U, ADDR_ECU, 0U},
+        {info_buf, PGN_INFO, 0U, 20U, 9U, ADDR_ECU, 0U},
 };
 static j1939_rxobj_t objs[OBJ_COUNT];
 static uint32_t elapsed;

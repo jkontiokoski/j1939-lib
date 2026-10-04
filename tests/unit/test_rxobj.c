@@ -41,10 +41,10 @@ static uint8_t buf_b[8];
 static uint8_t buf_tp[20];
 static uint8_t buf_lst[8];
 static const j1939_rxobj_cfg_t objs_cfg[OBJ_COUNT] = {
-        {buf_a, PGN_A, TIMEOUT, 8U, 8U, PEER},
-        {buf_b, PGN_B, 0U, 8U, 4U, PEER},
-        {buf_tp, PGN_TP, TIMEOUT, 20U, 9U, PEER},
-        {buf_lst, PGN_LST, TIMEOUT, 8U, 1U, PEER},
+        {buf_a, PGN_A, TIMEOUT, 8U, 8U, PEER, 0U},
+        {buf_b, PGN_B, 0U, 8U, 4U, PEER, 0U},
+        {buf_tp, PGN_TP, TIMEOUT, 20U, 9U, PEER, 0U},
+        {buf_lst, PGN_LST, TIMEOUT, 8U, 1U, PEER, 0U},
 };
 static j1939_rxobj_t objs[OBJ_COUNT];
 static j1939_t s;
@@ -154,22 +154,22 @@ static void test_init_rejects_invalid(void) {
 	static uint8_t b[8];
 	j1939_rxobj_t o[2];
 	const j1939_rxobj_cfg_t bad[] = {
-	        {NULL, PGN_A, 0U, 8U, 8U, PEER},                      /* no buffer */
-	        {b, 0xEF01U, 0U, 8U, 8U, PEER},                       /* PDU1 with DA */
-	        {b, 0x40000U, 0U, 8U, 8U, PEER},                      /* above J1939_PGN_MAX */
-	        {b, J1939_PGN_REQUEST, 0U, 8U, 3U, PEER},             /* stack owned */
-	        {b, J1939_PGN_ADDRESS_CLAIMED, 0U, 8U, 8U, PEER},     /* stack owned */
-	        {b, J1939_PGN_TP_CM, 0U, 8U, 8U, PEER},               /* stack owned */
-	        {b, J1939_PGN_TP_DT, 0U, 8U, 8U, PEER},               /* stack owned */
-	        {b, PGN_A, 0U, 8U, 8U, J1939_ADDR_NULL},              /* sa 254 */
-	        {b, PGN_A, 0U, 8U, 0U, PEER},                         /* min_len 0 */
-	        {b, PGN_A, 0U, 4U, 5U, PEER},                         /* min_len > buf_len */
-	        {b, PGN_A, 0U, J1939_CFG_TP_BUF_SIZE + 1U, 8U, PEER}, /* too large */
+	        {NULL, PGN_A, 0U, 8U, 8U, PEER, 0U},                      /* no buffer */
+	        {b, 0xEF01U, 0U, 8U, 8U, PEER, 0U},                       /* PDU1 with DA */
+	        {b, 0x40000U, 0U, 8U, 8U, PEER, 0U},                      /* above J1939_PGN_MAX */
+	        {b, J1939_PGN_REQUEST, 0U, 8U, 3U, PEER, 0U},             /* stack owned */
+	        {b, J1939_PGN_ADDRESS_CLAIMED, 0U, 8U, 8U, PEER, 0U},     /* stack owned */
+	        {b, J1939_PGN_TP_CM, 0U, 8U, 8U, PEER, 0U},               /* stack owned */
+	        {b, J1939_PGN_TP_DT, 0U, 8U, 8U, PEER, 0U},               /* stack owned */
+	        {b, PGN_A, 0U, 8U, 8U, J1939_ADDR_NULL, 0U},              /* sa 254 */
+	        {b, PGN_A, 0U, 8U, 0U, PEER, 0U},                         /* min_len 0 */
+	        {b, PGN_A, 0U, 4U, 5U, PEER, 0U},                         /* min_len > buf_len */
+	        {b, PGN_A, 0U, J1939_CFG_TP_BUF_SIZE + 1U, 8U, PEER, 0U}, /* too large */
 	};
-	const j1939_rxobj_cfg_t dup[2] = {{b, PGN_A, 0U, 8U, 8U, PEER},
-	                                  {b, PGN_A, 0U, 8U, 8U, PEER}};
-	const j1939_rxobj_cfg_t two[2] = {{b, PGN_A, 0U, 8U, 8U, PEER},
-	                                  {b, PGN_A, 0U, 8U, 8U, OTHER}};
+	const j1939_rxobj_cfg_t dup[2] = {{b, PGN_A, 0U, 8U, 8U, PEER, 0U},
+	                                  {b, PGN_A, 0U, 8U, 8U, PEER, 0U}};
+	const j1939_rxobj_cfg_t two[2] = {{b, PGN_A, 0U, 8U, 8U, PEER, 0U},
+	                                  {b, PGN_A, 0U, 8U, 8U, OTHER, 0U}};
 	uint32_t i;
 
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_init(NULL, objs_cfg, objs, OBJ_COUNT));

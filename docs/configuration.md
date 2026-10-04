@@ -44,7 +44,7 @@ Optional features take their storage from the application too, when they are ena
 | Feature | Storage | Size |
 | --- | --- | --- |
 | Diagnostics of a CA | `j1939_dm_t`, DTC lists, hold records and a payload buffer in `j1939_dm_cfg_t` | Payload buffer `J1939_DM_BUF_LEN(n)` for up to `n` DTCs |
-| Receive objects | A `const` table of `j1939_rxobj_cfg_t`, a `j1939_rxobj_t` per entry, a payload buffer per object | 12 bytes of state per object plus its buffer |
+| Receive objects | A `const` table of `j1939_rxobj_cfg_t` (32 bytes per entry on 32- and 64-bit targets), a `j1939_rxobj_t` per entry, a payload buffer per object | 12 bytes of state per object plus its buffer |
 | Transmit objects | A `const` table of `j1939_txobj_cfg_t`, a `j1939_txobj_t` per entry, a payload buffer per object | 16 bytes of state per object plus its buffer; multi-packet objects share the TP transmit buffers |
 | NAME table | An array of `j1939_names_entry_t`, one entry per other node | 12 bytes per entry |
 

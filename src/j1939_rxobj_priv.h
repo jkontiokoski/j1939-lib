@@ -25,12 +25,13 @@ void j1939_rxobj_stack_init(j1939_t *s);
  * @param s    Stack.
  * @param pgn  PGN.
  * @param sa   Source address.
- * @return true if an object is configured for @p pgn and @p sa.
+ * @return true if an object is configured for @p pgn and @p sa, or for
+ *         @p pgn and the NAME the NAME table records at @p sa.
  */
 bool j1939_rxobj_wanted(const j1939_t *s, uint32_t pgn, uint8_t sa);
 
 /**
- * @brief Stores a received message in the object for its PGN and sender, if there is one.
+ * @brief Stores a received message in every object for its PGN and sender.
  * @param s     Stack.
  * @param pgn   PGN of the message.
  * @param sa    Source address of the message.

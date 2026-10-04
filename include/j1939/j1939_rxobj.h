@@ -40,8 +40,20 @@
  *
  * Only messages that pass the stack's destination filter reach an object:
  * global ones and those addressed to an address a CA of the stack holds.
- * Senders are identified by source address: when a node loses its address,
- * the node that claims it next reaches the same object.
+ *
+ * An object identifies its sender in one of two ways:
+ *
+ * - By source address (j1939_rxobj_cfg_t::name 0): the object takes the PGN
+ *   from that address. When a node loses its address, the node that claims
+ *   it next reaches the same object.
+ * - By NAME (j1939_rxobj_cfg_t::name not 0): the object takes the PGN from
+ *   the address the NAME table (@ref grp_names) currently records for that
+ *   NAME, and follows the node when its address changes. While the NAME has
+ *   no address or is not in the table, nothing reaches the object and its
+ *   timeout runs as usual. Without a NAME table, e.g. after it was removed,
+ *   such objects receive nothing.
+ *
+ * A message may match an object of each kind; both are updated.
  *
  * @{
  */
@@ -53,7 +65,8 @@ typedef struct j1939_rxobj_cfg {
 	uint32_t timeout_us; /**< Age at which the payload is timed out; 0: no supervision. */
 	uint16_t buf_len;    /**< Largest accepted payload, min_len..J1939_CFG_TP_BUF_SIZE. */
 	uint16_t min_len;    /**< Smallest accepted payload, at least 1. */
-	uint8_t sa;          /**< Source address received from, 0..253. */
+	uint8_t sa;          /**< Source address received from, 0..253; ignored when name is set. */
+	uint64_t name;       /**< NAME of the sender; 0: the sender is identified by sa. */
 } j1939_rxobj_cfg_t;
 
 /** State of a receive object. */
@@ -86,7 +99,8 @@ typedef struct j1939_rxobj {
  *
  * Every object starts in J1939_RXOBJ_NO_DATA. May be called again to replace
  * or reset the table; @p len 0 removes it, and so does j1939_init(). The
- * configuration and state arrays must outlive the stack.
+ * configuration and state arrays must outlive the stack. Objects matching by
+ * NAME need the NAME table, so j1939_names_init() comes first.
  *
  * @param s    Stack.
  * @param cfg  Configuration of each object. May be NULL if @p len is 0.
@@ -94,9 +108,10 @@ typedef struct j1939_rxobj {
  * @param len  Number of objects.
  * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer, an invalid
  *         PGN, a PGN the stack handles itself (Request, Address Claimed,
- *         transport protocol), a source address above 253, invalid lengths
- *         or two objects with the same PGN and source address. Nothing
- *         changes on error.
+ *         transport protocol), a source address above 253, invalid lengths,
+ *         an object matching by NAME without a NAME table, or two objects
+ *         with the same PGN and source address or the same PGN and NAME.
+ *         Nothing changes on error.
  */
 j1939_ret_t j1939_rxobj_init(j1939_t *s, const j1939_rxobj_cfg_t *cfg, j1939_rxobj_t *obj,
                              uint16_t len);
