@@ -97,22 +97,13 @@ static void expect_obj(uint32_t pgn, uint8_t da, const uint8_t *d) {
 	expect_frame(make_id(6U, pgn, da, own), d, 8U);
 }
 
-/* Expects a BAM of LONG bytes; the packets are collected with further calls of GAP each. */
-static void expect_bam(uint32_t pgn, const uint8_t *d) {
+/* Collects the data packets of a BAM of LONG bytes whose TP.CM was already taken. */
+static void expect_bam_packets(const uint8_t *d) {
 	const uint8_t packets = (uint8_t)((LONG + 6U) / 7U);
-	const uint8_t cm[8] = {BAM,
-	                       (uint8_t)LONG,
-	                       0U,
-	                       packets,
-	                       0xFFU,
-	                       (uint8_t)pgn,
-	                       (uint8_t)(pgn >> 8),
-	                       (uint8_t)(pgn >> 16)};
 	uint8_t got[LONG + 7U];
 	uint8_t next = 1U;
 	uint32_t calls;
 
-	expect_frame(make_id(6U, J1939_PGN_TP_CM, J1939_ADDR_GLOBAL, own), cm, 8U);
 	for (calls = 0U; (next <= packets) && (calls < 10U); calls++) {
 		const j1939_port_frame_t *f;
 
@@ -129,6 +120,26 @@ static void expect_bam(uint32_t pgn, const uint8_t *d) {
 	}
 	TEST_ASSERT_EQUAL_UINT8(packets + 1U, next);
 	TEST_ASSERT_EQUAL_HEX8_ARRAY(d, got, LONG);
+}
+
+/* Expects the TP.CM BAM of LONG bytes of pgn. */
+static void expect_bam_cm(uint32_t pgn) {
+	const uint8_t cm[8] = {BAM,
+	                       (uint8_t)LONG,
+	                       0U,
+	                       (uint8_t)((LONG + 6U) / 7U),
+	                       0xFFU,
+	                       (uint8_t)pgn,
+	                       (uint8_t)(pgn >> 8),
+	                       (uint8_t)(pgn >> 16)};
+
+	expect_frame(make_id(6U, J1939_PGN_TP_CM, J1939_ADDR_GLOBAL, own), cm, 8U);
+}
+
+/* Expects a BAM of LONG bytes; the packets are collected with further calls of GAP each. */
+static void expect_bam(uint32_t pgn, const uint8_t *d) {
+	expect_bam_cm(pgn);
+	expect_bam_packets(d);
 }
 
 /* Expects LONG bytes to da with RTS/CTS; the peer asks for all packets at once. */
@@ -669,6 +680,43 @@ static void test_set_rejects_invalid_input(void) {
 	TEST_ASSERT_EQUAL_HEX8_ARRAY(data_a, bufs[0], 8U);
 }
 
+static void test_broadcast_keeps_a_directed_multi_packet_answer(void) {
+	obj_def(0U, PGN_A, 1000000U, 0U);
+	ocfg[0].len = LONG;
+	objs_init(1U);
+	start();
+	expect_bam(PGN_A, ff); /* on the claim; takes 3 gaps */
+	set(0U, data_a);
+	rx_request(OTHER, OWN, PGN_A);
+	/* The periodic BAM falls due before the answer goes out. The answer would go to the
+	 * requester with RTS/CTS, so the broadcast does not serve it: it waits for the only TP
+	 * transmit buffer and follows the BAM. */
+	process(1000000U - (3U * GAP));
+	expect_bam_cm(PGN_A);
+	expect_none();
+	expect_bam_packets(data_a);
+	expect_rts(PGN_A, OTHER, data_a);
+	process(0U);
+	expect_none();
+	TEST_ASSERT_GREATER_THAN_UINT32(0U, j1939_stats_get(&s)->txobj_tx_retry);
+	TEST_ASSERT_EQUAL_UINT32(0U, j1939_stats_get(&s)->tp_tx_aborted);
+	TEST_ASSERT_EQUAL_UINT32(0U, j1939_stats_get(&s)->txobj_tx_dropped);
+}
+
+static void test_repeated_request_of_one_requester_is_answered_to_it(void) {
+	obj_def(0U, PGN_A, 0U, 0U);
+	ocfg[0].len = LONG;
+	objs_init(1U);
+	start();
+	set(0U, data_a);
+	rx_request(OTHER, OWN, PGN_A);
+	rx_request(OTHER, OWN, PGN_A);
+	process(0U);
+	expect_rts(PGN_A, OTHER, data_a);
+	process(0U);
+	expect_none();
+}
+
 int main(void) {
 	UNITY_BEGIN();
 	RUN_TEST(test_state_is_small);
@@ -689,5 +737,7 @@ int main(void) {
 	RUN_TEST(test_objects_of_two_cas);
 	RUN_TEST(test_init_validates_every_entry);
 	RUN_TEST(test_set_rejects_invalid_input);
+	RUN_TEST(test_broadcast_keeps_a_directed_multi_packet_answer);
+	RUN_TEST(test_repeated_request_of_one_requester_is_answered_to_it);
 	return UNITY_END();
 }
