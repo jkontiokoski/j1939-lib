@@ -1,20 +1,59 @@
-# Portable SAE 1939 CAN protocol library
+# Portable SAE J1939 protocol library
 
-This project is a SAE 1939 CAN protocol library written in C99.
-The philosophy behind this library is similar to CANopenNode for CANopen protocol, which is a portable protocol stack that can be used with multiple driver / CAN interface backends.
+A SAE J1939 protocol stack in C99 for embedded and Linux systems.
+Like CANopenNode for CANopen, it is portable across CAN drivers: the stack works directly on the integrator's own frame type, bound at compile time.
+It is written for safety-rated systems (ISO 13849): no dynamic memory, no function pointers, statically bounded loops.
 
-Refer to 'docs/' for more information about the project.
+## Features
 
-## Building
+- **J1939/21**: identifiers and PGNs, Request and Acknowledgement, transport protocol (BAM and RTS/CTS, up to 1785 bytes).
+- **J1939/81**: NAME, address claiming with arbitration, arbitrary address capability, Cannot Claim, Commanded Address.
+- **J1939/71 and the DA schema**: signal descriptors, bit extraction and insertion, scaling, value ranges; the licensed DA content is supplied by the integrator.
+- **J1939/73**: DTC and lamp codec; DM1 and DM2 sent by the stack; DM3 and DM11 clearing decided by the application.
+- **Message objects**: PGNs sent periodically, on change and on Request; received PGNs with timeout supervision.
+- **Ports**: Linux SocketCAN included; any other CAN driver through one header.
 
-Requires CMake 3.21 or newer and a C99 compiler.
+## Status
 
-```sh
-make            # build the library
-make test       # build with sanitizers and run the tests
+Version 0.1.0, under development: the API may still change.
+[Scope](docs/scope.md) lists what is implemented and what is planned.
+
+## Example
+
+```c
+#include "j1939/j1939.h"
+
+j1939_init(&stack, &cfg);                     /* buffers in cfg, see Getting started */
+j1939_ca_add(&stack, &ca_cfg, &ca);           /* NAME and preferred address */
+
+for (;;) {
+	while (driver_read(&frame)) {
+		j1939_rx(&stack, &frame);             /* push received frames */
+	}
+	j1939_process(&stack, elapsed_us());      /* timers, address claim, transport protocol */
+	while ((msg = j1939_msg_peek(&stack)) != NULL) {
+		handle(msg);                          /* pull received messages */
+		j1939_msg_pop(&stack);
+	}
+	while (((f = j1939_tx_peek(&stack)) != NULL) && driver_write(f)) {
+		j1939_tx_pop(&stack);                 /* drain the tx queue */
+	}
+}
 ```
 
-See [docs/architecture.md](docs/architecture.md) for all build targets and development standards.
+## Documentation
+
+1. [Getting started](docs/getting-started.md): add the library to a project, set up a stack, run the main loop.
+2. [Concepts](docs/concepts.md): design principles, layers, data flow, which header holds what.
+3. [Configuration](docs/configuration.md): compile-time settings and buffer sizing.
+4. [Porting](docs/porting.md): the contract between the library and a CAN driver.
+5. [Example applications](docs/examples.md): the SocketCAN examples and the traffic they produce.
+6. [STM32 bxCAN sketch](docs/porting-bxcan.md): a bare-metal port, worked through.
+7. [Safety and quality](docs/safety.md): coding standard, verification and release evidence, for reviewers.
+8. [Scope](docs/scope.md): features and roadmap.
+9. [Module rules](docs/architecture.md): the detailed behaviour of each protocol module.
+
+The API reference is generated from the headers with `make docs` and is part of every release.
 
 ## Releases
 
@@ -27,21 +66,7 @@ A release contains:
 - verification evidence: test and coverage results, static analysis and MISRA results, and the tool versions used,
 - SHA-256 checksums of these archives.
 
-[docs/porting.md](docs/porting.md) shows how to add the library to a CMake project.
+## Contributing and license
 
-## Quick start
-
-The example applications in `examples/` run on Linux SocketCAN and are the starting point for an integration: each shows the main loop that moves frames between the CAN driver and the stack, runs `j1939_process()` and pulls received messages.
-
-```sh
-sudo ip link add dev vcan0 type vcan && sudo ip link set up vcan0
-make examples
-cd build/dev/examples
-
-./pgn_listener -a 0x90 0xFECA 0xEF00 &    # prints DM1 and Proprietary A messages sent to it
-./bam_sender -a 0x80 -d 0x90 -c 3         # DM1 with BAM, 100 bytes with RTS/CTS to 0x90
-./addr_claim_demo -a 0x90 -n 5 -A         # loses 0x90 to the listener, moves to 0x80
-```
-
-Watch the bus with `candump -ta vcan0`.
-[docs/porting.md](docs/porting.md) walks through the examples, the reference ports and a bare-metal port for a microcontroller.
+To work on the library, see [CONTRIBUTING.md](https://github.com/jkontiokoski/j1939-lib/blob/main/CONTRIBUTING.md).
+The library is licensed under the MIT license, see `LICENSE`.

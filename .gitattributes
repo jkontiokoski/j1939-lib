@@ -1,3 +1,4 @@
 # Development-only files: left out of the source archive (git archive, make dist).
-CLAUDE.md    export-ignore
-RELEASING.md export-ignore
+CLAUDE.md       export-ignore
+CONTRIBUTING.md export-ignore
+RELEASING.md    export-ignore

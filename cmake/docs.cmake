@@ -20,8 +20,23 @@ file(REAL_PATH "${PROJECT_SOURCE_DIR}" J1939_DOCS_ROOT)
 
 get_filename_component(J1939_DOCS_DOT_PATH "${DOXYGEN_DOT_EXECUTABLE}" DIRECTORY)
 set(J1939_DOCS_BRIEF "${PROJECT_DESCRIPTION}")
-set(_j1939_docs_public_input
-	"\"${J1939_DOCS_ROOT}/README.md\" \"${J1939_DOCS_ROOT}/docs\" \"${J1939_DOCS_ROOT}/include/j1939\"")
+# The pages in reading order: the navigation follows the order of INPUT.
+set(_j1939_docs_pages
+	README.md
+	docs/getting-started.md
+	docs/concepts.md
+	docs/configuration.md
+	docs/porting.md
+	docs/examples.md
+	docs/porting-bxcan.md
+	docs/safety.md
+	docs/scope.md
+	docs/architecture.md)
+set(_j1939_docs_public_input "")
+foreach(_page IN LISTS _j1939_docs_pages)
+	string(APPEND _j1939_docs_public_input "\"${J1939_DOCS_ROOT}/${_page}\" ")
+endforeach()
+string(APPEND _j1939_docs_public_input "\"${J1939_DOCS_ROOT}/include/j1939\"")
 
 # j1939_add_docs(<target> <output dir> <internal YES|NO> <fail on warnings ON|OFF> <input>)
 function(j1939_add_docs target output internal gate input)

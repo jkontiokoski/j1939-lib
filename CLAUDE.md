@@ -8,7 +8,13 @@ Use this name when making copyright stamps.
 
 ## Docs
 
-- The docs of this projects are maintained in the 'docs/' directory.
+- The user documentation is maintained in the 'docs/' directory, with README.md as its main page.
+It is released: `make docs` builds it into the HTML reference that `make dist` ships.
+- One place per fact: what a module or function does, its rules and limits, is documented in its header (the API reference).
+The pages in 'docs/' explain how to do a task and why the design is as it is, and link to the reference instead of repeating it.
+- Each page serves one audience, opens with two or three sentences on what it covers and for whom, and stays short (a guide at most about 150 lines, no page over about 250).
+`docs/Doxyfile.in` and the list in README.md hold the pages in reading order.
+- Development standards and tooling live in CONTRIBUTING.md, the release process in RELEASING.md; neither goes into 'docs/' or the generated documentation.
 - The docs shall be kept up to date when working on tasks.
 - Do not maintain a 'history' of the project in the documentation after changing a design.
 Always keep the documentation to represent the current status of the project.
@@ -16,19 +22,21 @@ Additional 'this is this, not that' type of documentation are not to be written.
 
 ### Scope
 
-- The scope of the project, what parts of the protocols are implemented and what are planned/not planned etc. live in this document.
+- `docs/scope.md`: the scope of the project, what parts of the protocols are implemented and what are planned/not planned etc. live in this document.
 It shall serve this purpose during development and after publishing.
 
-### Architecture
+### Concepts
 
-- The architecture of the library is maintained in this file.
-- The design guidelines, tooling choices, development standards are described in this file.
-- It shall describe the source tree structure, key abstractions, and interface boundaries and their intended usage.
+- `docs/concepts.md`: the architecture of the library: design principles and their reasons, layering, data flow, execution model, and which header holds what.
 
 ### Portability
 
-- This document holds the guide on how to port the project to new targets.
+- `docs/porting.md`: the guide on how to port the project to new targets, with `docs/porting-bxcan.md` as a worked bare-metal example.
 It will serve this purpose after the library is published, but also for the author to inspect how the boundary looks like during development.
+
+### Other pages
+
+- `docs/getting-started.md` (integration and the main loop), `docs/configuration.md` (settings and buffer sizing), `docs/examples.md` (the example applications), `docs/safety.md` (coding standard, deviations, verification and release evidence, for reviewers).
 
 
 ## Knowledge
@@ -63,4 +71,4 @@ It will serve this purpose after the library is published, but also for the auth
 ### Commit messages
 
 - Never add a `Co-Authored-By` trailer or any other AI attribution to commits or PR descriptions. The owner is responsible for the commits.
-- Never put roadmap identifiers (M0, M1, ...) in commit messages or branch names. Scope commits by module or feature and keep the body to a short what-and-why. The full policy is in docs/architecture.md.
+- Never put roadmap identifiers (M0, M1, ...) in commit messages or branch names. Scope commits by module or feature and keep the body to a short what-and-why. The full policy is in CONTRIBUTING.md.
