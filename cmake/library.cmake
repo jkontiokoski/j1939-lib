@@ -8,6 +8,7 @@ set(J1939_CORE_SOURCES
 	"${PROJECT_SOURCE_DIR}/src/j1939_id.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_name.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_ring.c"
+	"${PROJECT_SOURCE_DIR}/src/j1939_names.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_rxobj.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_request.c"
 	"${PROJECT_SOURCE_DIR}/src/j1939_signal.c"

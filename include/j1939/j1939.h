@@ -18,6 +18,11 @@
  */
 
 /**
+ * @defgroup grp_names NAME table
+ * @brief The NAMEs of the other nodes on the bus and their current addresses.
+ */
+
+/**
  * @defgroup grp_request Requests
  * @brief J1939/21 Request (PGN 59904) and Acknowledgement (PGN 59392).
  */
@@ -120,6 +125,7 @@
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_msg.h"
 #include "j1939/j1939_name.h"
+#include "j1939/j1939_names.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_rxobj.h"

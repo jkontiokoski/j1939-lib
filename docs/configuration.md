@@ -32,7 +32,7 @@ All buffers are passed to `j1939_init()` in `j1939_cfg_t` and must outlive the s
 
 Sizing:
 
-- **The driver's receive FIFO** (outside the library): the frames that can arrive during one main loop cycle. As a responder the stack asks for all remaining packets of an RTS/CTS transfer in one CTS, up to the originator's packets-per-CTS limit, and they arrive back to back: at 250 kbit/s about 1800 frames per second, so up to 255 frames in 140 ms. A packet the driver loses ends the connection with Connection Abort (bad sequence number).
+- **The driver's receive FIFO** (outside the library): the frames that can arrive during one main loop cycle. As a responder the stack asks for all remaining packets of an RTS/CTS transfer in one CTS, up to the originator's packets-per-CTS limit, and they arrive back to back: at 250 kbit/s about 1800 frames per second, so up to 255 frames in 140 ms. A packet the driver loses ends the connection with Connection Abort (bad sequence number). With a NAME table, it also holds one frame per node on the bus: the answers to the table's startup Request arrive back to back.
 - **tx queue**: the largest burst the stack generates in one cycle, a CTS window of data packets when it sends with RTS/CTS. Packets that do not fit are sent as the queue drains, within Tr (200 ms).
 - **Message slots**: the messages that arrive between two `j1939_msg_pop()` loops. Messages that find no free slot are dropped and counted in `j1939_stats_t`.
 - **TP buffers**: each takes `J1939_CFG_TP_BUF_SIZE` bytes plus a few bytes of bookkeeping. A microcontroller that never handles 1785-byte messages lowers `J1939_CFG_TP_BUF_SIZE`.
@@ -46,5 +46,6 @@ Optional features take their storage from the application too, when they are ena
 | Diagnostics of a CA | `j1939_dm_t`, DTC lists, hold records and a payload buffer in `j1939_dm_cfg_t` | Payload buffer `J1939_DM_BUF_LEN(n)` for up to `n` DTCs |
 | Receive objects | A `const` table of `j1939_rxobj_cfg_t`, a `j1939_rxobj_t` per entry, a payload buffer per object | 12 bytes of state per object plus its buffer |
 | Transmit objects | A `const` table of `j1939_txobj_cfg_t`, a `j1939_txobj_t` per entry, a payload buffer per object | 16 bytes of state per object plus its buffer; multi-packet objects share the TP transmit buffers |
+| NAME table | An array of `j1939_names_entry_t`, one entry per other node | 12 bytes per entry |
 
 Every payload buffer is exactly as large as the application declares it; configuration tables are `const` and can live in flash.

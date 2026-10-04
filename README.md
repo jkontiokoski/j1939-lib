@@ -7,7 +7,7 @@ It is written for safety-rated systems (ISO 13849): no dynamic memory, no functi
 ## Features
 
 - **J1939/21**: identifiers and PGNs, Request and Acknowledgement, transport protocol (BAM and RTS/CTS, up to 1785 bytes).
-- **J1939/81**: NAME, address claiming with arbitration, arbitrary address capability, Cannot Claim, Commanded Address.
+- **J1939/81**: NAME, address claiming with arbitration, arbitrary address capability, Cannot Claim, Commanded Address; a table of the other nodes' NAMEs.
 - **J1939/71 and the DA schema**: signal descriptors, bit extraction and insertion, scaling, value ranges; the licensed DA content is supplied by the integrator.
 - **J1939/73**: DTC and lamp codec; DM1 and DM2 sent by the stack; DM3 and DM11 clearing decided by the application.
 - **Message objects**: PGNs sent periodically, on change and on Request; received PGNs with timeout supervision.
