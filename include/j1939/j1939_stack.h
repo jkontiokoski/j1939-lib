@@ -100,8 +100,10 @@ typedef struct j1939_stats {
 	uint32_t tp_tx_aborted;   /**< Multi-packet sends ended by an abort or a timeout. */
 	uint32_t tp_rx_aborted;   /**< Multi-packet receptions ended without delivery. */
 	uint32_t tp_rx_refused;   /**< RTS or BAM refused: no free session or reassembly buffer. */
-	uint32_t dm_tx_retry;   /**< DM1, DM2 or acknowledgement sends deferred, see j1939_dm.h. */
-	uint32_t dm_tx_dropped; /**< DM1, DM2 or acknowledgement sends given up, see j1939_dm.h. */
+	uint32_t dm_tx_retry;    /**< DM1, DM2 or acknowledgement sends deferred, see j1939_dm.h. */
+	uint32_t dm_tx_dropped;  /**< DM1, DM2 or acknowledgement sends given up, see j1939_dm.h. */
+	uint32_t rxobj_rejected; /**< Payloads a receive object refused for their length. */
+	uint32_t rxobj_timeout;  /**< Receive objects that timed out, see j1939_rxobj.h. */
 } j1939_stats_t;
 
 /** Transmit frame queue. Members are private. */
@@ -116,7 +118,9 @@ typedef struct j1939_msg_queue {
 	j1939_ring_t ring;     /**< Indices into buf. */
 } j1939_msg_queue_t;
 
-struct j1939_dm; /* Diagnostic state of a CA, see j1939_dm.h. */
+struct j1939_dm;        /* Diagnostic state of a CA, see j1939_dm.h. */
+struct j1939_rxobj_cfg; /* Receive object configuration, see j1939_rxobj.h. */
+struct j1939_rxobj;     /* Receive object state, see j1939_rxobj.h. */
 
 /** Stack instance. Allocated by the integrator, members are private. */
 typedef struct j1939 {
@@ -134,6 +138,9 @@ typedef struct j1939 {
 	j1939_tp_t tp; /**< Transport protocol sessions and buffers. */
 	/** Diagnostic state of each CA; NULL while diagnostics are not enabled. */
 	struct j1939_dm *dm[J1939_CFG_CA_MAX];
+	const struct j1939_rxobj_cfg *rxobj_cfg; /**< Receive object table; NULL if none. */
+	struct j1939_rxobj *rxobj;               /**< Receive object states; NULL if none. */
+	uint16_t rxobj_len;                      /**< Receive objects. */
 } j1939_t;
 
 /**
@@ -197,8 +204,9 @@ j1939_ret_t j1939_tx_pop(j1939_t *s);
 /**
  * @brief Advances the stack's timers and queues the frames that are due.
  *
- * Runs address claiming, the transport protocol and diagnostics with the
- * time passed since the previous call.
+ * Runs address claiming, the transport protocol, diagnostics and the
+ * supervision of the receive objects with the time passed since the
+ * previous call.
  *
  * @param s           Stack.
  * @param elapsed_us  Time since the previous call, in microseconds.

@@ -20,6 +20,7 @@
 #include "j1939/j1939_name.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_ret.h"
+#include "j1939/j1939_rxobj.h"
 #include "j1939/j1939_signal.h"
 #include "j1939/j1939_stack.h"
 #include "j1939/j1939_tp.h"

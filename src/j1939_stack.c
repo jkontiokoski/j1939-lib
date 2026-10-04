@@ -12,13 +12,14 @@
 #include "j1939_addr_priv.h"
 #include "j1939_dm_priv.h"
 #include "j1939_ring_priv.h"
+#include "j1939_rxobj_priv.h"
 #include "j1939_stack_priv.h"
 #include "j1939_tp_priv.h"
 
 #define PDU1_DA_MASK   0xFFU
 #define CA_ADDRESS_MAX 0xFDU
 
-static bool pgn_valid(uint32_t pgn) {
+bool j1939_stack_pgn_valid(uint32_t pgn) {
 	return (pgn <= J1939_PGN_MAX) && (!j1939_pgn_is_pdu1(pgn) || ((pgn & PDU1_DA_MASK) == 0U));
 }
 
@@ -27,7 +28,7 @@ static bool pgn_list_valid(const uint32_t *list, uint16_t len) {
 	uint16_t i;
 
 	for (i = 0U; valid && (i < len); i++) {
-		valid = pgn_valid(list[i]);
+		valid = j1939_stack_pgn_valid(list[i]);
 	}
 	return valid;
 }
@@ -59,10 +60,11 @@ static void frame_handle(j1939_t *s, const j1939_port_frame_t *f) {
 				j1939_request_handle(s, id, data, len);
 			} else if ((pgn == J1939_PGN_TP_CM) || (pgn == J1939_PGN_TP_DT)) {
 				j1939_tp_handle(s, id, data, len);
-			} else if (j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, pgn)) {
-				j1939_stack_deliver(s, id, data, len);
 			} else {
-				/* Not of interest to this node. */
+				j1939_rxobj_handle(s, pgn, j1939_id_sa_get(id), data, len);
+				if (j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, pgn)) {
+					j1939_stack_deliver(s, id, data, len);
+				}
 			}
 		} else {
 			/* Addressed to another node. */
@@ -148,6 +150,7 @@ j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg) {
 		j1939_addr_init(s);
 		j1939_tp_init(s, cfg);
 		j1939_dm_stack_init(s);
+		j1939_rxobj_stack_init(s);
 		ret = J1939_RET_OK;
 	}
 	return ret;
@@ -206,6 +209,7 @@ j1939_ret_t j1939_process(j1939_t *s, uint32_t elapsed_us) {
 		j1939_addr_process(s, elapsed_us);
 		j1939_tp_process(s, elapsed_us);
 		j1939_dm_process(s, elapsed_us);
+		j1939_rxobj_process(s, elapsed_us);
 		ret = J1939_RET_OK;
 	}
 	return ret;

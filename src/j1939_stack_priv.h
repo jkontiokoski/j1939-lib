@@ -11,6 +11,9 @@
 
 #include "j1939/j1939_stack.h"
 
+/* Returns true if pgn is a valid PGN: at most J1939_PGN_MAX, lowest byte 0 for PDU1. */
+bool j1939_stack_pgn_valid(uint32_t pgn);
+
 /* Returns true if pgn is in the list. */
 bool j1939_stack_pgn_listed(const uint32_t *list, uint16_t len, uint32_t pgn);
 

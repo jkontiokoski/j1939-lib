@@ -10,6 +10,7 @@
 #include "j1939/j1939_id.h"
 #include "j1939_addr_priv.h"
 #include "j1939_ring_priv.h"
+#include "j1939_rxobj_priv.h"
 #include "j1939_stack_priv.h"
 #include "j1939_tp_priv.h"
 
@@ -245,12 +246,14 @@ static bool tp_msg_slot_free(j1939_t *s, const j1939_tp_session_t *se) {
 
 /*
  * Hands the completed message to the application; its buffer stays reserved
- * until the pop. A Commanded Address also goes to address management.
+ * until the pop. A receive object for it is updated whether or not a message
+ * slot is free. A Commanded Address also goes to address management.
  */
 static bool tp_deliver(j1939_t *s, j1939_tp_session_t *se) {
 	uint16_t index;
 	bool ok = true;
 
+	j1939_rxobj_handle(s, se->pgn, se->remote, se->buf->data, se->len);
 	if (!tp_for_app(s, se->pgn)) {
 		/* For the stack only; the buffer is freed with the session. */
 	} else if (j1939_ring_head(&s->msgs.ring, &index)) {
@@ -280,14 +283,14 @@ static bool tp_deliver(j1939_t *s, j1939_tp_session_t *se) {
  * Checks an RTS or BAM. Returns REASON_NONE if the message can be received,
  * otherwise the abort reason. A message larger than the buffers is counted.
  */
-static uint8_t announce_check(j1939_t *s, uint16_t len, uint8_t packets, uint32_t pgn) {
+static uint8_t announce_check(j1939_t *s, uint16_t len, uint8_t packets, uint32_t pgn, uint8_t sa) {
 	uint8_t reason = REASON_NONE;
 
 	if (len > J1939_TP_MSG_MAX) {
 		reason = J1939_TP_ABORT_TOO_LARGE;
 	} else if ((len < J1939_TP_MSG_MIN) || ((uint16_t)packets != packets_for(len))) {
 		reason = J1939_TP_ABORT_OTHER;
-	} else if (!tp_for_app(s, pgn) &&
+	} else if (!tp_for_app(s, pgn) && !j1939_rxobj_wanted(s, pgn, sa) &&
 	           !((pgn == J1939_PGN_COMMANDED_ADDRESS) && j1939_addr_command_accepted(s))) {
 		reason = J1939_TP_ABORT_OTHER;
 	} else if (len > BUF_SIZE) {
@@ -342,7 +345,7 @@ static uint8_t rx_open(j1939_t *s, uint32_t id, const uint8_t *d, uint8_t local,
 	msg.len = (uint16_t)((uint16_t)d[CM_LEN_LO] | ((uint16_t)d[CM_LEN_HI] << BYTE_SHIFT));
 	msg.pgn = cm_pgn_get(&d[CM_PGN]);
 	msg.prio = j1939_id_prio_get(id);
-	reason = announce_check(s, msg.len, d[CM_PACKETS], msg.pgn);
+	reason = announce_check(s, msg.len, d[CM_PACKETS], msg.pgn, j1939_id_sa_get(id));
 	*out = NULL;
 	if (reason == REASON_NONE) {
 		*out = session_new(s, s->tp.rx_buf, s->tp.rx_buf_len, &reason);
