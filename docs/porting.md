@@ -1,12 +1,8 @@
 # Porting
 
-This page is for port authors: it describes the contract between the library and a CAN driver, and the ports the library ships.
-A port binds the library to a CAN driver at compile time.
-It is a directory containing a header named `j1939_target.h`, selected with the `J1939_PORT_DIR` CMake option ([Getting started](getting-started.md)).
-The library is built against exactly one port.
-
-The library never calls into the port at runtime except through the `static inline` functions of the target header.
-A port may ship helper code that moves frames between the driver and the stack, see `port/socketcan/j1939_socketcan.c`.
+This page is for port authors: the contract between the library and a CAN driver, and the ports the library ships.
+A port is a directory with a header named `j1939_target.h`, selected with the `J1939_PORT_DIR` CMake option ([Getting started](getting-started.md)); the library is built against exactly one port.
+At runtime the library reaches the driver only through the `static inline` functions of that header; moving frames between driver and stack is the application's or a port helper's job (see `port/socketcan/j1939_socketcan.c`).
 
 ## Port directory
 
@@ -96,15 +92,14 @@ The [STM32 bxCAN sketch](porting-bxcan.md) uses the queue between the receive in
 
 ## Reference ports
 
-| Port             | Frame type                  | Purpose                                                              |
-| ---------------- | --------------------------- | -------------------------------------------------------------------- |
-| `port/mock`      | `struct j1939_mock_frame`   | Unit tests. Layout of a bxCAN style mailbox: identifier left-aligned in a 32-bit word with IDE and RTR flags in the low bits, raw 4-bit DLC. It differs from SocketCAN so that tests catch any layout assumption. A lock for the optional frame queue that records nesting depth and call count |
-| `port/socketcan` | `struct can_frame`          | Linux SocketCAN (CAN_RAW). Uses `can_dlc` so that kernel headers before 5.11 work. No lock: the socket is the frame FIFO. `j1939_socketcan.h` opens a non-blocking socket that receives extended data frames only, and moves frames between the socket and the stack |
+| Port             | Frame type                | Lock | Use                                   |
+| ---------------- | ------------------------- | ---- | ------------------------------------- |
+| `port/mock`      | `struct j1939_mock_frame` | Yes  | Unit tests                            |
+| `port/socketcan` | `struct can_frame`        | No   | Linux SocketCAN, the example programs |
 
 ### Mock port
 
-`port/mock/j1939_target.h` shows that the frame type is the driver's, not the library's.
-Its frame is the image of a bxCAN receive mailbox: the identifier register holds the 29-bit identifier in bits 31..3, IDE in bit 2 and RTR in bit 1, and the DLC is kept raw, so values 9 to 15 occur.
+The mock frame is the image of a bxCAN receive mailbox, deliberately unlike SocketCAN's layout so that tests catch any layout assumption: the identifier register holds the 29-bit identifier in bits 31..3, IDE in bit 2 and RTR in bit 1, and the DLC is kept raw, so values 9 to 15 occur.
 The accessors translate:
 
 ```c
@@ -129,14 +124,11 @@ static inline uint8_t j1939_port_frame_len_get(const j1939_port_frame_t *f) {
 }
 ```
 
-The mock port also defines the lock of the optional frame queue.
-It has no concurrency to guard: it records the nesting depth and the number of calls, which the queue's unit tests check.
+Its lock for the optional frame queue guards nothing; it records the nesting depth and the number of calls, which the queue's unit tests check.
 
 ### SocketCAN port
 
-`port/socketcan` is the port the example applications use.
-
-- `j1939_target.h`: `typedef struct can_frame j1939_port_frame_t;` and accessors over `can_id` (`CAN_EFF_FLAG`, `CAN_RTR_FLAG`, `CAN_EFF_MASK`) and `can_dlc`. No lock: the kernel's socket buffer is the frame FIFO between the CAN driver and the stack's thread.
+- `j1939_target.h`: `typedef struct can_frame j1939_port_frame_t;` and accessors over `can_id` (`CAN_EFF_FLAG`, `CAN_RTR_FLAG`, `CAN_EFF_MASK`) and `can_dlc`, which kernel headers before 5.11 also have. No lock: the socket buffer is the frame FIFO between the driver and the stack's thread.
 - `port.cmake`: compiles `j1939_socketcan.c` into the library.
 - `j1939_socketcan.h`: `j1939_socketcan_open()` returns a non-blocking CAN_RAW socket with a kernel filter for extended data frames. `j1939_socketcan_rx()` reads frames and passes each to `j1939_rx()`, until the socket is empty or a given number of frames has been read; the rest wait in the socket. `j1939_socketcan_tx()` writes the tx queue until it is empty or the socket reports `EAGAIN` or `ENOBUFS`.
 

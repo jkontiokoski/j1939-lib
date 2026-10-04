@@ -1,7 +1,6 @@
 # Configuration
 
-This page lists what an integrator configures: a few compile-time settings, and the buffers handed to the stack at runtime.
-It also gives the rules of thumb for sizing them.
+This page is for integrators: the compile-time settings, the buffers handed to the stack at runtime, and rules of thumb for sizing them.
 
 ## Compile-time settings
 
@@ -13,7 +12,7 @@ These settings change the layout of public types, so the library and the applica
 | --- | --- | --- | --- |
 | `J1939_CFG_CA_MAX` | 1 | 1–253 | Controller Applications per stack |
 | `J1939_CFG_TP_SESSIONS` | 2 | 1–32 | Concurrent transport protocol sessions per stack, both directions together |
-| `J1939_CFG_TP_BUF_SIZE` | 1785 | 9–1785 | Largest multi-packet message, the size of each TP buffer |
+| `J1939_CFG_TP_BUF_SIZE` | 1785 | 9–1785 | Largest multi-packet message: the size of each transport protocol (TP) buffer |
 | `J1939_CFG_TP_BAM_GAP_US` | 50000 | 50000–200000 | Gap between the packets of a sent broadcast (BAM), in microseconds |
 
 A value outside its range stops the build with an `#error`.

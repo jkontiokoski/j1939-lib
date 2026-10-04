@@ -1,15 +1,14 @@
 # Bare-metal port: STM32 bxCAN
 
-This page is a worked example for port authors: a complete bare-metal port for a microcontroller, following the contract in [Porting](porting.md).
-A microcontroller port consists of a target header, an rx interrupt, a tx path and a time base.
-The bxCAN receive FIFO holds three frames, too few for a main loop to poll, so the rx interrupt hands frames to the main loop through the optional frame queue.
-The sketch targets the bxCAN peripheral of STM32F0/F1/F4 parts through the CMSIS device header; it is not compiled in this repository.
-The structure carries over to other mailbox controllers.
+This page is a worked example for port authors: a bare-metal port for the bxCAN peripheral of STM32F0/F1/F4 parts, following the contract in [Porting](porting.md), with notes on other controllers at the end.
+It has four parts: the target header, the rx interrupt, the tx path and the time base. The sketch uses the CMSIS device header and is not compiled in this repository.
+
+The bxCAN receive FIFO holds only three frames, too few for a main loop to poll, so the rx interrupt hands frames to the main loop through the optional frame queue.
 
 ## Target header
 
-The native frame is the image of a bxCAN mailbox, the layout the mock port also uses: the rx ISR copies the mailbox registers into a queue slot and the tx path copies a frame into a transmit mailbox, without conversion.
-The lock is there for the frame queue.
+The native frame is the image of a bxCAN mailbox, the layout the mock port also uses, so the rx interrupt and the tx path copy registers without conversion.
+The lock serves the frame queue.
 
 ```c
 /* port/stm32_bxcan/j1939_target.h */

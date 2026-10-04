@@ -8,8 +8,8 @@ It describes how the code is written and checked, what each release documents as
 - C99 (`-std=c99 -pedantic`), fixed-width integer types, compiled with `-Wall -Wextra -Werror -Wconversion -Wsign-conversion -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wcast-align -Wundef`.
 - MISRA C:2012 is checked with the cppcheck MISRA addon on the library core (`src/`, `include/`) and the mock port.
   The SocketCAN port and the example applications are operating system glue built on POSIX interfaces; they get the general cppcheck checks only. Port test fixtures are test code and are not checked.
-- Any finding fails the check, not only those that set cppcheck's exit code: cppcheck 2.13 does not set it for whole-program checks such as MISRA rule 5.9 (identifiers with internal linkage unique across the library).
-- The design rules behind the code (no function pointers, no dynamic memory, bounded loops, explicit state machines) are described in [Concepts](concepts.md).
+- Every reported finding fails the check, including whole-program findings such as MISRA rule 5.9, for which cppcheck 2.13 does not set its exit code.
+- The design rules behind the code are in [Concepts](concepts.md).
 
 ## Deviations
 
@@ -30,7 +30,7 @@ Each deviation is listed in `cppcheck-suppressions.txt` or `cppcheck-misra-suppr
 | Port conformance | The same suite against the mock port, the SocketCAN port and any configured port |
 | Configuration variants | The library built with a test configuration (two CAs) and with small TP buffers (100 bytes), exercising the configuration override and the size limits |
 | Reference models | Signal bit extraction and insertion compared bit by bit against a reference model for every offset and length |
-| Hardware loopback | Frames exchanged over a real SocketCAN interface (`vcan0`) |
+| SocketCAN loopback | Frames exchanged through the Linux SocketCAN stack on a virtual interface (`vcan0`) |
 
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Line coverage of the library core must stay at or above 90 %; branch coverage is reported. Branches that guard against states the design rules out remain uncovered.

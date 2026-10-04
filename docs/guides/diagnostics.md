@@ -11,7 +11,6 @@ It is for integrators; the transmission rules are in the API reference, topic *D
 | Copies the result into the stack | Answers Requests for DM1 and DM2 |
 | Decides whether a clear request (DM3, DM11) is allowed | Receives the clear request and acknowledges the decision |
 
-The stack never calls into the application: the application pushes its state in and pulls clear requests out.
 
 ## Enable diagnostics for a CA
 

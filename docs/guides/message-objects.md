@@ -1,6 +1,6 @@
 # Message objects
 
-This guide shows how to let the stack handle the timing of application PGNs: receive objects keep the latest payload of a PGN from one sender and supervise its timeout, transmit objects send a payload periodically, on change and on Request.
+This guide shows how to let the stack handle the timing of application PGNs: a receive object keeps the latest payload of a PGN from one sender and supervises its timeout, a transmit object sends its payload periodically, on change and on Request.
 It is for integrators; the exact rules are in the API reference, topics *Receive objects* and *Transmit objects*.
 
 ## Choose objects, slots or j1939_send()
@@ -97,12 +97,8 @@ uint8_t payload[8];
 - Nothing is sent before the object's CA has claimed its address. Periodic and change-triggered objects go out once as soon as the claim completes.
 - Never write the object's buffer directly; only `j1939_txobj_set()` detects changes.
 
-## Memory
-
-Each object costs its payload buffer plus a small state entry in RAM (12 bytes for a receive object, 16 for a transmit object); the configuration tables are `const`.
-See [Configuration](../configuration.md) for sizing the rest of the stack.
-
 ## Reference
 
 API reference, topic *Receive objects*: `j1939_rxobj_init()`, `j1939_rxobj_get()`, `j1939_rxobj_cfg_t`.
 Topic *Transmit objects*: `j1939_txobj_init()`, `j1939_txobj_set()`, `j1939_txobj_cfg_t`.
+Memory per object: [Configuration](../configuration.md).

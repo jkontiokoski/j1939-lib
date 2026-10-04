@@ -88,10 +88,10 @@ Payloads of 9 to 1785 bytes travel with the transport protocol; the API stays th
 
 - **Sending**: `j1939_send()` with a longer payload. It is broadcast with BAM when `da` is `J1939_ADDR_GLOBAL`, sent with RTS/CTS to a node otherwise. It needs a free transmit buffer (`tp_tx_buf`).
 - **Receiving**: a listed PGN arrives in a message slot once complete; `msg->data` points into a reassembly buffer (`tp_rx_buf`) until `j1939_msg_pop()`.
-- `J1939_CFG_TP_BUF_SIZE` sets the size of every transport protocol buffer; lower it to the longest message the node uses, see [Configuration](../configuration.md).
+- Every transport protocol buffer holds `J1939_CFG_TP_BUF_SIZE` bytes; lower it to the longest message the node uses, see [Configuration](../configuration.md).
 
 ## Reference
 
 API reference, topic *Stack*: `j1939_send()`, `j1939_msg_peek()`, `j1939_msg_pop()`, `j1939_cfg_t`.
 Topic *Requests*: `j1939_request_send()`, `j1939_request_pgn_get()`.
-Topic *Transport protocol*: the session rules, timers and abort reasons (`J1939_TP_ABORT_BUSY` and the following).
+Topic *Transport protocol*: the session rules, timers and Connection Abort reasons.
