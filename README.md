@@ -16,6 +16,19 @@ make test       # build with sanitizers and run the tests
 
 See [docs/architecture.md](docs/architecture.md) for all build targets and development standards.
 
+## Releases
+
+Releases are published as GitHub Releases of this repository.
+A release ships as source, because the port and the configuration are bound at compile time; there are no prebuilt binaries.
+A release contains:
+
+- the source archive, to build with your own port, configuration and toolchain,
+- the generated documentation: the public API reference and the internal reference with call graphs,
+- verification evidence: test and coverage results, static analysis and MISRA results, and the tool versions used,
+- SHA-256 checksums of these archives.
+
+[docs/porting.md](docs/porting.md) shows how to add the library to a CMake project.
+
 ## Quick start
 
 The example applications in `examples/` run on Linux SocketCAN and are the starting point for an integration: each shows the main loop that moves frames between the CAN driver and the stack, runs `j1939_process()` and pulls received messages.
