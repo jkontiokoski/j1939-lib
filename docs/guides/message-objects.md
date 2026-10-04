@@ -58,17 +58,19 @@ if ((j1939_rxobj_get(&stack, RX_PUMP, &st) == J1939_RET_OK) && (st.state == J193
 
 ### Follow a node by NAME
 
-Set `name` instead of `sa` to receive a PGN from one node wherever it is on the bus. The object then takes the PGN from the address the [NAME table](addressing.md) records for that NAME, and keeps receiving when the node moves to another address:
+Set `name` instead of `sa` to receive a PGN from one node wherever it is on the bus. The object then takes the PGN from the address the [NAME table](addressing.md) records for that NAME, and keeps receiving when the node moves to another address. It is one more entry of the same table, with its own buffer:
 
 ```c
-static j1939_names_entry_t names[16];
-static const j1939_rxobj_cfg_t pump_by_name = {
-	.buf = pump_buf, .buf_len = 8U, .min_len = 8U, .pgn = 0xFF20U,
-	.timeout_us = 500000U, .name = PUMP_NAME,          /* NAME of the pump controller */
-};
+enum { RX_PUMP, RX_PUMP_BY_NAME, RX_COUNT };
 
+static uint8_t pump_by_name_buf[8];
+/* in rx_cfg[]: */
+	[RX_PUMP_BY_NAME] = {.buf = pump_by_name_buf, .buf_len = 8U, .min_len = 8U,
+	                     .pgn = 0xFF20U, .name = PUMP_NAME,  /* NAME of the pump controller */
+	                     .timeout_us = 500000U},
+
+static j1939_names_entry_t names[16];
 j1939_names_init(&stack, names, 16U);                    /* before j1939_rxobj_init() */
-j1939_rxobj_init(&stack, &pump_by_name, &pump_obj, 1U);
 ```
 
 - While the NAME has no address, or before the table has learned it, nothing reaches the object and its timeout runs as usual.

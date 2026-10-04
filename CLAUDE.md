@@ -1,4 +1,4 @@
-# Portable SAE 1939 CAN protocol library guidelines
+# Portable SAE J1939 CAN protocol library guidelines
 
 - README.md serves as an introduction to the project.
 It is intended to contain introductory information for the project.
@@ -13,7 +13,7 @@ It is released: `make docs` builds it into the HTML reference that `make dist` s
 - One place per fact: what a module or function does, its rules and limits, is documented in its header (the API reference), grouped into one Doxygen topic per module.
 The pages in 'docs/' explain how to do a task and why the design is as it is, and link to the reference instead of repeating it.
 - Each page serves one audience, opens with two or three sentences on what it covers and for whom, and stays short (a guide at most about 150 lines, no page over about 250).
-`docs/Doxyfile.in` and the list in README.md hold the pages in reading order.
+`cmake/docs.cmake` (`_j1939_docs_pages`) and the list in README.md hold the pages in reading order.
 - Development standards and tooling live in CONTRIBUTING.md, the release process in RELEASING.md; neither goes into 'docs/' or the generated documentation.
 - The docs shall be kept up to date when working on tasks.
 - Do not maintain a 'history' of the project in the documentation after changing a design.
@@ -48,7 +48,7 @@ It will serve this purpose after the library is published, but also for the auth
 
 ### Design constraints (set by the owner)
 
-- The library targets ISO 13849 safety-rated systems: no function pointers or runtime dispatch anywhere, including application callbacks. Bind at compile time.
+- The library is designed to be usable in ISO 13849 safety-related systems: no function pointers or runtime dispatch anywhere, including application callbacks. Bind at compile time.
 - Do not define a library-owned CAN frame struct. Operate on the integrator's native frame type through `static inline` accessors in the port's `j1939_target.h`.
 - The integrator allocates and supplies all buffers (tx queue, message slots, TP memory). No dynamic memory.
 - The library never calls out: tx frames and received messages are pulled by the integrator.

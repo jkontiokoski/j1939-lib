@@ -99,32 +99,7 @@ The [STM32 bxCAN sketch](porting-bxcan.md) uses the queue between the receive in
 
 ### Mock port
 
-The mock frame is the image of a bxCAN receive mailbox, deliberately unlike SocketCAN's layout so that tests catch any layout assumption: the identifier register holds the 29-bit identifier in bits 31..3, IDE in bit 2 and RTR in bit 1, and the DLC is kept raw, so values 9 to 15 occur.
-The accessors translate:
-
-```c
-static inline uint32_t j1939_port_frame_id_get(const j1939_port_frame_t *f) {
-	uint32_t id;
-
-	if (j1939_port_frame_is_ext(f)) {
-		id = (f->ir >> J1939_MOCK_IR_EXID_SHIFT) & J1939_MOCK_EXID_MASK;
-	} else {
-		id = (f->ir >> J1939_MOCK_IR_STID_SHIFT) & J1939_MOCK_STID_MASK;
-	}
-	return id;
-}
-
-static inline uint8_t j1939_port_frame_len_get(const j1939_port_frame_t *f) {
-	uint8_t len = (uint8_t)(f->dlc & J1939_MOCK_DLC_MASK);
-
-	if (len > J1939_MOCK_DATA_MAX) {
-		len = J1939_MOCK_DATA_MAX;
-	}
-	return len;
-}
-```
-
-Its lock for the optional frame queue guards nothing; it records the nesting depth and the number of calls, which the queue's unit tests check.
+The mock port serves the library's own tests. Its frame is the image of a bxCAN receive mailbox, deliberately unlike SocketCAN's layout, so that the tests catch any assumption about the frame layout; its lock records nesting and call counts for the frame queue tests.
 
 ### SocketCAN port
 
@@ -132,31 +107,7 @@ Its lock for the optional frame queue guards nothing; it records the nesting dep
 - `port.cmake`: compiles `j1939_socketcan.c` into the library.
 - `j1939_socketcan.h`: `j1939_socketcan_open()` returns a non-blocking CAN_RAW socket with a kernel filter for extended data frames. `j1939_socketcan_rx()` reads frames and passes each to `j1939_rx()`, until the socket is empty or a given number of frames has been read; the rest wait in the socket. `j1939_socketcan_tx()` writes the tx queue until it is empty or the socket reports `EAGAIN` or `ENOBUFS`.
 
-The main loop of the examples:
-
-```c
-uint64_t last_us = now_us(); /* CLOCK_MONOTONIC */
-
-while (running) {
-	struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
-	if (j1939_tx_peek(&stack) != NULL) {
-		pfd.events = (short)(POLLIN | POLLOUT); /* Frames wait for the socket. */
-	}
-	(void)poll(&pfd, 1, 10); /* One 10 ms tick at most. */
-
-	(void)j1939_socketcan_rx(fd, &stack, 256U, NULL); /* Socket -> stack. */
-	uint64_t now = now_us();
-	(void)j1939_process(&stack, (uint32_t)(now - last_us));
-	last_us = now;
-
-	while ((msg = j1939_msg_peek(&stack)) != NULL) {
-		/* switch (msg->pgn) ... */
-		(void)j1939_msg_pop(&stack);
-	}
-
-	(void)j1939_socketcan_tx(fd, &stack, NULL); /* tx queue -> socket. */
-}
-```
+The example programs run the main loop of [Getting started](getting-started.md#gs-main-loop) with these helpers: `poll()` waits at most one 10 ms tick, for received frames or, while the tx queue holds frames, for room in the socket. `examples/common/` holds the shared code.
 
 With a virtual interface `vcan0` up ([Example applications](examples.md) shows how), the loopback test `test_socketcan_vcan` runs as part of `make test`.
 

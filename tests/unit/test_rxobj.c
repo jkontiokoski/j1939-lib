@@ -148,6 +148,8 @@ void tearDown(void) {
 
 static void test_state_small(void) {
 	TEST_ASSERT_LESS_OR_EQUAL_UINT32(12U, (uint32_t)sizeof(j1939_rxobj_t));
+	/* docs/configuration.md states the configuration entry size. */
+	TEST_ASSERT_LESS_OR_EQUAL_UINT32(32U, (uint32_t)sizeof(j1939_rxobj_cfg_t));
 }
 
 static void test_init_rejects_invalid(void) {

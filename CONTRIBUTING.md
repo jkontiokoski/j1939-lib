@@ -59,7 +59,7 @@ port/socketcan/  Linux SocketCAN port and socket helpers
 examples/        SocketCAN example applications; examples/signals/ holds an illustrative signal table
 tests/           unit/, integration/, port/ (conformance), support/ (virtual bus), config/ (test builds), vendor/unity/
 cmake/           library, warnings, instrumentation, toolchain and documentation helpers
-docs/            user documentation, Doxyfile.in, vendored stylesheet
+docs/            user documentation, Doxyfile.in, vendored stylesheet; the page order is in cmake/docs.cmake
 tools/           dist.sh (release archives), check-links.sh (Markdown link check)
 ```
 
@@ -102,9 +102,9 @@ A new deviation goes into `cppcheck-suppressions.txt` or `cppcheck-misra-suppres
   | Public   | `make docs`          | `include/j1939/`, `README.md`, the pages of `docs/` | include and dependency |
   | Internal | `make docs-internal` | public input and `src/`, with source browsing | also call and caller graphs |
 
-  A `*_priv.h` function is documented at its declaration; Doxygen merges it with the definition. `WARN_NO_PARAMDOC` is off because Doxygen 1.9.8 reports documented parameters of declarations as missing; `WARN_IF_INCOMPLETE_DOC` checks parameters instead. `J1939_DOCS_INTERNAL_GATE` in `cmake/docs.cmake` makes the internal warnings fail the build.
-- **Pages.** `docs/Doxyfile.in` lists the pages in reading order; a new page is added there and to the list in `README.md`. Each page serves one audience, opens with two or three sentences on what it covers and for whom, and stays short: a guide at most about 150 lines, no page over about 250. Reference data goes into tables, flows into numbered steps; no diagrams (ASCII art or Mermaid), which the generated documentation cannot render. Pages describe the current state only.
-- **Links.** Pages link to each other with relative links, which work on GitHub and in the generated HTML. API names are written as code, `j1939_send()`, `j1939_cfg_t`, `j1939_stack.h`; Doxygen 1.9.8 turns functions, struct types and headers into links, macros and enum values stay plain code. An in-page link needs an explicit `<a id="...">` anchor with a name unique in the project, because Doxygen anchors are global. Files outside the documentation (`CONTRIBUTING.md`, `RELEASING.md`) are not linked from `docs/` or `README.md`. `tools/check-links.sh` (part of `make lint`) checks every relative link and in-page anchor.
+  A `*_priv.h` function is documented at its declaration; Doxygen merges it with the definition. `WARN_NO_PARAMDOC` is off because Doxygen 1.9.8 reports documented parameters of declarations as missing; `WARN_IF_INCOMPLETE_DOC` checks parameters instead. Both builds fail on any warning.
+- **Pages.** `_j1939_docs_pages` in `cmake/docs.cmake` lists the pages in reading order; a new page is added there and to the list in `README.md`. Each page serves one audience, opens with two or three sentences on what it covers and for whom, and stays short: a guide at most about 150 lines, no page over about 250. Reference data goes into tables, flows into numbered steps; no diagrams (ASCII art or Mermaid), which the generated documentation cannot render. Pages describe the current state only.
+- **Links.** Pages link to each other with relative links, which work on GitHub and in the generated HTML. API names are written as code, `j1939_send()`, `j1939_cfg_t`, `j1939_stack.h`; Doxygen 1.9.8 turns functions, struct types and headers into links, macros and enum values stay plain code. An in-page link needs an explicit `<a id="...">` anchor with a name unique in the project, because Doxygen anchors are global. Files outside the documentation (`CONTRIBUTING.md`, `RELEASING.md`) are not linked with relative links: they are neither in the generated HTML nor in the source archive. The README links `CONTRIBUTING.md` by its GitHub URL. `tools/check-links.sh` (part of `make lint`) checks every relative link and in-page anchor.
 
 ## Tests
 
@@ -141,7 +141,7 @@ A new deviation goes into `cppcheck-suppressions.txt` or `cppcheck-misra-suppres
 - Tasks that do not depend on each other are developed in parallel, each in its own git worktree and branch.
 - Commit messages follow Conventional Commits, `<type>(<scope>): <summary>`:
   - types: `feat`, `fix`, `docs`, `test`, `build`, `refactor`;
-  - the scope names the module or feature: `id`, `queue`, `port`, `socketcan`, `stack`, `tp`, `addr`, `build`;
+  - the scope names the module or feature, e.g. `stack`, `tp`, `addr`, `names`, `rxobj`, `txobj`, `dm`, `signal`, `socketcan`, `docs`, `build`, `lint`;
   - the summary says what changed, in the imperative mood; the body is a few lines on what was done and why;
   - roadmap milestone identifiers do not appear in commit messages or branch names;
   - no `Co-Authored-By` or other tool attribution trailers: the committer is responsible for every commit.
