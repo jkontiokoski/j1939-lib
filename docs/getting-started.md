@@ -1,7 +1,7 @@
 # Getting started
 
 This page takes an integrator from an empty project to a running J1939 node: adding the library to a CMake build, setting up a stack and running its main loop.
-It assumes a port for your CAN driver exists; the library ships one for Linux SocketCAN, and [Porting](porting.md) shows how to write one.
+It assumes a port for your CAN driver; the library ships one for Linux SocketCAN, and [Porting](porting.md) shows how to write one.
 
 ## Requirements
 
@@ -10,8 +10,8 @@ It assumes a port for your CAN driver exists; the library ships one for Linux So
 
 ## Add the library to a CMake project
 
-The library builds the static library `j1939::j1939` against the port that `J1939_PORT_DIR` names, so set the variable before adding the library; a relative path is resolved against the top-level source directory.
-Tests, examples and documentation targets are off when the library is not the top-level project.
+The library builds the static library `j1939::j1939` against the port that `J1939_PORT_DIR` names; set it before adding the library (a relative path is resolved against the top-level source directory).
+As a subproject, the library builds no tests, examples or documentation.
 
 From a copy inside the project, such as an extracted source archive or a git submodule:
 
@@ -33,14 +33,14 @@ FetchContent_MakeAvailable(j1939)
 target_link_libraries(app PRIVATE j1939::j1939)
 ```
 
-A port shipped with the library is used from the fetched sources, which `FetchContent` places in `${FETCHCONTENT_BASE_DIR}/j1939-src`:
+To use a port shipped with the library, point at the fetched sources:
 
 ```cmake
 set(J1939_PORT_DIR "${FETCHCONTENT_BASE_DIR}/j1939-src/port/socketcan")
 ```
 
 - The optional frame queue is the target `j1939::queue`; it is compiled only when linked.
-- A configuration header ([Configuration](configuration.md)) is passed to the library target with `PUBLIC` visibility, so that the application is compiled against the same type layouts as the library:
+- Pass a configuration header ([Configuration](configuration.md)) to the library target with `PUBLIC` visibility, so that the application sees the same type layouts as the library:
 
   ```cmake
   target_compile_definitions(j1939 PUBLIC J1939_CONFIG_FILE="my_j1939_config.h")
@@ -50,7 +50,7 @@ set(J1939_PORT_DIR "${FETCHCONTENT_BASE_DIR}/j1939-src/port/socketcan")
 ## Set up a stack
 
 One `j1939_t` runs one CAN bus.
-The application allocates all its memory and hands it over at initialisation, then adds a Controller Application (CA) for each J1939 function the node performs:
+The application allocates its memory and hands it over at initialisation, then adds a Controller Application (CA) for each J1939 function the node performs:
 
 ```c
 #include "j1939/j1939.h"
@@ -76,13 +76,12 @@ j1939_init(&stack, &cfg);
 j1939_ca_add(&stack, &(j1939_ca_cfg_t){.address = 0x80, .name = MY_NAME}, &ca);
 ```
 
-`j1939_init()` validates the whole configuration before it changes the stack object.
-PGNs in the lists must be valid PGNs: at most 0x3FFFF, lowest byte 0 for PDU1 formats.
+`j1939_init()` rejects an invalid configuration without changing the stack, for example a PGN above 0x3FFFF or a PDU1 PGN whose lowest byte is not 0.
 [Configuration](configuration.md) explains how to size each buffer.
 
 ## Run the main loop
 
-Every integration runs the same cycle, in one task or the main loop:
+Every integration runs the same cycle in one task or main loop:
 
 1. Pass the received frames to `j1939_rx()`.
 2. Call `j1939_process()` with the time since the previous call, read from a monotonic clock.
@@ -110,10 +109,10 @@ while ((f = j1939_tx_peek(&stack)) != NULL) {
 }
 ```
 
-- All calls on one stack happen in this one task or loop; the stack has no lock. The driver's own frame FIFO (a socket, an RTOS queue, a hardware FIFO) carries frames from interrupts or threads to it. A driver without one can use the optional frame queue, see [Porting](porting.md).
+- The stack has no lock. The driver's own FIFO (a socket, an RTOS queue, a hardware FIFO) carries frames from interrupts or threads to this loop; a driver without one can use the optional frame queue, see [Porting](porting.md).
 - Frames of other protocols on the same bus may be passed to `j1939_rx()`; it ignores them.
-- The stack's timers advance only through `elapsed_us`, so the cycle period is their resolution. BAM data packets are sent one per call and at most 200 ms apart, so the stack needs a call at least every 200 ms while it broadcasts; a period of 10 ms keeps the gap between 50 and 60 ms.
-- A wrapping 32-bit microsecond counter is fine: the unsigned difference of two readings is the elapsed time as long as calls are less than 71 minutes apart.
+- The cycle period is the resolution of the stack's timers. While the stack broadcasts with BAM it sends one data packet per call, at most 200 ms apart, so call it at least every 200 ms; a 10 ms period keeps the packets 50 to 60 ms apart.
+- A wrapping 32-bit microsecond counter works: the unsigned difference of two readings is correct while calls are less than 71 minutes apart.
 
 ## Try it on Linux
 

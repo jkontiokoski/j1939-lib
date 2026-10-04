@@ -53,19 +53,12 @@ for (;;) {
 8. [Safety and quality](docs/safety.md): coding standard, verification and release evidence, for reviewers.
 9. [Scope](docs/scope.md): features and roadmap.
 
-The API reference is generated from the headers with `make docs` and is part of every release.
-Its topics hold the exact rules of each module: address claiming, Requests, the transport protocol, message objects, signals and diagnostics.
+The API reference is generated from the headers with `make docs` and ships with every release; its topics hold the exact rules of each module.
 
 ## Releases
 
-Releases are published as GitHub Releases of this repository.
-A release ships as source, because the port and the configuration are bound at compile time; there are no prebuilt binaries.
-A release contains:
-
-- the source archive, to build with your own port, configuration and toolchain,
-- the generated documentation: the public API reference and the internal reference with call graphs,
-- verification evidence: test and coverage results, static analysis and MISRA results, and the tool versions used,
-- SHA-256 checksums of these archives.
+Releases are GitHub Releases of this repository, shipped as source: the port and the configuration are bound at compile time, so there are no prebuilt binaries.
+Each release contains the source archive, the generated documentation (public and internal reference), verification evidence and SHA-256 checksums; [Safety and quality](docs/safety.md) lists what the evidence holds.
 
 ## Contributing and license
 
