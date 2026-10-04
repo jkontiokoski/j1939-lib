@@ -861,6 +861,82 @@ static void test_setters_reject_invalid_input(void) {
 	TEST_ASSERT_FALSE(dm.dm1_due);
 }
 
+static void test_dtcs_differing_only_in_fmi_are_distinct(void) {
+	const j1939_diag_dtc_t a_fmi4 = {dtc_a.spn, 4U, 1U, J1939_DIAG_CM_V4};
+	const j1939_diag_dtc_t both[2] = {dtc_a, a_fmi4};
+	const j1939_diag_dtc_t spn0 = {0U, 5U, 1U, J1939_DIAG_CM_V4};
+
+	start();
+	set_active(&dtc_a, 1U);
+	process(0U);
+	expect_dm1(&dtc_a, 1U);
+	/* Same SPN, other FMI: a new DTC, not held by dtc_a's record. */
+	set_active(both, 2U);
+	process(0U);
+	expect_dm1(both, 2U);
+	expect_none();
+	/* SPN 0 is a valid DTC when its FMI is not 0. */
+	set_prev(&spn0, 1U);
+	rx_request(OTHER, OWN, J1939_PGN_DM2);
+	process(0U);
+	expect_dm(J1939_PGN_DM2, &spn0, 1U);
+	/* An empty previously active list. */
+	set_prev(NULL, 0U);
+	TEST_ASSERT_EQUAL_UINT16(0U, dm.prev_count);
+	rx_request(OTHER, OWN, J1939_PGN_DM2);
+	process(0U);
+	expect_dm(J1939_PGN_DM2, NULL, 0U);
+	expect_none();
+}
+
+static void test_repeated_request_of_one_requester_is_answered_to_it(void) {
+	const j1939_diag_dtc_t list[2] = {dtc_b, dtc_d};
+
+	start();
+	set_prev(list, 2U);
+	rx_request(OTHER, OWN, J1939_PGN_DM2);
+	rx_request(OTHER, OWN, J1939_PGN_DM2);
+	process(0U);
+	expect_dm_rts(J1939_PGN_DM2, list, 2U, OTHER);
+	process(0U);
+	expect_none();
+}
+
+static void test_clear_request_combinations(void) {
+	uint32_t pgn = 0U;
+
+	start();
+	/* The same requester again is covered by its request. */
+	rx_request(OTHER, OWN, J1939_PGN_DM3);
+	rx_request(OTHER, OWN, J1939_PGN_DM3);
+	process(0U);
+	expect_none();
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_clear_confirm(&s, ca, J1939_PGN_DM3, true));
+	/* Decided, acknowledgement pending: another requester gets Cannot Respond. */
+	rx_request(OTHER2, OWN, J1939_PGN_DM3);
+	expect_ack(J1939_ACK_CTRL_CANNOT_RESPOND, OTHER2, J1939_PGN_DM3);
+	process(0U);
+	expect_ack(J1939_ACK_CTRL_ACK, OTHER, J1939_PGN_DM3);
+	expect_none();
+	/* Unknown CA. */
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_clear_get(&s, 5U, &pgn));
+}
+
+static void test_lost_address_with_pending_ack_and_open_request(void) {
+	const uint8_t name[8] = {0x01U, 0U, 0U, 0U, 0U, 0U, 0U, 0U}; /* wins against NAME */
+
+	start();
+	/* DM3 accepted with its ACK pending, DM11 still waiting for the decision. */
+	rx_request(OTHER, OWN, J1939_PGN_DM3);
+	rx_request(OTHER, OWN, J1939_PGN_DM11);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_clear_confirm(&s, ca, J1939_PGN_DM3, true));
+	rx_raw(make_id(6U, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL, OWN), name, 8U);
+	process(0U);
+	/* Only the pending ACK counts as a dropped send; the open request just ends. */
+	TEST_ASSERT_EQUAL_UINT32(1U, j1939_stats_get(&s)->dm_tx_dropped);
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_EMPTY, j1939_dm_clear_get(&s, ca, &(uint32_t){0U}));
+}
+
 int main(void) {
 	UNITY_BEGIN();
 	RUN_TEST(test_first_dm1_waits_for_the_claim);
@@ -888,5 +964,9 @@ int main(void) {
 	RUN_TEST(test_corrupted_clear_state_fails_safe);
 	RUN_TEST(test_init_rejects_invalid_configuration);
 	RUN_TEST(test_setters_reject_invalid_input);
+	RUN_TEST(test_dtcs_differing_only_in_fmi_are_distinct);
+	RUN_TEST(test_repeated_request_of_one_requester_is_answered_to_it);
+	RUN_TEST(test_clear_request_combinations);
+	RUN_TEST(test_lost_address_with_pending_ack_and_open_request);
 	return UNITY_END();
 }
