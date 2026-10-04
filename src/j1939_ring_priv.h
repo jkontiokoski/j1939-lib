@@ -1,10 +1,14 @@
 /* SPDX-License-Identifier: MIT */
 /* Copyright (c) 2026 jkontiokoski */
 
-/*
- * Ring buffer index bookkeeping. The functions do no locking: the stack uses
- * its rings from one execution context, and the optional frame queue wraps
- * every call in the port lock.
+/**
+ * @file j1939_ring_priv.h
+ * @brief Ring buffer index bookkeeping of the library's FIFOs.
+ *
+ * The functions do no locking: the stack uses its rings from one execution
+ * context, and the optional frame queue wraps every call in the port lock.
+ * One producer and one consumer: the producer uses j1939_ring_head() and
+ * j1939_ring_push(), the consumer j1939_ring_tail() and j1939_ring_pop().
  */
 
 #ifndef J1939_RING_PRIV_H
@@ -15,25 +19,56 @@
 
 #include "j1939/j1939_ring.h"
 
-/* Initialises an empty ring of len slots (len > 0). */
+/**
+ * @brief Initialises an empty ring.
+ * @param r    Ring.
+ * @param len  Number of slots, above 0.
+ */
 void j1939_ring_init(j1939_ring_t *r, uint16_t len);
 
-/* Producer: index of the next free slot. Returns false if the ring is full. */
+/**
+ * @brief Producer: finds the next free slot.
+ * @param r      Ring.
+ * @param index  Index of the free slot. Written only on success.
+ * @return false if the ring is full.
+ */
 bool j1939_ring_head(const j1939_ring_t *r, uint16_t *index);
 
-/* Producer: publishes the free slot. Returns false if the ring is full. */
+/**
+ * @brief Producer: publishes the free slot found with j1939_ring_head().
+ * @param r  Ring.
+ * @return false if the ring is full.
+ */
 bool j1939_ring_push(j1939_ring_t *r);
 
-/* Consumer: index of the oldest written slot. Returns false if the ring is empty. */
+/**
+ * @brief Consumer: finds the oldest written slot.
+ * @param r      Ring.
+ * @param index  Index of the oldest slot. Written only on success.
+ * @return false if the ring is empty.
+ */
 bool j1939_ring_tail(const j1939_ring_t *r, uint16_t *index);
 
-/* Consumer: releases the oldest slot. Returns false if the ring is empty. */
+/**
+ * @brief Consumer: releases the oldest slot.
+ * @param r  Ring.
+ * @return false if the ring is empty.
+ */
 bool j1939_ring_pop(j1939_ring_t *r);
 
-/* Number of written slots. */
+/**
+ * @brief Counts the written slots.
+ * @param r  Ring.
+ * @return Slots written and not yet released.
+ */
 uint16_t j1939_ring_count(const j1939_ring_t *r);
 
-/* Returns true if slot index (< len) is written and not yet released. */
+/**
+ * @brief Tells whether a slot is written and not yet released.
+ * @param r      Ring.
+ * @param index  Slot index, below the ring length.
+ * @return true if the slot lies between tail and head.
+ */
 bool j1939_ring_holds(const j1939_ring_t *r, uint16_t index);
 
 #endif /* J1939_RING_PRIV_H */

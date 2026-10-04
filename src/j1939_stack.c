@@ -1,6 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 /* Copyright (c) 2026 jkontiokoski */
 
+/**
+ * @file j1939_stack.c
+ * @brief Stack instance: configuration, CAs, frame reception and filtering, tx
+ *        queue and message slots.
+ */
+
 #include "j1939/j1939_stack.h"
 
 #include <stddef.h>
@@ -17,13 +23,19 @@
 #include "j1939_tp_priv.h"
 #include "j1939_txobj_priv.h"
 
-#define PDU1_DA_MASK   0xFFU
-#define CA_ADDRESS_MAX 0xFDU
+#define PDU1_DA_MASK   0xFFU /**< Destination byte of a PDU1 PGN, 0 in a valid PGN. */
+#define CA_ADDRESS_MAX 0xFDU /**< Highest address a CA can hold (253). */
 
 bool j1939_stack_pgn_valid(uint32_t pgn) {
 	return (pgn <= J1939_PGN_MAX) && (!j1939_pgn_is_pdu1(pgn) || ((pgn & PDU1_DA_MASK) == 0U));
 }
 
+/**
+ * @brief Checks a PGN list of the configuration.
+ * @param list  List; may be NULL if @p len is 0.
+ * @param len   Entries in @p list.
+ * @return true if every entry is a valid PGN.
+ */
 static bool pgn_list_valid(const uint32_t *list, uint16_t len) {
 	bool valid = (list != NULL) || (len == 0U);
 	uint16_t i;
@@ -34,6 +46,12 @@ static bool pgn_list_valid(const uint32_t *list, uint16_t len) {
 	return valid;
 }
 
+/**
+ * @brief Tells whether a CA of the stack uses an address.
+ * @param s        Stack.
+ * @param address  Address.
+ * @return true if a CA has it as its address, whatever its claim state.
+ */
 static bool ca_find(const j1939_t *s, uint8_t address) {
 	bool found = false;
 	uint8_t i;
@@ -44,6 +62,18 @@ static bool ca_find(const j1939_t *s, uint8_t address) {
 	return found;
 }
 
+/**
+ * @brief Filters a received frame and passes it to the module that handles it.
+ *
+ * Standard, remote and non-J1939 frames are dropped. Address Claimed goes to
+ * address claiming whatever its destination; other frames pass only when
+ * global or addressed to a held address: Requests to the Request module,
+ * TP.CM and TP.DT to the transport protocol, the rest to the receive objects
+ * and, if listed in rx_pgns, to the message slots.
+ *
+ * @param s  Stack.
+ * @param f  Received frame.
+ */
 static void frame_handle(j1939_t *s, const j1939_port_frame_t *f) {
 	if (j1939_port_frame_is_ext(f) && !j1939_port_frame_is_rtr(f)) {
 		uint32_t id = j1939_port_frame_id_get(f);
@@ -127,6 +157,11 @@ j1939_ret_t j1939_stack_tx(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t
 	return ret;
 }
 
+/**
+ * @brief Checks a stack configuration.
+ * @param cfg  Configuration.
+ * @return true if the buffers, PGN lists and transport protocol members are valid.
+ */
 static bool cfg_valid(const j1939_cfg_t *cfg) {
 	return (cfg->tx_buf != NULL) && (cfg->tx_len > 0U) && (cfg->msg_buf != NULL) &&
 	       (cfg->msg_len > 0U) && pgn_list_valid(cfg->rx_pgns, cfg->rx_pgns_len) &&

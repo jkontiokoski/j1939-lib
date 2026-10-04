@@ -1,6 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 /* Copyright (c) 2026 jkontiokoski */
 
+/**
+ * @file j1939_request.c
+ * @brief Request (PGN 59904) and Acknowledgement (PGN 59392), J1939/21.
+ */
+
 #include "j1939/j1939_request.h"
 
 #include <stddef.h>
@@ -12,24 +17,44 @@
 #include "j1939_stack_priv.h"
 #include "j1939_txobj_priv.h"
 
-#define BYTE_MASK         0xFFU
-#define BYTE_SHIFT        8U
-#define ACK_PRIO          6U
-#define ACK_RESERVED      0xFFU
-#define ACK_GROUP_FN_NONE 0xFFU
+#define BYTE_MASK         0xFFU /**< Mask of one byte. */
+#define BYTE_SHIFT        8U    /**< Bits per byte. */
+#define ACK_PRIO          6U    /**< Priority of Requests and Acknowledgements. */
+#define ACK_RESERVED      0xFFU /**< Reserved bytes of an Acknowledgement. */
+#define ACK_GROUP_FN_NONE 0xFFU /**< Group function value when none applies. */
 
+/**
+ * @brief Reads a PGN from three little endian bytes.
+ * @param data  At least three bytes.
+ * @return The PGN; may exceed J1939_PGN_MAX for malformed input.
+ */
 static uint32_t pgn_decode(const uint8_t *data) {
 	return (uint32_t)data[0] | ((uint32_t)data[1] << BYTE_SHIFT) |
 	       ((uint32_t)data[2] << (2U * BYTE_SHIFT));
 }
 
+/**
+ * @brief Writes a PGN as three little endian bytes.
+ * @param pgn   PGN, at most J1939_PGN_MAX.
+ * @param data  At least three bytes.
+ */
 static void pgn_encode(uint32_t pgn, uint8_t *data) {
 	data[0] = (uint8_t)(pgn & BYTE_MASK);
 	data[1] = (uint8_t)((pgn >> BYTE_SHIFT) & BYTE_MASK);
 	data[2] = (uint8_t)((pgn >> (2U * BYTE_SHIFT)) & BYTE_MASK);
 }
 
-/* NACK a destination specific Request. J1939/21 sends it to the global address. */
+/**
+ * @brief Answers a destination specific Request with a NACK.
+ *
+ * J1939/21 sends it to the global address, with the requester in byte 5. A
+ * full tx queue is counted in tx_overflow.
+ *
+ * @param s            Stack.
+ * @param own_address  Address of the CA the Request was sent to.
+ * @param requester    Source address of the Request.
+ * @param pgn          Requested PGN.
+ */
 static void nack_send(j1939_t *s, uint8_t own_address, uint8_t requester, uint32_t pgn) {
 	uint8_t data[J1939_ACK_LEN] = {J1939_ACK_CTRL_NACK,
 	                               ACK_GROUP_FN_NONE,
