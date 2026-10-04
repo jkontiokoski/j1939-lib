@@ -54,6 +54,10 @@ It will serve this purpose after the library is published, but also for the auth
 - Update a feature branch that is behind `main` by rebasing it onto `origin/main` and pushing with `--force-with-lease`; do not merge `main` into feature branches.
 - Concurrent agents share `vcan0`. Agents run `make test` with `J1939_TEST_CANIF` set to a missing interface so the SocketCAN loopback test is skipped; the orchestrator runs it after merging.
 
+### Public content
+
+- This repository, including CLAUDE.md, commit messages and PR descriptions, is public. Never record details of the owner's personal workspace (local paths, symlinks, machine setup) in it.
+
 ### Commit messages
 
 - Never add a `Co-Authored-By` trailer or any other AI attribution to commits or PR descriptions. The owner is responsible for the commits.

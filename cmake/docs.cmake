@@ -14,10 +14,14 @@ if(NOT DOXYGEN_FOUND OR NOT TARGET Doxygen::dot)
 	message(FATAL_ERROR "J1939_BUILD_DOCS needs Doxygen >= 1.9.8 and Graphviz (dot)")
 endif()
 
+# Doxygen resolves Markdown links to real paths, so every path it gets must be
+# real too; a source tree reached through a symbolic link breaks them otherwise.
+file(REAL_PATH "${PROJECT_SOURCE_DIR}" J1939_DOCS_ROOT)
+
 get_filename_component(J1939_DOCS_DOT_PATH "${DOXYGEN_DOT_EXECUTABLE}" DIRECTORY)
 set(J1939_DOCS_BRIEF "${PROJECT_DESCRIPTION}")
 set(_j1939_docs_public_input
-	"\"${PROJECT_SOURCE_DIR}/README.md\" \"${PROJECT_SOURCE_DIR}/docs\" \"${PROJECT_SOURCE_DIR}/include/j1939\"")
+	"\"${J1939_DOCS_ROOT}/README.md\" \"${J1939_DOCS_ROOT}/docs\" \"${J1939_DOCS_ROOT}/include/j1939\"")
 
 # j1939_add_docs(<target> <output dir> <internal YES|NO> <fail on warnings ON|OFF> <input>)
 function(j1939_add_docs target output internal gate input)
@@ -29,16 +33,16 @@ function(j1939_add_docs target output internal gate input)
 	else()
 		set(J1939_DOCS_WARN_AS_ERROR NO)
 	endif()
-	configure_file("${PROJECT_SOURCE_DIR}/docs/Doxyfile.in"
+	configure_file("${J1939_DOCS_ROOT}/docs/Doxyfile.in"
 		"${CMAKE_CURRENT_BINARY_DIR}/Doxyfile.${target}" @ONLY)
 	add_custom_target(${target}
 		COMMAND "${CMAKE_COMMAND}" -E make_directory "${output}"
 		COMMAND Doxygen::doxygen "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile.${target}"
-		WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+		WORKING_DIRECTORY "${J1939_DOCS_ROOT}"
 		COMMENT "Generating ${target} in ${output}"
 		VERBATIM)
 endfunction()
 
 j1939_add_docs(docs "${CMAKE_CURRENT_BINARY_DIR}/public" NO ON "${_j1939_docs_public_input}")
 j1939_add_docs(docs-internal "${CMAKE_CURRENT_BINARY_DIR}/internal" YES
-	${J1939_DOCS_INTERNAL_GATE} "${_j1939_docs_public_input} \"${PROJECT_SOURCE_DIR}/src\"")
+	${J1939_DOCS_INTERNAL_GATE} "${_j1939_docs_public_input} \"${J1939_DOCS_ROOT}/src\"")

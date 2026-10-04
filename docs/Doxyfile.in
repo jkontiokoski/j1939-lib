@@ -13,8 +13,8 @@ PROJECT_NUMBER         = @PROJECT_VERSION@
 PROJECT_BRIEF          = "@J1939_DOCS_BRIEF@"
 OUTPUT_DIRECTORY       = "@J1939_DOCS_OUTPUT@"
 FULL_PATH_NAMES        = YES
-STRIP_FROM_PATH        = "@PROJECT_SOURCE_DIR@"
-STRIP_FROM_INC_PATH    = "@PROJECT_SOURCE_DIR@/include"
+STRIP_FROM_PATH        = "@J1939_DOCS_ROOT@"
+STRIP_FROM_INC_PATH    = "@J1939_DOCS_ROOT@/include"
 OPTIMIZE_OUTPUT_FOR_C  = YES
 MARKDOWN_SUPPORT       = YES
 TOC_INCLUDE_HEADINGS   = 3
@@ -51,15 +51,15 @@ WARN_AS_ERROR          = @J1939_DOCS_WARN_AS_ERROR@
 INPUT                  = @J1939_DOCS_INPUT@
 FILE_PATTERNS          = *.h *.c *.md
 RECURSIVE              = NO
-USE_MDFILE_AS_MAINPAGE = "@PROJECT_SOURCE_DIR@/README.md"
-IMAGE_PATH             = "@PROJECT_SOURCE_DIR@/docs"
+USE_MDFILE_AS_MAINPAGE = "@J1939_DOCS_ROOT@/README.md"
+IMAGE_PATH             = "@J1939_DOCS_ROOT@/docs"
 
 #---------------------------------------------------------------------------
 # Preprocessor
 #---------------------------------------------------------------------------
 ENABLE_PREPROCESSING   = YES
 SEARCH_INCLUDES        = YES
-INCLUDE_PATH           = "@PROJECT_SOURCE_DIR@/include"
+INCLUDE_PATH           = "@J1939_DOCS_ROOT@/include"
 
 #---------------------------------------------------------------------------
 # HTML output, styled with doxygen-awesome-css (docs/vendor)
@@ -70,7 +70,7 @@ GENERATE_TREEVIEW      = YES
 DISABLE_INDEX          = NO
 FULL_SIDEBAR           = NO
 HTML_COLORSTYLE        = LIGHT
-HTML_EXTRA_STYLESHEET  = "@PROJECT_SOURCE_DIR@/docs/vendor/doxygen-awesome-css/doxygen-awesome.css"
+HTML_EXTRA_STYLESHEET  = "@J1939_DOCS_ROOT@/docs/vendor/doxygen-awesome-css/doxygen-awesome.css"
 SEARCHENGINE           = YES
 GENERATE_LATEX         = NO
 
