@@ -99,16 +99,16 @@
 
 /** @name Connection Abort reasons (J1939/21)
  * @{ */
-#define J1939_TP_ABORT_BUSY          1U   /**< Already in a session, cannot support another. */
-#define J1939_TP_ABORT_RESOURCES     2U   /**< System resources were needed for another task. */
-#define J1939_TP_ABORT_TIMEOUT       3U   /**< A timeout occurred. */
-#define J1939_TP_ABORT_CTS_IN_DATA   4U   /**< CTS received while data transfer is in progress. */
-#define J1939_TP_ABORT_RETRANSMIT    5U   /**< Maximum retransmit request limit reached. */
-#define J1939_TP_ABORT_UNEXPECTED_DT 6U   /**< Unexpected data transfer packet. */
-#define J1939_TP_ABORT_BAD_SEQ       7U   /**< Bad sequence number. */
-#define J1939_TP_ABORT_DUP_SEQ       8U   /**< Duplicate sequence number. */
-#define J1939_TP_ABORT_TOO_LARGE     9U   /**< Message size is greater than 1785 bytes. */
-#define J1939_TP_ABORT_OTHER         250U /**< Any other reason. */
+#define J1939_TP_ABORT_BUSY          1U /**< The node already runs a session and cannot open another. */
+#define J1939_TP_ABORT_RESOURCES     2U   /**< The node needed its resources for something else. */
+#define J1939_TP_ABORT_TIMEOUT       3U   /**< A protocol timer expired. */
+#define J1939_TP_ABORT_CTS_IN_DATA   4U   /**< A CTS arrived during a data transfer. */
+#define J1939_TP_ABORT_RETRANSMIT    5U   /**< Too many retransmission requests. */
+#define J1939_TP_ABORT_UNEXPECTED_DT 6U   /**< A data packet arrived that was not expected. */
+#define J1939_TP_ABORT_BAD_SEQ       7U   /**< A data packet with a wrong sequence number. */
+#define J1939_TP_ABORT_DUP_SEQ       8U   /**< A data packet with a repeated sequence number. */
+#define J1939_TP_ABORT_TOO_LARGE     9U   /**< The announced message is longer than 1785 bytes. */
+#define J1939_TP_ABORT_OTHER         250U /**< Any reason not listed above. */
 /** @} */
 
 /** @name Protocol timers (J1939/21), in microseconds
