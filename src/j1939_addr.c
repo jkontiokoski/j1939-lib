@@ -15,6 +15,7 @@
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_name.h"
 #include "j1939_addr_priv.h"
+#include "j1939_names_priv.h"
 #include "j1939_stack_priv.h"
 #include "j1939_tp_priv.h"
 
@@ -374,8 +375,13 @@ bool j1939_addr_tx_allowed(const j1939_ca_t *ca) {
 void j1939_addr_claim_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t len) {
 	uint8_t sa = j1939_id_sa_get(id);
 
-	/* Cannot Claim (source NULL) takes no address. */
-	if ((len >= J1939_NAME_LEN) && (sa <= CA_ADDRESS_MAX)) {
+	if ((len >= J1939_NAME_LEN) && (sa == J1939_ADDR_NULL)) {
+		uint64_t name = 0U;
+
+		/* Cannot Claim takes no address; the NAME table records the node. */
+		(void)j1939_name_from_bytes(data, &name);
+		j1939_names_cannot_claim(s, name);
+	} else if ((len >= J1939_NAME_LEN) && (sa <= CA_ADDRESS_MAX)) {
 		uint64_t name = 0U;
 		uint8_t i;
 
@@ -395,7 +401,10 @@ void j1939_addr_claim_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8
 		}
 		if (!j1939_addr_held(s, sa)) {
 			taken_set(s, sa);
+			j1939_names_claimed(s, name, sa);
 		}
+	} else {
+		/* Too short, or from the global address: no claim. */
 	}
 	if (j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, J1939_PGN_ADDRESS_CLAIMED)) {
 		j1939_stack_deliver(s, id, data, len);

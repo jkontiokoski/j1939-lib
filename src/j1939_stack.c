@@ -17,6 +17,7 @@
 #include "j1939/j1939_request.h"
 #include "j1939_addr_priv.h"
 #include "j1939_dm_priv.h"
+#include "j1939_names_priv.h"
 #include "j1939_ring_priv.h"
 #include "j1939_rxobj_priv.h"
 #include "j1939_stack_priv.h"
@@ -186,6 +187,7 @@ j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg) {
 		j1939_addr_init(s);
 		j1939_tp_init(s, cfg);
 		j1939_dm_stack_init(s);
+		j1939_names_stack_init(s);
 		j1939_rxobj_stack_init(s);
 		j1939_txobj_stack_init(s);
 		ret = J1939_RET_OK;
@@ -244,6 +246,7 @@ j1939_ret_t j1939_process(j1939_t *s, uint32_t elapsed_us) {
 
 	if (s != NULL) {
 		j1939_addr_process(s, elapsed_us);
+		j1939_names_process(s, elapsed_us);
 		j1939_tp_process(s, elapsed_us);
 		j1939_dm_process(s, elapsed_us);
 		j1939_rxobj_process(s, elapsed_us);

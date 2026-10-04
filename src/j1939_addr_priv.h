@@ -62,7 +62,8 @@ bool j1939_addr_tx_allowed(const j1939_ca_t *ca);
  * @brief Handles a received Address Claimed or Cannot Claim, whatever its destination.
  *
  * Arbitrates the addresses the stack's CAs hold, records the self-configurable
- * addresses other nodes claim, and delivers the message if it is in rx_pgns.
+ * addresses other nodes claim, updates the NAME table, and delivers the
+ * message if it is in rx_pgns.
  *
  * @param s     Stack.
  * @param id    Identifier of the frame.
