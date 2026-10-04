@@ -66,6 +66,13 @@ j1939_add_test(test_dm_exchange test_support integration/test_dm_exchange.c)
 j1939_add_test(test_rxobj_exchange test_support integration/test_rxobj_exchange.c)
 j1939_add_test(test_txobj_exchange test_support integration/test_txobj_exchange.c)
 
+# Transport protocol buffers below the protocol limit: the checks against J1939_CFG_TP_BUF_SIZE.
+j1939_add_library(j1939_test_mock_small_tp "${MOCK_PORT_DIR}")
+target_include_directories(j1939_test_mock_small_tp PUBLIC config)
+target_compile_definitions(j1939_test_mock_small_tp PUBLIC
+	J1939_CONFIG_FILE="j1939_test_small_tp_config.h")
+j1939_add_test(test_tp_small_buf j1939_test_mock_small_tp unit/test_tp_small_buf.c)
+
 # Port conformance: the bundled ports, plus the configured port if it is another one.
 j1939_add_port_conformance(test_port_mock j1939_test_mock)
 

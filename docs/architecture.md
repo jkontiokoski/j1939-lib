@@ -81,7 +81,7 @@ tests/port/           port conformance tests, compiled once per port; SocketCAN 
 tests/unit/           unit tests per module (mock port)
 tests/integration/    multi-node scenarios (mock port)
 tests/support/        test_bus.[ch]: virtual CAN bus connecting several stacks in one process
-tests/config/         j1939_test_config.h: configuration of the test library builds
+tests/config/         configurations of the test library builds: j1939_test_config.h, j1939_test_small_tp_config.h
 tests/vendor/unity/   vendored Unity test framework
 cmake/                build helpers
                         library.cmake           j1939_add_library(), j1939_add_queue(): build for a port
@@ -485,7 +485,7 @@ j1939_txobj_set(&stack, 0U, payload, 8U);         /* whenever the values change 
 - The port conformance test `tests/port/test_port_conformance.c` runs against the mock port, the SocketCAN port (on Linux) and the configured `J1939_PORT_DIR` port if it is another one. Frames the port API cannot build (standard, remote, raw DLC above 8) come from the port's `j1939_port_fixture.c`.
 - `test_queue` links the frame queue built for the mock port (`j1939_add_queue()`). The mock lock records nesting depth and call count; the test checks that every critical section is left and none is nested.
 - `test_socketcan_vcan` exchanges frames over a real SocketCAN interface, `vcan0` by default or `J1939_TEST_CANIF`. It reports "skipped" when the interface does not exist.
-- Unit and integration tests link a library variant built with `tests/config/j1939_test_config.h` through `J1939_CONFIG_FILE`, which also exercises the configuration override.
+- Unit and integration tests link a library variant built with `tests/config/j1939_test_config.h` through `J1939_CONFIG_FILE`, which also exercises the configuration override. `test_tp_small_buf` links a second mock port variant built with `j1939_test_small_tp_config.h` (`J1939_CFG_TP_BUF_SIZE` 100): announced transfers above the buffer are refused (Connection Abort reason 2 for RTS, ignored BAM, both counted), a broadcast of exactly the buffer size is received, multi-packet sends above the buffer or with an invalid identifier are rejected, and a DM configuration whose payload exceeds the buffer is refused.
 - Integration tests run several `j1939_t` instances in one process; `tests/support/test_bus.c` passes every frame of one stack's tx queue to `j1939_rx()` of all others. Each run carries the frames queued when it starts; answers wait for the next run.
 - `test_signal` compares bit extraction and insertion against a bit-by-bit reference model for every offset and length in payloads of 1 to 8 bytes. `test_signal_example` builds and decodes messages with the example table from `examples/signals/`.
 - Timers are tested by passing the elapsed time to `j1939_process()`, for example one call 1 µs before and one at a deadline.
