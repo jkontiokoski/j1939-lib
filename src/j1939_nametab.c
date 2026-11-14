@@ -14,9 +14,7 @@
 #include "j1939/j1939_addr.h"
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
-#include "j1939_addr_priv.h"
-#include "j1939_nametab_priv.h"
-#include "j1939_stack_priv.h"
+#include "j1939_internal.h"
 
 #define NAMETAB_WORD_BITS  32U          /**< Bits in each NAME half of an entry. */
 #define NAMETAB_WORD_MASK  0xFFFFFFFFUL /**< Low half of a NAME. */

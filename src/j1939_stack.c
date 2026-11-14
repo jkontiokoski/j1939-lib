@@ -15,14 +15,8 @@
 #include "j1939/j1939_addr.h"
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
-#include "j1939_addr_priv.h"
-#include "j1939_dm_priv.h"
-#include "j1939_nametab_priv.h"
+#include "j1939_internal.h"
 #include "j1939_ring_priv.h"
-#include "j1939_rxobj_priv.h"
-#include "j1939_stack_priv.h"
-#include "j1939_tp_priv.h"
-#include "j1939_txobj_priv.h"
 
 /**
  * Checks a PGN list of the configuration: every entry is a valid PGN. The list may be NULL if len

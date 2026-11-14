@@ -12,10 +12,7 @@
 
 #include "j1939/j1939_addr.h"
 #include "j1939/j1939_id.h"
-#include "j1939_addr_priv.h"
-#include "j1939_dm_priv.h"
-#include "j1939_stack_priv.h"
-#include "j1939_txobj_priv.h"
+#include "j1939_internal.h"
 
 #define BYTE_MASK         0xFFU /**< Mask of one byte. */
 #define BYTE_SHIFT        8U    /**< Bits per byte. */

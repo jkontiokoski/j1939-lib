@@ -15,10 +15,7 @@
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_name.h"
 #include "j1939/j1939_request.h"
-#include "j1939_addr_priv.h"
-#include "j1939_nametab_priv.h"
-#include "j1939_stack_priv.h"
-#include "j1939_tp_priv.h"
+#include "j1939_internal.h"
 
 #define CLAIM_PRIO     6U    /**< Priority of Address Claimed and Cannot Claim. */
 #define BITS_PER_BYTE  8U    /**< Bits per byte of the taken-address bitmap. */

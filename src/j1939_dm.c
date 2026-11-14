@@ -16,9 +16,7 @@
 #include "j1939/j1939_addr.h"
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
-#include "j1939_addr_priv.h"
-#include "j1939_dm_priv.h"
-#include "j1939_tp_priv.h"
+#include "j1939_internal.h"
 
 #define CLEAR_DM3    0U                     /**< Index of the DM3 request in j1939_dm_t::clear. */
 #define CLEAR_DM11   1U                     /**< Index of the DM11 request. */

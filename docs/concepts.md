@@ -32,7 +32,7 @@ The optional frame queue (`j1939_queue.h`) is outside the layers: application co
 ## Optional features
 
 A feature switched off in `j1939_config.h` is left out of the build: its source compiles to nothing and its configuration fields and state leave the structures, so an integration that still supplies them does not compile.
-The rest of the stack calls a feature's hooks, such as its initialisation, its processing and events like a lost address, without conditions; with the feature off, its private header defines them as empty inline functions.
+The rest of the stack calls a feature's hooks, such as its initialisation, its processing and events like a lost address, without conditions; with the feature off, the internal header (`src/j1939_internal.h`) defines them as empty inline functions.
 Where switching a feature off changes what a call does, such as dropping its frames or rejecting a send, the call site has the `#if` and a comment that says what happens instead.
 
 This keeps conditional code to the places where behaviour differs, so a reader finds every such difference at the call it affects, while the hook calls are the same code, and are tested, in every build.

@@ -17,10 +17,7 @@
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_tp.h"
-#include "j1939_addr_priv.h"
-#include "j1939_stack_priv.h"
-#include "j1939_tp_priv.h"
-#include "j1939_txobj_priv.h"
+#include "j1939_internal.h"
 
 #define FLAG_STARTED 0x01U /**< The CA has claimed its address; the schedule runs. */
 #define FLAG_DUE     0x02U /**< Periodic send due. */

@@ -16,9 +16,7 @@
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_tp.h"
-#include "j1939_nametab_priv.h"
-#include "j1939_rxobj_priv.h"
-#include "j1939_stack_priv.h"
+#include "j1939_internal.h"
 
 #define BUF_LEN_MAX ((uint16_t)J1939_MAX_MSG_LEN) /**< Largest payload an object can hold. */
 

@@ -14,11 +14,8 @@
 #include "j1939/j1939_addr.h"
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
-#include "j1939_addr_priv.h"
+#include "j1939_internal.h"
 #include "j1939_ring_priv.h"
-#include "j1939_rxobj_priv.h"
-#include "j1939_stack_priv.h"
-#include "j1939_tp_priv.h"
 
 #if J1939_TP_ENABLE
 
