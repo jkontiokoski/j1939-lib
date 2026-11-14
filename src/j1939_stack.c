@@ -32,10 +32,8 @@ bool j1939_stack_pgn_valid(uint32_t pgn) {
 }
 
 /**
- * @brief Checks a PGN list of the configuration.
- * @param list  List; may be NULL if @p len is 0.
- * @param len   Entries in @p list.
- * @return true if every entry is a valid PGN.
+ * Checks a PGN list of the configuration: every entry is a valid PGN. The list may be NULL if len
+ * is 0.
  */
 static bool pgn_list_valid(const uint32_t *list, uint16_t len) {
 	bool valid = (list != NULL) || (len == 0U);
@@ -47,12 +45,7 @@ static bool pgn_list_valid(const uint32_t *list, uint16_t len) {
 	return valid;
 }
 
-/**
- * @brief Tells whether a CA of the stack uses an address.
- * @param s        Stack.
- * @param address  Address.
- * @return true if a CA has it as its address, whatever its claim state.
- */
+/** Tells whether a CA of the stack uses an address, whatever its claim state. */
 static bool ca_find(const j1939_t *s, uint8_t address) {
 	bool found = false;
 	uint8_t i;
@@ -64,7 +57,7 @@ static bool ca_find(const j1939_t *s, uint8_t address) {
 }
 
 /**
- * @brief Filters a received frame and passes it to the module that handles it.
+ * Filters a received frame and passes it to the module that handles it.
  *
  * Standard, remote and non-J1939 frames are dropped. Address Claimed goes to
  * address claiming whatever its destination; other frames pass only when
@@ -72,9 +65,6 @@ static bool ca_find(const j1939_t *s, uint8_t address) {
  * TP.CM and TP.DT to the transport protocol (dropped in a build without it),
  * the rest to the receive objects and, if listed in rx_pgns, to the message
  * slots.
- *
- * @param s  Stack.
- * @param f  Received frame.
  */
 static void frame_handle(j1939_t *s, const j1939_port_frame_t *f) {
 	if (j1939_port_frame_is_ext(f) && !j1939_port_frame_is_rtr(f)) {
@@ -162,11 +152,7 @@ j1939_ret_t j1939_stack_tx(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t
 	return ret;
 }
 
-/**
- * @brief Checks a stack configuration.
- * @param cfg  Configuration.
- * @return true if the buffers, PGN lists and transport protocol members are valid.
- */
+/** Checks a stack configuration: the buffers, the PGN lists and the transport protocol members. */
 static bool cfg_valid(const j1939_cfg_t *cfg) {
 	return (cfg->tx_buf != NULL) && (cfg->tx_len > 0U) && (cfg->msg_buf != NULL) &&
 	       (cfg->msg_len > 0U) && pgn_list_valid(cfg->rx_pgns, cfg->rx_pgns_len) &&

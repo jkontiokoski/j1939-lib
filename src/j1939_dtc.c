@@ -31,29 +31,20 @@
 /** @} */
 
 /**
- * @brief Checks the field ranges of a DTC for encoding.
- * @param dtc  DTC.
- * @return true if SPN, FMI and occurrence count fit and the conversion method is 0.
+ * Checks the field ranges of a DTC for encoding: SPN, FMI and occurrence count fit and the
+ * conversion method is 0.
  */
 static bool dtc_valid(const j1939_dtc_t *dtc) {
 	return (dtc->spn <= J1939_DTC_SPN_MAX) && (dtc->fmi <= J1939_DTC_FMI_MAX) &&
 	       (dtc->oc <= J1939_DTC_OC_NA) && (dtc->cm == J1939_DTC_CM_V4);
 }
 
-/**
- * @brief Tells whether a DTC is the marker of a DM payload without DTCs.
- * @param dtc  DTC.
- * @return true for SPN 0 with FMI 0.
- */
+/** Tells whether a DTC is the marker of a DM payload without DTCs: SPN 0 with FMI 0. */
 static bool dtc_is_none(const j1939_dtc_t *dtc) {
 	return (dtc->spn == 0U) && (dtc->fmi == 0U);
 }
 
-/**
- * @brief Writes a DTC in its four-byte layout (conversion method 0).
- * @param dtc  DTC with valid fields.
- * @param buf  Four bytes.
- */
+/** Writes a DTC with valid fields in its four-byte layout (conversion method 0). */
 static void dtc_write(const j1939_dtc_t *dtc, uint8_t *buf) {
 	buf[0] = (uint8_t)(dtc->spn & BYTE_MASK);
 	buf[1] = (uint8_t)((dtc->spn >> BYTE_SHIFT) & BYTE_MASK);
@@ -62,11 +53,7 @@ static void dtc_write(const j1939_dtc_t *dtc, uint8_t *buf) {
 	buf[3] = (uint8_t)((((uint32_t)dtc->cm & 1U) << CM_POS) | ((uint32_t)dtc->oc & OC_MASK));
 }
 
-/**
- * @brief Reads a DTC from its four-byte layout; the SPN is read at its version 4 position.
- * @param buf  Four bytes.
- * @param dtc  Decoded DTC.
- */
+/** Reads a DTC from its four-byte layout; the SPN is read at its version 4 position. */
 static void dtc_read(const uint8_t *buf, j1939_dtc_t *dtc) {
 	dtc->spn = (uint32_t)buf[0] | ((uint32_t)buf[1] << BYTE_SHIFT) |
 	           ((((uint32_t)buf[2] >> SPN_HIGH_POS) & SPN_HIGH_MASK) << SPN_HIGH_SHIFT);
@@ -75,11 +62,7 @@ static void dtc_read(const uint8_t *buf, j1939_dtc_t *dtc) {
 	dtc->cm = (uint8_t)(((uint32_t)buf[3] >> CM_POS) & 1U);
 }
 
-/**
- * @brief Checks every lamp and flash field against J1939_DTC_LAMP_MAX.
- * @param l  Lamp status.
- * @return true if all fields fit two bits.
- */
+/** Checks every lamp and flash field against J1939_DTC_LAMP_MAX: all fit two bits. */
 static bool lamps_valid(const j1939_dtc_lamps_t *l) {
 	return (l->mil <= J1939_DTC_LAMP_MAX) && (l->red_stop <= J1939_DTC_LAMP_MAX) &&
 	       (l->amber_warning <= J1939_DTC_LAMP_MAX) && (l->protect <= J1939_DTC_LAMP_MAX) &&
@@ -88,14 +71,7 @@ static bool lamps_valid(const j1939_dtc_lamps_t *l) {
 	       (l->protect_flash <= J1939_DTC_LAMP_MAX);
 }
 
-/**
- * @brief Packs the four 2-bit lamp fields of one lamp byte.
- * @param mil  Malfunction indicator lamp field.
- * @param rsl  Red stop lamp field.
- * @param awl  Amber warning lamp field.
- * @param pl   Protect lamp field.
- * @return The lamp byte.
- */
+/** Packs the four 2-bit lamp fields of one lamp byte. */
 static uint8_t lamp_byte(uint8_t mil, uint8_t rsl, uint8_t awl, uint8_t pl) {
 	return (uint8_t)((((uint32_t)mil & LAMP_MASK) << MIL_POS) |
 	                 (((uint32_t)rsl & LAMP_MASK) << RSL_POS) |
@@ -103,32 +79,19 @@ static uint8_t lamp_byte(uint8_t mil, uint8_t rsl, uint8_t awl, uint8_t pl) {
 	                 (((uint32_t)pl & LAMP_MASK) << PL_POS));
 }
 
-/**
- * @brief Extracts one 2-bit lamp field from a lamp byte.
- * @param byte  Lamp byte.
- * @param pos   Bit position of the field.
- * @return The field value.
- */
+/** Extracts one 2-bit lamp field from a lamp byte. */
 static uint8_t lamp_get(uint8_t byte, uint32_t pos) {
 	return (uint8_t)(((uint32_t)byte >> pos) & LAMP_MASK);
 }
 
-/**
- * @brief Writes the two lamp bytes: status, then flash.
- * @param l    Lamp status with valid fields.
- * @param buf  Two bytes.
- */
+/** Writes the two lamp bytes of a lamp status with valid fields: status, then flash. */
 static void lamps_write(const j1939_dtc_lamps_t *l, uint8_t *buf) {
 	buf[0] = lamp_byte(l->mil, l->red_stop, l->amber_warning, l->protect);
 	buf[1] = lamp_byte(l->mil_flash, l->red_stop_flash, l->amber_warning_flash,
 	                   l->protect_flash);
 }
 
-/**
- * @brief Reads the two lamp bytes.
- * @param buf  Two bytes: status, then flash.
- * @param l    Decoded lamp status.
- */
+/** Reads the two lamp bytes. */
 static void lamps_read(const uint8_t *buf, j1939_dtc_lamps_t *l) {
 	l->mil = lamp_get(buf[0], MIL_POS);
 	l->red_stop = lamp_get(buf[0], RSL_POS);
@@ -140,12 +103,7 @@ static void lamps_read(const uint8_t *buf, j1939_dtc_lamps_t *l) {
 	l->protect_flash = lamp_get(buf[1], PL_POS);
 }
 
-/**
- * @brief Validates every DTC of a list to be built.
- * @param dtcs   DTCs.
- * @param count  Number of DTCs.
- * @return true if every DTC is valid and none is the no-DTC marker.
- */
+/** Validates the DTCs of a list to be built: every one is valid and none is the no-DTC marker. */
 static bool dtc_list_valid(const j1939_dtc_t *dtcs, uint16_t count) {
 	bool valid = true;
 	uint16_t i;
@@ -157,9 +115,8 @@ static bool dtc_list_valid(const j1939_dtc_t *dtcs, uint16_t count) {
 }
 
 /**
- * @brief Computes the payload length of a DM.
- * @param count  Number of DTCs, at most J1939_DTC_DM_DTC_MAX.
- * @return 2 + 4 * count bytes, at least J1939_DTC_DM_LEN_MIN.
+ * Computes the payload length of a DM with count DTCs, at most J1939_DTC_DM_DTC_MAX: 2 + 4 * count
+ * bytes, at least J1939_DTC_DM_LEN_MIN.
  */
 static uint16_t dm_len(uint16_t count) {
 	uint16_t len = (uint16_t)(J1939_DTC_LAMPS_LEN + ((uint32_t)count * J1939_DTC_LEN));
@@ -171,11 +128,8 @@ static uint16_t dm_len(uint16_t count) {
 }
 
 /**
- * @brief Counts the four-byte DTC fields of a received DM payload.
- * @param data  Payload.
- * @param len   Payload length in bytes.
- * @return The number of DTC fields: 1 for the padded eight-byte form, or 0
- *         if the length is malformed.
+ * Counts the four-byte DTC fields of a received DM payload: 1 for the padded eight-byte form, 0 if
+ * the length is malformed.
  */
 static uint16_t dm_entries(const uint8_t *data, uint16_t len) {
 	uint16_t entries = 0U;

@@ -23,9 +23,8 @@
 #define BUF_LEN_MAX ((uint16_t)J1939_MAX_MSG_LEN) /**< Largest payload an object can hold. */
 
 /**
- * @brief Tells whether the stack handles a PGN itself, so that it never reaches a receive object.
- * @param pgn  PGN.
- * @return true for Request, Address Claimed, TP.CM and TP.DT.
+ * Tells whether the stack handles a PGN itself, so that it never reaches a receive object: Request,
+ * Address Claimed, TP.CM and TP.DT.
  */
 static bool pgn_owned(uint32_t pgn) {
 	return (pgn == J1939_PGN_REQUEST) || (pgn == J1939_PGN_ADDRESS_CLAIMED) ||
@@ -33,12 +32,9 @@ static bool pgn_owned(uint32_t pgn) {
 }
 
 /**
- * @brief Checks one entry of a receive object table.
- * @param s  Stack, for the NAME table.
- * @param c  Entry.
- * @return true if it has a buffer, a valid PGN the stack does not own,
- *         1 <= min_len <= buf_len <= J1939_MAX_MSG_LEN, and either a
- *         source address of at most 253 or a NAME with a NAME table set up.
+ * Checks one entry of a receive object table: it has a buffer, a valid PGN the stack does not own,
+ * 1 <= min_len <= buf_len <= J1939_MAX_MSG_LEN, and either a source address of at most 253 or a
+ * NAME with a NAME table set up.
  */
 static bool rx_entry_valid(const j1939_t *s, const j1939_rxobj_cfg_t *c) {
 	bool sender_valid = (c->name == 0U) ? (c->sa <= SA_MAX) : (s->nametab.buf != NULL);
@@ -49,11 +45,8 @@ static bool rx_entry_valid(const j1939_t *s, const j1939_rxobj_cfg_t *c) {
 }
 
 /**
- * @brief Tells whether two entries take the same PGN from the same sender.
- * @param a  Entry.
- * @param b  Entry.
- * @return true for the same PGN and either the same source address, both
- *         without a NAME, or the same NAME.
+ * Tells whether two entries take the same PGN from the same sender: the same source address, both
+ * without a NAME, or the same NAME.
  */
 static bool rx_entry_same(const j1939_rxobj_cfg_t *a, const j1939_rxobj_cfg_t *b) {
 	bool same_sender;
@@ -67,12 +60,8 @@ static bool rx_entry_same(const j1939_rxobj_cfg_t *a, const j1939_rxobj_cfg_t *b
 }
 
 /**
- * @brief Checks a whole receive object table.
- * @param s    Stack, for the NAME table.
- * @param cfg  Configuration entries; may be NULL if @p len is 0.
- * @param obj  State entries; may be NULL if @p len is 0.
- * @param len  Number of entries.
- * @return true if every entry is valid and no two take the same PGN from the same sender.
+ * Checks a whole receive object table: every entry is valid and no two take the same PGN from the
+ * same sender. Both arrays may be NULL if len is 0.
  */
 static bool rx_table_valid(const j1939_t *s, const j1939_rxobj_cfg_t *cfg, const j1939_rxobj_t *obj,
                            uint16_t len) {
@@ -97,13 +86,8 @@ typedef struct rx_sender {
 } rx_sender_t;
 
 /**
- * @brief Tells whether an object takes a PGN from a sender.
- * @param s       Stack.
- * @param c       Object configuration.
- * @param pgn     PGN of the message.
- * @param sender  Sender of the message; its NAME is looked up on first use.
- * @return true if the object is configured for @p pgn and the sender's
- *         address or, for an object matching by NAME, the sender's NAME.
+ * Tells whether an object takes a PGN from a sender: it is configured for the PGN and the sender's
+ * address or, for an object matching by NAME, the sender's NAME, which is looked up on first use.
  */
 static bool rx_matches(const j1939_t *s, const j1939_rxobj_cfg_t *c, uint32_t pgn,
                        rx_sender_t *sender) {
