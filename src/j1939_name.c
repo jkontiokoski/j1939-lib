@@ -27,32 +27,17 @@
 #define BYTE_MASK  0xFFU /**< Mask of one byte. */
 #define BYTE_SHIFT 8U    /**< Bits per byte. */
 
-/**
- * @brief Places a field value at its position in the NAME.
- * @param value  Field value, already range checked.
- * @param shift  Bit position of the field.
- * @return The value shifted into place.
- */
+/** Places a field value, already range checked, at its position in the NAME. */
 static uint64_t field_put(uint32_t value, uint32_t shift) {
 	return (uint64_t)value << shift;
 }
 
-/**
- * @brief Extracts a field from a NAME.
- * @param name   NAME.
- * @param shift  Bit position of the field.
- * @param max    Largest field value, an all-ones mask.
- * @return The field value.
- */
+/** Extracts the field at a bit position from a NAME; max is its largest value, an all-ones mask. */
 static uint32_t field_get(uint64_t name, uint32_t shift, uint32_t max) {
 	return (uint32_t)((name >> shift) & (uint64_t)max);
 }
 
-/**
- * @brief Checks every NAME field against its range.
- * @param f  Fields.
- * @return true if all fields fit their bit widths.
- */
+/** Checks that every NAME field fits its bit width. */
 static bool fields_valid(const j1939_name_fields_t *f) {
 	return (f->industry_group <= J1939_NAME_INDUSTRY_GROUP_MAX) &&
 	       (f->vehicle_system_instance <= J1939_NAME_VEHICLE_SYSTEM_INSTANCE_MAX) &&

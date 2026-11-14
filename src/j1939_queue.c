@@ -27,9 +27,8 @@ j1939_ret_t j1939_queue_init(j1939_queue_t *q, j1939_port_frame_t *buf, uint16_t
 }
 
 /**
- * @brief Producer side: finds the next free slot, with the index read in the lock.
- * @param q  Queue.
- * @return The free slot, or NULL if the queue is full.
+ * Producer side: finds the next free slot, with the index read in the lock. Returns NULL if the
+ * queue is full.
  */
 static j1939_port_frame_t *slot_free(j1939_queue_t *q) {
 	j1939_port_frame_t *slot = NULL;
@@ -46,9 +45,8 @@ static j1939_port_frame_t *slot_free(j1939_queue_t *q) {
 }
 
 /**
- * @brief Producer side: publishes the free slot, in the lock.
- * @param q  Queue.
- * @return J1939_RET_OK, or J1939_RET_ERR_FULL if the queue is full.
+ * Producer side: publishes the free slot, in the lock. Returns J1939_RET_ERR_FULL if the queue is
+ * full.
  */
 static j1939_ret_t slot_publish(j1939_queue_t *q) {
 	bool ok;

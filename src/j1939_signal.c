@@ -36,11 +36,7 @@
 #define DISCRETE_ERROR     2U /**< Error indicator; 3 is not available. */
 /** @} */
 
-/**
- * @brief Computes the largest value of a field.
- * @param bits  Field length, 1..32.
- * @return 2^bits - 1.
- */
+/** Computes the largest value of a field of 1..32 bits: 2^bits - 1. */
 static uint32_t field_max(uint8_t bits) {
 	uint32_t max = UINT32_MAX;
 
@@ -50,12 +46,7 @@ static uint32_t field_max(uint8_t bits) {
 	return max;
 }
 
-/**
- * @brief Divides, rounding to nearest with halves up.
- * @param n  Dividend.
- * @param d  Divisor, not 0.
- * @return n / d rounded.
- */
+/** Divides n by d, which is not 0, rounding to nearest with halves up. */
 static uint64_t div_round(uint64_t n, uint64_t d) {
 	uint64_t q = n / d;
 	uint64_t r = n % d;
@@ -67,11 +58,8 @@ static uint64_t div_round(uint64_t n, uint64_t d) {
 }
 
 /**
- * @brief Checks that a bit field lies within a payload.
- * @param len    Payload length in bytes.
- * @param start  Bit offset of the field.
- * @param bits   Field length.
- * @return true if 1 <= bits <= J1939_SIGNAL_BITS_MAX and the field ends within @p len bytes.
+ * Checks that a bit field lies within a payload: 1 <= bits <= J1939_SIGNAL_BITS_MAX and the field
+ * ends within len bytes.
  */
 static bool field_ok(uint16_t len, uint16_t start, uint8_t bits) {
 	return (bits >= 1U) && (bits <= J1939_SIGNAL_BITS_MAX) &&
@@ -79,9 +67,8 @@ static bool field_ok(uint16_t len, uint16_t start, uint8_t bits) {
 }
 
 /**
- * @brief Checks the length of a signal against its range type.
- * @param sig  Descriptor.
- * @return true for 1..32 bits (plain), 8, 16 or 32 bits (continuous) or 2 bits (discrete).
+ * Checks the length of a signal against its range type: 1..32 bits (plain), 8, 16 or 32 bits
+ * (continuous) or 2 bits (discrete).
  */
 static bool bits_ok(const j1939_signal_t *sig) {
 	bool ok;
@@ -104,15 +91,12 @@ static bool bits_ok(const j1939_signal_t *sig) {
 }
 
 /**
- * @brief Checks that no raw value of a signal can overflow when scaled.
+ * Checks that no raw value of a signal can overflow when scaled. The descriptor has a valid length
+ * and a non-zero denominator.
  *
- * The largest raw value must scale to at most INT64_MAX, before and after
- * the offset is added. Then no raw value of the field can overflow: the
- * scaled magnitude is at most (2^32 - 1)^2 + 2^31 and fits in 64 bits, and
- * a negative offset only moves the result towards zero.
- *
- * @param sig  Descriptor with a valid length and a non-zero denominator.
- * @return true if scaling is safe.
+ * The largest raw value must scale to at most INT64_MAX, before and after the offset is added. Then
+ * no raw value of the field can overflow: the scaled magnitude is at most (2^32 - 1)^2 + 2^31 and
+ * fits in 64 bits, and a negative offset only moves the result towards zero.
  */
 static bool scale_ok(const j1939_signal_t *sig) {
 	uint64_t q = div_round((uint64_t)field_max(sig->bits) * sig->res_num, sig->res_den);
@@ -127,11 +111,8 @@ static bool scale_ok(const j1939_signal_t *sig) {
 }
 
 /**
- * @brief Validates a descriptor.
- * @param sig  Descriptor; may be NULL.
- * @return true if not NULL, SPN and PGN are valid, the resolution has no
- *         zero term, the length fits the range type, the field fits the
- *         largest payload and scaling cannot overflow.
+ * Validates a descriptor: it is not NULL, SPN and PGN are valid, the resolution has no zero term,
+ * the length fits the range type, the field fits the largest payload and scaling cannot overflow.
  */
 static bool sig_ok(const j1939_signal_t *sig) {
 	bool ok = false;
@@ -149,11 +130,8 @@ static bool sig_ok(const j1939_signal_t *sig) {
 }
 
 /**
- * @brief Reads a little endian bit field.
- * @param data   Payload.
- * @param start  Bit offset of the field; the field must lie within the payload.
- * @param bits   Field length, 1..32.
- * @return The field value.
+ * Reads a little endian bit field of 1..32 bits at bit offset start; the field must lie within the
+ * payload.
  */
 static uint32_t bits_read(const uint8_t *data, uint16_t start, uint8_t bits) {
 	uint32_t raw = 0U;
@@ -181,11 +159,8 @@ static uint32_t bits_read(const uint8_t *data, uint16_t start, uint8_t bits) {
 }
 
 /**
- * @brief Writes a little endian bit field, leaving all other bits unchanged.
- * @param data   Payload.
- * @param start  Bit offset of the field; the field must lie within the payload.
- * @param bits   Field length, 1..32.
- * @param raw    Value; must fit in @p bits.
+ * Writes a little endian bit field of 1..32 bits at bit offset start, leaving all other bits
+ * unchanged. The field must lie within the payload and the value must fit in the field.
  */
 static void bits_write(uint8_t *data, uint16_t start, uint8_t bits, uint32_t raw) {
 	uint32_t pos = start;
@@ -212,10 +187,8 @@ static void bits_write(uint8_t *data, uint16_t start, uint8_t bits, uint32_t raw
 }
 
 /**
- * @brief Classifies a raw value by the J1939/71 range of its signal type.
- * @param sig  Valid descriptor.
- * @param raw  Raw value; must fit in the signal's bits.
- * @return The range class; plain signals are always valid.
+ * Classifies a raw value by the J1939/71 range of its signal type; plain signals are always valid.
+ * The descriptor is valid and the value fits in the signal's bits.
  */
 static j1939_signal_class_t classify(const j1939_signal_t *sig, uint32_t raw) {
 	j1939_signal_class_t cls;
@@ -257,10 +230,8 @@ static j1939_signal_class_t classify(const j1939_signal_t *sig, uint32_t raw) {
 }
 
 /**
- * @brief Scales a raw value to engineering units: raw * res_num / res_den + offset.
- * @param sig  Valid descriptor, see scale_ok().
- * @param raw  Raw value; must fit in the signal's bits.
- * @return The engineering value, rounded to nearest with halves up.
+ * Scales a raw value to engineering units: raw * res_num / res_den + offset, rounded to nearest
+ * with halves up. The descriptor is valid, see scale_ok(), and the value fits in the signal's bits.
  */
 static int64_t to_eng(const j1939_signal_t *sig, uint32_t raw) {
 	uint64_t q = div_round((uint64_t)raw * sig->res_num, sig->res_den);
@@ -269,12 +240,8 @@ static int64_t to_eng(const j1939_signal_t *sig, uint32_t raw) {
 }
 
 /**
- * @brief Converts an engineering value to a raw value.
- * @param sig    Valid descriptor.
- * @param value  Engineering value.
- * @param raw    Raw value. Written only on success.
- * @return true if the value rounds to a raw value that fits the field and
- *         lies in the valid range.
+ * Converts an engineering value to a raw value for a valid descriptor. Returns true, and writes
+ * raw, if the value rounds to a raw value that fits the field and lies in the valid range.
  */
 static bool from_eng(const j1939_signal_t *sig, int64_t value, uint32_t *raw) {
 	bool ok = false;
@@ -315,11 +282,9 @@ static bool from_eng(const j1939_signal_t *sig, int64_t value, uint32_t *raw) {
 }
 
 /**
- * @brief Computes the error or not available raw value of a signal.
- * @param sig  Valid descriptor.
- * @param cls  J1939_SIGNAL_ERROR or J1939_SIGNAL_NOT_AVAILABLE.
- * @param raw  The indicator value. Written only on success.
- * @return false for a plain signal or another class.
+ * Computes the error or not available raw value of a signal with a valid descriptor. Returns false,
+ * with raw unchanged, for a plain signal or a class other than J1939_SIGNAL_ERROR and
+ * J1939_SIGNAL_NOT_AVAILABLE.
  */
 static bool indicator_raw(const j1939_signal_t *sig, j1939_signal_class_t cls, uint32_t *raw) {
 	bool ok = (sig->type != J1939_SIGNAL_TYPE_PLAIN);
@@ -344,13 +309,8 @@ static bool indicator_raw(const j1939_signal_t *sig, j1939_signal_class_t cls, u
 }
 
 /**
- * @brief Checks the arguments and reads a bit field.
- * @param data   Payload.
- * @param len    Payload length in bytes.
- * @param start  Bit offset of the field.
- * @param bits   Field length.
- * @param raw    Field value. Written only on success.
- * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer or a field outside the payload.
+ * Checks the arguments and reads a bit field. Returns J1939_RET_ERR_ARG, with raw unchanged, on a
+ * NULL pointer or a field outside the payload.
  */
 static j1939_ret_t bits_get(const uint8_t *data, uint16_t len, uint16_t start, uint8_t bits,
                             uint32_t *raw) {
@@ -364,14 +324,8 @@ static j1939_ret_t bits_get(const uint8_t *data, uint16_t len, uint16_t start, u
 }
 
 /**
- * @brief Checks the arguments and writes a bit field.
- * @param data   Payload.
- * @param len    Payload length in bytes.
- * @param start  Bit offset of the field.
- * @param bits   Field length.
- * @param raw    Value.
- * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer, a field
- *         outside the payload or a value that does not fit.
+ * Checks the arguments and writes a bit field. Returns J1939_RET_ERR_ARG on a NULL pointer, a field
+ * outside the payload or a value that does not fit.
  */
 static j1939_ret_t bits_set(uint8_t *data, uint16_t len, uint16_t start, uint8_t bits,
                             uint32_t raw) {
@@ -385,13 +339,9 @@ static j1939_ret_t bits_set(uint8_t *data, uint16_t len, uint16_t start, uint8_t
 }
 
 /**
- * @brief Reads, classifies and scales a signal.
- * @param sig    Valid descriptor.
- * @param data   Payload.
- * @param len    Payload length in bytes.
- * @param value  Engineering value. Written only for a valid raw value.
- * @param cls    Range class of the raw value.
- * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer or a field outside the payload.
+ * Reads, classifies and scales a signal with a valid descriptor; the engineering value is written
+ * only for a valid raw value. Returns J1939_RET_ERR_ARG on a NULL pointer or a field outside the
+ * payload.
  */
 static j1939_ret_t decode(const j1939_signal_t *sig, const uint8_t *data, uint16_t len,
                           int64_t *value, j1939_signal_class_t *cls) {

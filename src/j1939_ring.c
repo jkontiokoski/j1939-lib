@@ -8,12 +8,7 @@
 
 #include "j1939_ring_priv.h"
 
-/**
- * @brief Advances a slot index by one, wrapping at the ring length.
- * @param r      Ring.
- * @param index  Slot index.
- * @return The following slot index.
- */
+/** Advances a slot index by one, wrapping at the ring length. */
 static uint16_t next_index(const j1939_ring_t *r, uint16_t index) {
 	uint16_t next = (uint16_t)(index + 1U);
 

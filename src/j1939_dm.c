@@ -42,12 +42,10 @@
 #define DM_BUF_NEED(n) ((uint32_t)J1939_DM_BUF_LEN((uint32_t)(n)))
 
 /**
- * @brief Looks up the diagnostic state of a CA.
- * @param s   Stack; may be NULL.
- * @param ca  CA.
- * @param dm  Diagnostic state; written when @p ca is known.
- * @return J1939_RET_OK, J1939_RET_ERR_STATE when diagnostics are not enabled
- *         for the CA, or J1939_RET_ERR_ARG on a NULL stack or an unknown CA.
+ * Looks up the diagnostic state of a CA; the stack may be NULL.
+ *
+ * Returns J1939_RET_OK, J1939_RET_ERR_STATE when diagnostics are not enabled for the CA, or
+ * J1939_RET_ERR_ARG on a NULL stack or an unknown CA. dm is written when the CA is known.
  */
 static j1939_ret_t dm_lookup(const j1939_t *s, j1939_ca_id_t ca, const j1939_dm_t **dm) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
@@ -59,13 +57,7 @@ static j1939_ret_t dm_lookup(const j1939_t *s, j1939_ca_id_t ca, const j1939_dm_
 	return ret;
 }
 
-/**
- * @brief As dm_lookup(), for changing the stack's diagnostic state.
- * @param s   Stack; may be NULL.
- * @param ca  CA.
- * @param dm  Diagnostic state; written when @p ca is known.
- * @return As dm_lookup().
- */
+/** As dm_lookup(), for changing the stack's diagnostic state. */
 static j1939_ret_t dm_lookup_mut(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t **dm) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
@@ -79,10 +71,8 @@ static j1939_ret_t dm_lookup_mut(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t **dm) 
 }
 
 /**
- * @brief Advances a timer, except in the call after it was started; saturates at UINT32_MAX.
- * @param timer_us    Timer, in microseconds.
- * @param fresh       Set when the timer was started since the previous call; cleared here.
- * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
+ * Advances a timer, except in the call after it was started (fresh, cleared here); saturates at
+ * UINT32_MAX.
  */
 static void timer_advance(uint32_t *timer_us, bool *fresh, uint32_t elapsed_us) {
 	if (*fresh) {
@@ -94,23 +84,12 @@ static void timer_advance(uint32_t *timer_us, bool *fresh, uint32_t elapsed_us) 
 	}
 }
 
-/**
- * @brief Tells whether two DTCs are the same: DTCs are identified by SPN and FMI.
- * @param a  DTC.
- * @param b  DTC.
- * @return true for equal SPN and FMI.
- */
+/** Tells whether two DTCs are the same: DTCs are identified by SPN and FMI. */
 static bool dtc_same(const j1939_dtc_t *a, const j1939_dtc_t *b) {
 	return (a->spn == b->spn) && (a->fmi == b->fmi);
 }
 
-/**
- * @brief Tells whether a DTC is in a list.
- * @param list   DTCs.
- * @param count  Number of DTCs in @p list.
- * @param dtc    DTC.
- * @return true if a DTC with the same SPN and FMI is listed.
- */
+/** Tells whether a DTC with the same SPN and FMI is in a list of count DTCs. */
 static bool dtc_listed(const j1939_dtc_t *list, uint16_t count, const j1939_dtc_t *dtc) {
 	bool found = false;
 	uint16_t i;
@@ -122,9 +101,8 @@ static bool dtc_listed(const j1939_dtc_t *list, uint16_t count, const j1939_dtc_
 }
 
 /**
- * @brief Tells whether j1939_dtc_dm_build() accepts a DTC.
- * @param dtc  DTC.
- * @return true if it encodes and is not the no-DTC marker (SPN 0, FMI 0).
+ * Tells whether j1939_dtc_dm_build() accepts a DTC: it encodes and is not the no-DTC marker (SPN 0,
+ * FMI 0).
  */
 static bool dm_dtc_valid(const j1939_dtc_t *dtc) {
 	uint8_t tmp[J1939_DTC_LEN];
@@ -134,12 +112,10 @@ static bool dm_dtc_valid(const j1939_dtc_t *dtc) {
 }
 
 /**
- * @brief Checks a DTC list given by the application.
- * @param dtcs   DTCs; may be NULL if @p count is 0.
- * @param count  Number of DTCs.
- * @param cap    Capacity of the stack's copy.
- * @return J1939_RET_OK, J1939_RET_ERR_FULL if @p count exceeds @p cap, or
- *         J1939_RET_ERR_ARG on a NULL list, an invalid DTC or a duplicate.
+ * Checks a DTC list given by the application; it may be NULL if count is 0.
+ *
+ * Returns J1939_RET_OK, J1939_RET_ERR_FULL if count exceeds cap, the capacity of the stack's copy,
+ * or J1939_RET_ERR_ARG on a NULL list, an invalid DTC or a duplicate.
  */
 static j1939_ret_t dtc_list_check(const j1939_dtc_t *dtcs, uint16_t count, uint16_t cap) {
 	j1939_ret_t ret = J1939_RET_OK;
@@ -159,11 +135,7 @@ static j1939_ret_t dtc_list_check(const j1939_dtc_t *dtcs, uint16_t count, uint1
 	return ret;
 }
 
-/**
- * @brief Counts the change hold records down; records started since the previous call wait.
- * @param dm          Diagnostic state.
- * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
- */
+/** Counts the change hold records down; records started since the previous call wait. */
 static void dm_hold_tick(j1939_dm_t *dm, uint32_t elapsed_us) {
 	uint16_t i;
 
@@ -181,11 +153,8 @@ static void dm_hold_tick(j1939_dm_t *dm, uint32_t elapsed_us) {
 }
 
 /**
- * @brief Records a DTC that changed state.
- * @param dm   Diagnostic state.
- * @param dtc  The DTC.
- * @return true if the change triggers a DM1: the DTC has no running hold and
- *         a free record takes it.
+ * Records a DTC that changed state. Returns true if the change triggers a DM1: the DTC has no
+ * running hold and a free record takes it.
  */
 static bool dtc_changed(j1939_dm_t *dm, const j1939_dtc_t *dtc) {
 	j1939_dm_hold_t *free_rec = NULL;
@@ -216,12 +185,7 @@ static bool dtc_changed(j1939_dm_t *dm, const j1939_dtc_t *dtc) {
 	return free_rec != NULL;
 }
 
-/**
- * @brief Replaces the active DTCs with a checked list, scheduling a DM1 on a reportable change.
- * @param dm     Diagnostic state.
- * @param dtcs   Checked DTC list.
- * @param count  Number of DTCs.
- */
+/** Replaces the active DTCs with a checked list, scheduling a DM1 on a reportable change. */
 static void active_update(j1939_dm_t *dm, const j1939_dtc_t *dtcs, uint16_t count) {
 	bool trigger = false;
 	uint16_t i;
@@ -247,16 +211,12 @@ static void active_update(j1939_dm_t *dm, const j1939_dtc_t *dtcs, uint16_t coun
 }
 
 /**
- * @brief Handles the result of a DM send that is retried while the tx queue is full or the
- *        broadcast busy.
+ * Handles the result of a DM send that is retried while the tx queue is full or the broadcast busy.
+ * Returns true when the send is over, sent or given up.
  *
- * Retries are counted in dm_tx_retry; a send given up, at the latest when
- * @p age_us reaches J1939_DM_RESPONSE_US, in dm_tx_dropped.
- *
- * @param s       Stack.
- * @param ret     Result of the send.
- * @param age_us  Age of the send; NO_EXPIRY for one retried until it succeeds.
- * @return true when the send is over, sent or given up.
+ * Retries are counted in dm_tx_retry; a send given up, at the latest when age_us reaches
+ * J1939_DM_RESPONSE_US, in dm_tx_dropped. With NO_EXPIRY as its age a send is retried until it
+ * succeeds.
  */
 static bool send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
 	bool done = true;
@@ -277,17 +237,11 @@ static bool send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
 }
 
 /**
- * @brief Builds and sends a DM1 or DM2 of a CA.
+ * Builds and sends a DM1 or DM2 of a CA with diagnostics enabled. Returns as j1939_dtc_dm_build()
+ * and j1939_send().
  *
- * Both are PDU2 PGNs: a single frame always goes to the global address.
- *
- * @param s      Stack.
- * @param ca     CA with diagnostics enabled.
- * @param pgn    J1939_PGN_DM1 or J1939_PGN_DM2.
- * @param dtcs   DTCs to report.
- * @param count  Number of DTCs.
- * @param da     Destination of a multi-packet message: J1939_ADDR_GLOBAL for BAM.
- * @return As j1939_dtc_dm_build() and j1939_send().
+ * Both are PDU2 PGNs: a single frame always goes to the global address. da is the destination of a
+ * multi-packet message, J1939_ADDR_GLOBAL for BAM.
  */
 static j1939_ret_t dm_send(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, const j1939_dtc_t *dtcs,
                            uint16_t count, uint8_t da) {
@@ -305,13 +259,8 @@ static j1939_ret_t dm_send(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, const j19
 }
 
 /**
- * @brief Sends an Acknowledgement to the global address, addressed to the requester in its data.
- * @param s          Stack.
- * @param ca         Sending CA.
- * @param ctrl       Control byte: ACK, NACK or Cannot Respond.
- * @param requester  Address of the requester.
- * @param pgn        Acknowledged PGN.
- * @return As j1939_send().
+ * Sends an Acknowledgement (ACK, NACK or Cannot Respond) to the global address, addressed to the
+ * requester in its data. Returns as j1939_send().
  */
 static j1939_ret_t ack_send(j1939_t *s, j1939_ca_id_t ca, uint8_t ctrl, uint8_t requester,
                             uint32_t pgn) {
@@ -330,13 +279,10 @@ static j1939_ret_t ack_send(j1939_t *s, j1939_ca_id_t ca, uint8_t ctrl, uint8_t 
 }
 
 /**
- * @brief Ends the application's decision on a clear request.
+ * Ends the application's decision on a clear request.
  *
- * A destination specific request is then acknowledged; a global one is not.
- *
- * @param c       Clear request.
- * @param accept  true if accepted.
- * @param fresh   true if decided between two calls: the response time counts from the next.
+ * A destination specific request is then acknowledged; a global one is not. fresh is true if
+ * decided between two calls: the response time counts from the next.
  */
 static void clear_decide(j1939_dm_clear_t *c, bool accept, bool fresh) {
 	if (c->requester == J1939_ADDR_GLOBAL) {
@@ -349,11 +295,8 @@ static void clear_decide(j1939_dm_clear_t *c, bool accept, bool fresh) {
 }
 
 /**
- * @brief Sends the decided ACK or NACK of a clear request, retried at most J1939_DM_RESPONSE_US.
- * @param s    Stack.
- * @param ca   CA.
- * @param c    Clear request in ACK or NACK state.
- * @param pgn  J1939_PGN_DM3 or J1939_PGN_DM11.
+ * Sends the decided ACK or NACK of a clear request in ACK or NACK state, retried at most
+ * J1939_DM_RESPONSE_US.
  */
 static void ack_try(j1939_t *s, j1939_ca_id_t ca, j1939_dm_clear_t *c, uint32_t pgn) {
 	uint8_t ctrl = (uint8_t)((c->state == J1939_DM_CLEAR_ACK) ? J1939_ACK_CTRL_ACK
@@ -364,14 +307,7 @@ static void ack_try(j1939_t *s, j1939_ca_id_t ca, j1939_dm_clear_t *c, uint32_t 
 	}
 }
 
-/**
- * @brief Advances a clear request: refuses it when undecided in time, sends its acknowledgement.
- * @param s           Stack.
- * @param ca          CA.
- * @param c           Clear request.
- * @param pgn         J1939_PGN_DM3 or J1939_PGN_DM11.
- * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
- */
+/** Advances a clear request: refuses it when undecided in time, sends its acknowledgement. */
 static void clear_tick(j1939_t *s, j1939_ca_id_t ca, j1939_dm_clear_t *c, uint32_t pgn,
                        uint32_t elapsed_us) {
 	timer_advance(&c->timer_us, &c->fresh, elapsed_us);
@@ -399,17 +335,11 @@ static void clear_tick(j1939_t *s, j1939_ca_id_t ca, j1939_dm_clear_t *c, uint32
 }
 
 /**
- * @brief Records a received clear request.
+ * Records a received clear request; the requester is J1939_ADDR_GLOBAL for a global request.
  *
- * A request covered by the one in progress is merged; a destination specific
- * request replaces an undecided global one; another requester's request
- * while one is in progress is answered with Cannot Respond.
- *
- * @param s          Stack.
- * @param ca         CA.
- * @param c          Clear request.
- * @param pgn        J1939_PGN_DM3 or J1939_PGN_DM11.
- * @param requester  Requester, or J1939_ADDR_GLOBAL for a global request.
+ * A request covered by the one in progress is merged; a destination specific request replaces an
+ * undecided global one; another requester's request while one is in progress is answered with
+ * Cannot Respond.
  */
 static void clear_request(j1939_t *s, j1939_ca_id_t ca, j1939_dm_clear_t *c, uint32_t pgn,
                           uint8_t requester) {
@@ -433,12 +363,9 @@ static void clear_request(j1939_t *s, j1939_ca_id_t ca, j1939_dm_clear_t *c, uin
 }
 
 /**
- * @brief Stops the diagnostics of a CA that may not transmit.
+ * Stops the diagnostics of a CA that may not transmit.
  *
  * Pending sends end and are counted; the first DM1 follows the next claim.
- *
- * @param s   Stack.
- * @param dm  Diagnostic state.
  */
 static void dm_stop(j1939_t *s, j1939_dm_t *dm) {
 	uint32_t k;
@@ -462,15 +389,11 @@ static void dm_stop(j1939_t *s, j1939_dm_t *dm) {
 }
 
 /**
- * @brief Schedules the periodic DM1.
+ * Schedules the periodic DM1.
  *
- * The first DM1 goes out in the call in which the CA may first transmit; the
- * period counts from the next call and keeps its phase across late calls. A
- * DM1 still unsent when the next is due is counted in dm_tx_dropped.
- *
- * @param s           Stack.
- * @param dm          Diagnostic state.
- * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
+ * The first DM1 goes out in the call in which the CA may first transmit; the period counts from the
+ * next call and keeps its phase across late calls. A DM1 still unsent when the next is due is
+ * counted in dm_tx_dropped.
  */
 static void dm1_tick(j1939_t *s, j1939_dm_t *dm, uint32_t elapsed_us) {
 	if (!dm->started) {
@@ -494,16 +417,7 @@ static void dm1_tick(j1939_t *s, j1939_dm_t *dm, uint32_t elapsed_us) {
 	}
 }
 
-/**
- * @brief Sends a pending answer to a Request, retried at most J1939_DM_RESPONSE_US.
- * @param s           Stack.
- * @param ca          CA.
- * @param a           Answer.
- * @param pgn         J1939_PGN_DM1 or J1939_PGN_DM2.
- * @param dtcs        DTCs to report.
- * @param count       Number of DTCs.
- * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
- */
+/** Sends a pending answer to a Request for DM1 or DM2, retried at most J1939_DM_RESPONSE_US. */
 static void answer_tick(j1939_t *s, j1939_ca_id_t ca, j1939_dm_answer_t *a, uint32_t pgn,
                         const j1939_dtc_t *dtcs, uint16_t count, uint32_t elapsed_us) {
 	if (a->due) {
@@ -515,9 +429,8 @@ static void answer_tick(j1939_t *s, j1939_ca_id_t ca, j1939_dm_answer_t *a, uint
 }
 
 /**
- * @brief Records a Request for an answer; requests of several nodes are answered once, globally.
- * @param a          Answer.
- * @param requester  Requester, or J1939_ADDR_GLOBAL for a global Request.
+ * Records a Request for an answer; requests of several nodes are answered once, globally. The
+ * requester is J1939_ADDR_GLOBAL for a global Request.
  */
 static void answer_request(j1939_dm_answer_t *a, uint8_t requester) {
 	if (!a->due) {
@@ -532,13 +445,7 @@ static void answer_request(j1939_dm_answer_t *a, uint8_t requester) {
 	}
 }
 
-/**
- * @brief Runs the diagnostics of one CA: holds, DM1 schedule, clear requests and answers.
- * @param s           Stack.
- * @param ca          CA.
- * @param dm          Its diagnostic state.
- * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
- */
+/** Runs the diagnostics of one CA: holds, DM1 schedule, clear requests and answers. */
 static void ca_process(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_t elapsed_us) {
 	dm_hold_tick(dm, elapsed_us);
 	if (!j1939_addr_tx_allowed(&s->ca[ca])) {
@@ -563,12 +470,7 @@ static void ca_process(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_t el
 	}
 }
 
-/**
- * @brief Tells whether a Request addresses a CA.
- * @param ca  CA.
- * @param da  Destination of the Request.
- * @return true for a global Request or one to the address the CA holds.
- */
+/** Tells whether a Request addresses a CA: it is global, or sent to the address the CA holds. */
 static bool ca_addressed(const j1939_ca_t *ca, uint8_t da) {
 	return (da == J1939_ADDR_GLOBAL) ||
 	       ((ca->address == da) && ((ca->state == J1939_ADDR_STATE_CLAIMING) ||
@@ -576,10 +478,8 @@ static bool ca_addressed(const j1939_ca_t *ca, uint8_t da) {
 }
 
 /**
- * @brief Maps a clear request PGN to its index in j1939_dm_t::clear.
- * @param pgn  PGN.
- * @param k    CLEAR_DM3 or CLEAR_DM11. Written only on success.
- * @return false if @p pgn is neither DM3 nor DM11.
+ * Maps a clear request PGN to its index in j1939_dm_t::clear, CLEAR_DM3 or CLEAR_DM11. Returns
+ * false, with k unchanged, if the PGN is neither DM3 nor DM11.
  */
 static bool clear_index(uint32_t pgn, uint32_t *k) {
 	bool found = true;
@@ -595,10 +495,8 @@ static bool clear_index(uint32_t pgn, uint32_t *k) {
 }
 
 /**
- * @brief Tells whether a CA's diagnostics handle a Request for a PGN.
- * @param dm   Diagnostic state.
- * @param pgn  Requested PGN.
- * @return true for DM1 and DM2, and for DM3 or DM11 when enabled.
+ * Tells whether a CA's diagnostics handle a Request for a PGN: DM1 and DM2 always, DM3 and DM11
+ * when enabled.
  */
 static bool dm_supported(const j1939_dm_t *dm, uint32_t pgn) {
 	uint32_t k = 0U;
@@ -611,16 +509,11 @@ static bool dm_supported(const j1939_dm_t *dm, uint32_t pgn) {
 }
 
 /**
- * @brief Records a supported diagnostic Request for a CA.
+ * Records a supported diagnostic Request for a CA; the requester is J1939_ADDR_GLOBAL for a global
+ * Request.
  *
- * A global Request for DM1, or any Request while DM1 fits one frame, is
- * answered by a broadcast DM1.
- *
- * @param s          Stack.
- * @param ca         CA.
- * @param dm         Its diagnostic state.
- * @param pgn        Requested PGN, supported by the CA.
- * @param requester  Requester, or J1939_ADDR_GLOBAL for a global Request.
+ * A global Request for DM1, or any Request while DM1 fits one frame, is answered by a broadcast
+ * DM1.
  */
 static void request_accept(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_t pgn,
                            uint8_t requester) {
@@ -643,13 +536,9 @@ static void request_accept(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_
 }
 
 /**
- * @brief Checks a diagnostics configuration.
- * @param s    Stack.
- * @param cfg  Configuration.
- * @return true if the capacities are within J1939_DTC_DM_DTC_MAX, the
- *         storage is present, the buffer holds the larger list, the payload
- *         is at most J1939_MAX_MSG_LEN and a multi-packet payload has a TP transmit
- *         buffer.
+ * Checks a diagnostics configuration: the capacities are within J1939_DTC_DM_DTC_MAX, the storage
+ * is present, the buffer holds the larger list, the payload is at most J1939_MAX_MSG_LEN and a
+ * multi-packet payload has a TP transmit buffer.
  */
 static bool dm_cfg_valid(const j1939_t *s, const j1939_dm_cfg_t *cfg) {
 	uint16_t max = (cfg->active_len > cfg->prev_len) ? cfg->active_len : cfg->prev_len;
@@ -663,13 +552,7 @@ static bool dm_cfg_valid(const j1939_t *s, const j1939_dm_cfg_t *cfg) {
 	       ((need <= FRAME_LEN) || (j1939_tp_tx_buf_allocated(s)));
 }
 
-/**
- * @brief Tells whether diagnostic state storage is registered for another CA.
- * @param s   Stack.
- * @param ca  CA being initialised.
- * @param dm  Storage.
- * @return true if @p dm is registered for a CA other than @p ca.
- */
+/** Tells whether diagnostic state storage is registered for a CA other than ca. */
 static bool dm_used(const j1939_t *s, j1939_ca_id_t ca, const j1939_dm_t *dm) {
 	bool used = false;
 	uint8_t i;

@@ -16,11 +16,7 @@
 #define PF_SHIFT   8U    /**< Position of the PDU format byte in a PGN. */
 #define BYTE_MASK  0xFFU /**< Mask of one byte. */
 
-/**
- * @brief Extracts the PDU format byte of a PGN.
- * @param pgn  PGN.
- * @return PF, which decides PDU1 (below 240) or PDU2.
- */
+/** Extracts the PDU format byte of a PGN, which decides PDU1 (below 240) or PDU2. */
 static uint8_t pgn_pf(uint32_t pgn) {
 	return (uint8_t)((pgn >> PF_SHIFT) & BYTE_MASK);
 }

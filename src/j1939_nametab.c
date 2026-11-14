@@ -24,21 +24,12 @@
 #define NAMETAB_BYTE_MASK   0xFFU        /**< One byte of the requested PGN. */
 #define NAMETAB_BYTE_SHIFT  8U           /**< Bits per byte of the requested PGN. */
 
-/**
- * @brief Reads the NAME of an entry.
- * @param e  Entry.
- * @return The 64-bit NAME.
- */
+/** Reads the NAME of an entry. */
 static uint64_t nametab_entry_name(const j1939_nametab_entry_t *e) {
 	return ((uint64_t)e->name_hi << NAMETAB_WORD_BITS) | (uint64_t)e->name_lo;
 }
 
-/**
- * @brief Tells whether a NAME belongs to a CA of the stack.
- * @param s     Stack.
- * @param name  NAME.
- * @return true if a CA of the stack has @p name.
- */
+/** Tells whether a NAME belongs to a CA of the stack. */
 static bool nametab_own(const j1939_t *s, uint64_t name) {
 	bool own = false;
 	uint8_t i;
@@ -50,10 +41,8 @@ static bool nametab_own(const j1939_t *s, uint64_t name) {
 }
 
 /**
- * @brief Finds the entry of a NAME.
- * @param s     Stack with a table.
- * @param name  NAME.
- * @return Its index, or s->nametab.count if the NAME is not listed.
+ * Finds the entry of a NAME in a stack with a table. Returns its index, or s->nametab.count if the
+ * NAME is not listed.
  */
 static uint16_t nametab_find(const j1939_t *s, uint64_t name) {
 	const j1939_nametab_t *t = &s->nametab;
@@ -69,14 +58,11 @@ static uint16_t nametab_find(const j1939_t *s, uint64_t name) {
 }
 
 /**
- * @brief Records the address of a NAME.
+ * Records the address of the NAME of another node, J1939_ADDR_NULL for Cannot Claim, in a stack
+ * with a table.
  *
- * Another NAME holding a claimed address loses it. A new NAME takes the next
- * free entry; with the table full it is counted and not recorded.
- *
- * @param s        Stack with a table.
- * @param name     NAME of another node.
- * @param address  Its address, or J1939_ADDR_NULL for Cannot Claim.
+ * Another NAME holding a claimed address loses it. A new NAME takes the next free entry; with the
+ * table full it is counted and not recorded.
  */
 static void nametab_record(j1939_t *s, uint64_t name, uint8_t address) {
 	j1939_nametab_t *t = &s->nametab;
@@ -132,15 +118,11 @@ bool j1939_nametab_lookup(const j1939_t *s, uint8_t address, uint64_t *name) {
 }
 
 /**
- * @brief Chooses the CA that sends the global Request after j1939_nametab_init().
+ * Chooses the CA that sends the global Request after j1939_nametab_init(). Returns true once a CA
+ * of the stack has claimed its address; ca is written only then.
  *
- * The startup Request is due from the first CA that has claimed, unless a
- * global Request for Address Claimed went out first, see
- * j1939_nametab_global_request().
- *
- * @param s   Stack.
- * @param ca  The sending CA. Written only when the Request is due.
- * @return true once a CA of the stack has claimed its address.
+ * The startup Request is due from the first CA that has claimed, unless a global Request for
+ * Address Claimed went out first, see j1939_nametab_global_request().
  */
 static bool nametab_startup_sender(const j1939_t *s, j1939_ca_id_t *ca) {
 	bool found = false;
@@ -156,14 +138,10 @@ static bool nametab_startup_sender(const j1939_t *s, j1939_ca_id_t *ca) {
 }
 
 /**
- * @brief Queues a Request for Address Claimed.
+ * Queues a Request for Address Claimed to da, J1939_ADDR_GLOBAL or the address asked. Returns
+ * J1939_RET_ERR_FULL if the tx queue is full.
  *
- * Sent from a CA that has claimed its address if there is one, otherwise from
- * J1939_ADDR_NULL.
- *
- * @param s   Stack.
- * @param da  J1939_ADDR_GLOBAL or the address asked.
- * @return J1939_RET_OK, or J1939_RET_ERR_FULL if the tx queue is full.
+ * Sent from a CA that has claimed its address if there is one, otherwise from J1939_ADDR_NULL.
  */
 static j1939_ret_t nametab_request_send(j1939_t *s, uint8_t da) {
 	const uint32_t pgn = J1939_PGN_ADDRESS_CLAIMED;
