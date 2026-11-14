@@ -9,10 +9,10 @@
 #ifndef J1939_NAMETAB_H
 #define J1939_NAMETAB_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
-#include "j1939/j1939_ret.h"
-#include "j1939/j1939_stack.h"
+#include "j1939/j1939_types.h"
 
 /**
  * @addtogroup grp_nametab
@@ -68,6 +68,17 @@ typedef struct j1939_nametab_entry {
 	uint32_t name_hi; /**< Bits 32..63 of the NAME. */
 	uint8_t address;  /**< Address the NAME holds; J1939_ADDR_NULL if none. */
 } j1939_nametab_entry_t;
+
+/** NAME table state, see j1939_nametab.h. Members are private. */
+typedef struct j1939_nametab {
+	j1939_nametab_entry_t *buf; /**< Entries; NULL while no table is set up. */
+	uint32_t hold_us;           /**< Time before the next Request for an unknown address. */
+	uint16_t len;               /**< Entries in buf. */
+	uint16_t count;             /**< Entries in use. */
+	uint16_t changes;           /**< Change counter. */
+	uint8_t request;            /**< Unknown address to request; J1939_ADDR_NULL if none. */
+	bool startup_due;           /**< The global Request is still to be sent. */
+} j1939_nametab_t;
 
 /**
  * @brief Gives the stack its NAME table, or replaces it.

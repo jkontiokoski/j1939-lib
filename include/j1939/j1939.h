@@ -123,16 +123,15 @@
 #include "j1939/j1939_dm.h"
 #include "j1939/j1939_dtc.h"
 #include "j1939/j1939_id.h"
-#include "j1939/j1939_msg.h"
 #include "j1939/j1939_name.h"
 #include "j1939/j1939_nametab.h"
 #include "j1939/j1939_request.h"
-#include "j1939/j1939_ret.h"
 #include "j1939/j1939_rxobj.h"
 #include "j1939/j1939_signal.h"
 #include "j1939/j1939_stack.h"
 #include "j1939/j1939_tp.h"
 #include "j1939/j1939_txobj.h"
+#include "j1939/j1939_types.h"
 
 /**
  * @addtogroup grp_version

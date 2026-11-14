@@ -9,10 +9,10 @@
 #ifndef J1939_ADDR_H
 #define J1939_ADDR_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
-#include "j1939/j1939_ret.h"
-#include "j1939/j1939_stack.h"
+#include "j1939/j1939_types.h"
 
 /**
  * @addtogroup grp_addr
@@ -142,6 +142,44 @@
 
 /** Cannot Claim delay unit; the delay is 0..255 units, 0..153 ms. */
 #define J1939_ADDR_CANNOT_CLAIM_STEP_US 600U
+
+/** Controller Application configuration. */
+typedef struct j1939_ca_cfg {
+	uint8_t address; /**< Preferred address, 0..253. */
+	uint64_t name;   /**< NAME, see j1939_name.h. Must be unique on the network. */
+	/** true: another node may move the CA with Commanded Address. */
+	bool accept_commanded;
+	/** true: ask for the other nodes' claims before claiming (request before claim). */
+	bool request_before_claim;
+} j1939_ca_cfg_t;
+
+#define J1939_ADDR_SELF_CFG_MIN 128U /**< First self-configurable address. */
+#define J1939_ADDR_SELF_CFG_MAX 247U /**< Last self-configurable address. */
+#define J1939_ADDR_TAKEN_LEN    15U  /**< Bytes of the self-configurable address bitmap. */
+
+/** Address claim state of a Controller Application (J1939/81). */
+typedef enum j1939_addr_state {
+	J1939_ADDR_STATE_UNCLAIMED = 0, /**< Address Claimed not sent yet; no address. */
+	J1939_ADDR_STATE_CLAIMING,      /**< Address Claimed sent, contention wait running. */
+	J1939_ADDR_STATE_CLAIMED,       /**< Address claimed; the CA may transmit. */
+	J1939_ADDR_STATE_CANNOT_CLAIM,  /**< No address; Cannot Claim sent or pending. */
+	J1939_ADDR_STATE_REQUESTING,    /**< No address; collecting claims before claiming. */
+} j1939_addr_state_t;
+
+/** Controller Application state. Members are private. */
+typedef struct j1939_ca {
+	uint64_t name;            /**< NAME. */
+	j1939_addr_state_t state; /**< Address claim state. */
+	uint32_t timer_us; /**< Pre-claim wait, contention wait or Cannot Claim delay left. */
+	bool timer_fresh;  /**< timer_us started since the last j1939_process(). */
+	uint8_t address;   /**< Address held or being claimed; J1939_ADDR_NULL if none. */
+	bool cannot_claim_pending; /**< A Cannot Claim is sent when timer_us expires. */
+	bool claim_pending;        /**< An Address Claimed waits for room in the tx queue. */
+	bool accept_commanded;     /**< See j1939_ca_cfg_t. */
+	uint8_t commanded;         /**< Commanded Address to apply; J1939_ADDR_NULL if none. */
+	bool preclaim_sent;        /**< REQUESTING: the Request for Address Claimed is queued. */
+	bool preferred_taken;      /**< REQUESTING: another node claimed the preferred address. */
+} j1939_ca_t;
 
 /**
  * @brief Reads the address and claim state of a Controller Application.

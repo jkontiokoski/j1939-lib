@@ -11,8 +11,7 @@
 
 #include <stdint.h>
 
-#include "j1939/j1939_msg.h"
-#include "j1939/j1939_ret.h"
+#include "j1939/j1939_types.h"
 
 /**
  * @addtogroup grp_signal

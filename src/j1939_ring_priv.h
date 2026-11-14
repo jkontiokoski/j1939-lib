@@ -17,7 +17,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "j1939/j1939_ring.h"
+#include "j1939/j1939_types.h"
 
 /**
  * @brief Initialises an empty ring.

@@ -12,12 +12,16 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "j1939/j1939_addr.h"
 #include "j1939/j1939_config.h"
-#include "j1939/j1939_msg.h"
+#include "j1939/j1939_dm.h"
+#include "j1939/j1939_nametab.h"
 #include "j1939/j1939_port_contract.h"
-#include "j1939/j1939_ret.h"
-#include "j1939/j1939_ring.h"
+#include "j1939/j1939_request.h"
+#include "j1939/j1939_rxobj.h"
 #include "j1939/j1939_tp.h"
+#include "j1939/j1939_txobj.h"
+#include "j1939/j1939_types.h"
 
 /**
  * @addtogroup grp_stack
@@ -83,47 +87,6 @@ typedef struct j1939_cfg {
 #endif
 } j1939_cfg_t;
 
-/** Controller Application configuration. */
-typedef struct j1939_ca_cfg {
-	uint8_t address; /**< Preferred address, 0..253. */
-	uint64_t name;   /**< NAME, see j1939_name.h. Must be unique on the network. */
-	/** true: another node may move the CA with Commanded Address, see j1939_addr.h. */
-	bool accept_commanded;
-	/** true: ask for the other nodes' claims before claiming, see j1939_addr.h. */
-	bool request_before_claim;
-} j1939_ca_cfg_t;
-
-/** Handle of a Controller Application within its stack. */
-typedef uint8_t j1939_ca_id_t;
-
-#define J1939_ADDR_SELF_CFG_MIN 128U /**< First self-configurable address. */
-#define J1939_ADDR_SELF_CFG_MAX 247U /**< Last self-configurable address. */
-#define J1939_ADDR_TAKEN_LEN    15U  /**< Bytes of the self-configurable address bitmap. */
-
-/** Address claim state of a Controller Application (J1939/81). @ingroup grp_addr */
-typedef enum j1939_addr_state {
-	J1939_ADDR_STATE_UNCLAIMED = 0, /**< Address Claimed not sent yet; no address. */
-	J1939_ADDR_STATE_CLAIMING,      /**< Address Claimed sent, contention wait running. */
-	J1939_ADDR_STATE_CLAIMED,       /**< Address claimed; the CA may transmit. */
-	J1939_ADDR_STATE_CANNOT_CLAIM,  /**< No address; Cannot Claim sent or pending. */
-	J1939_ADDR_STATE_REQUESTING,    /**< No address; collecting claims before claiming. */
-} j1939_addr_state_t;
-
-/** Controller Application state. Members are private. */
-typedef struct j1939_ca {
-	uint64_t name;            /**< NAME. */
-	j1939_addr_state_t state; /**< Address claim state. */
-	uint32_t timer_us; /**< Pre-claim wait, contention wait or Cannot Claim delay left. */
-	bool timer_fresh;  /**< timer_us started since the last j1939_process(). */
-	uint8_t address;   /**< Address held or being claimed; J1939_ADDR_NULL if none. */
-	bool cannot_claim_pending; /**< A Cannot Claim is sent when timer_us expires. */
-	bool claim_pending;        /**< An Address Claimed waits for room in the tx queue. */
-	bool accept_commanded;     /**< See j1939_ca_cfg_t. */
-	uint8_t commanded;         /**< Commanded Address to apply; J1939_ADDR_NULL if none. */
-	bool preclaim_sent;        /**< REQUESTING: the Request for Address Claimed is queued. */
-	bool preferred_taken;      /**< REQUESTING: another node claimed the preferred address. */
-} j1939_ca_t;
-
 /** Event counters. */
 typedef struct j1939_stats {
 	uint32_t rx_msg_overflow; /**< Application messages dropped: all message slots in use. */
@@ -154,26 +117,8 @@ typedef struct j1939_msg_queue {
 	j1939_ring_t ring;     /**< Indices into buf. */
 } j1939_msg_queue_t;
 
-struct j1939_dm;            /* Diagnostic state of a CA, see j1939_dm.h. */
-struct j1939_rxobj_cfg;     /* Receive object configuration, see j1939_rxobj.h. */
-struct j1939_rxobj;         /* Receive object state, see j1939_rxobj.h. */
-struct j1939_txobj_cfg;     /* Transmit object configuration, see j1939_txobj.h. */
-struct j1939_txobj;         /* Transmit object state, see j1939_txobj.h. */
-struct j1939_nametab_entry; /* NAME table entry, see j1939_nametab.h. */
-
-/** NAME table state, see j1939_nametab.h. Members are private. */
-typedef struct j1939_nametab {
-	struct j1939_nametab_entry *buf; /**< Entries; NULL while no table is set up. */
-	uint32_t hold_us; /**< Time before the next Request for an unknown address. */
-	uint16_t len;     /**< Entries in buf. */
-	uint16_t count;   /**< Entries in use. */
-	uint16_t changes; /**< Change counter. */
-	uint8_t request;  /**< Unknown address to request; J1939_ADDR_NULL if none. */
-	bool startup_due; /**< The global Request is still to be sent. */
-} j1939_nametab_t;
-
 /** Stack instance. Allocated by the integrator, members are private. */
-typedef struct j1939 {
+struct j1939 {
 	j1939_tx_queue_t tx;             /**< Frames to transmit. */
 	j1939_msg_queue_t msgs;          /**< Messages for the application. */
 	const uint32_t *rx_pgns;         /**< See j1939_cfg_t. */
@@ -189,15 +134,15 @@ typedef struct j1939 {
 	j1939_tp_t tp; /**< Transport protocol sessions and buffers. */
 #endif
 	/** Diagnostic state of each CA; NULL while diagnostics are not enabled. */
-	struct j1939_dm *dm[J1939_CFG_CA_MAX];
-	const struct j1939_rxobj_cfg *rxobj_cfg; /**< Receive object table; NULL if none. */
-	struct j1939_rxobj *rxobj;               /**< Receive object states; NULL if none. */
-	uint16_t rxobj_len;                      /**< Receive objects. */
-	const struct j1939_txobj_cfg *txobj_cfg; /**< Transmit objects; NULL while none are set. */
-	struct j1939_txobj *txobj;               /**< State of the transmit objects. */
-	uint16_t txobj_len;                      /**< Number of transmit objects. */
-	j1939_nametab_t nametab;                 /**< NAME table. */
-} j1939_t;
+	j1939_dm_t *dm[J1939_CFG_CA_MAX];
+	const j1939_rxobj_cfg_t *rxobj_cfg; /**< Receive object table; NULL if none. */
+	j1939_rxobj_t *rxobj;               /**< Receive object states; NULL if none. */
+	uint16_t rxobj_len;                 /**< Receive objects. */
+	const j1939_txobj_cfg_t *txobj_cfg; /**< Transmit objects; NULL while none are set. */
+	j1939_txobj_t *txobj;               /**< State of the transmit objects. */
+	uint16_t txobj_len;                 /**< Number of transmit objects. */
+	j1939_nametab_t nametab;            /**< NAME table. */
+};
 
 /**
  * @brief Initialises a stack instance.
