@@ -322,6 +322,7 @@ static void session_open(j1939_tp_session_t *se, bool tx, uint8_t local, uint8_t
 	se->last = 0U;
 	se->limit = PAD;
 	se->holds = 0U;
+	se->sent_all = false;
 }
 
 /**
@@ -622,6 +623,23 @@ static void cts_handle(j1939_t *s, j1939_tp_session_t *se, const uint8_t *d) {
 }
 
 /**
+ * @brief Originator: handles an EndOfMsgAck for an open connection.
+ *
+ * The responder has the whole message only after the last packet was sent; an earlier
+ * acknowledgement is a protocol error and aborts the connection.
+ *
+ * @param s   Stack.
+ * @param se  Sending session.
+ */
+static void eoma_handle(j1939_t *s, j1939_tp_session_t *se) {
+	if ((se->state == J1939_TP_TX_WAIT) && se->sent_all) {
+		session_close(se);
+	} else {
+		session_abort(s, se, J1939_TP_ABORT_OTHER);
+	}
+}
+
+/**
  * @brief Ends the sessions a received Connection Abort concerns: same peer and PGN.
  * @param s     Stack.
  * @param own   Destination of the abort.
@@ -670,7 +688,7 @@ static void cm_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 	case CTRL_EOMA:
 		se = session_match(s, true, own, peer, pgn);
 		if (se != NULL) {
-			session_close(se);
+			eoma_handle(s, se);
 		}
 		break;
 	case CTRL_BAM:
@@ -836,6 +854,7 @@ static void data_tick(j1939_t *s, j1939_tp_session_t *se) {
 	for (i = 0U; sent && (i < n); i++) {
 		sent = dt_send(s, se);
 		if (sent) {
+			se->sent_all = se->sent_all || (se->next == se->packets);
 			se->next++;
 			progress = true;
 		}

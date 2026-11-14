@@ -61,7 +61,9 @@
  *   the gap below 200 ms.
  * - The originator sends the packets a CTS requests as far as the tx queue
  *   has room, and waits for room at most J1939_TP_TR_US. It honours CTS with
- *   0 packets (hold, J1939_TP_T4_US) and retransmission requests.
+ *   0 packets (hold, J1939_TP_T4_US) and retransmission requests. An
+ *   EndOfMsgAck ends the transfer once the last packet has been sent; one
+ *   that comes earlier aborts it (J1939_TP_ABORT_OTHER).
  * - The responder asks for all remaining packets in one CTS, limited by the
  *   RTS's packets-per-CTS value. While all message slots are in use it holds
  *   the connection before requesting the packets that complete the message:
@@ -169,6 +171,7 @@ typedef struct j1939_tp_session {
 	uint8_t local;  /**< Own address; J1939_ADDR_GLOBAL for a received broadcast. */
 	uint8_t remote; /**< Peer address; J1939_ADDR_GLOBAL for a sent broadcast. */
 	bool tx;        /**< true if this stack is the originator. */
+	bool sent_all;  /**< Originator: the last packet has been sent. */
 	bool fresh;     /**< Timer started since the last j1939_process(). */
 } j1939_tp_session_t;
 
