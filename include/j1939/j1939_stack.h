@@ -61,7 +61,6 @@
 typedef struct j1939_msg_slot {
 	j1939_msg_t msg; /**< Message header; data points into this slot. */
 	uint8_t data[J1939_MSG_SINGLE_FRAME_MAX]; /**< Payload of single frame messages. */
-	j1939_tp_buf_t *tp_buf; /**< Buffer holding a transport protocol message, else NULL. */
 } j1939_msg_slot_t;
 
 /** Stack configuration. All buffers and lists must outlive the stack instance. */
@@ -76,10 +75,12 @@ typedef struct j1939_cfg {
 	        *req_pgns; /**< PGNs the application answers Requests for. May be NULL if empty. */
 	uint16_t req_pgns_len; /**< Entries in req_pgns. */
 
+#if J1939_TP_ENABLE
 	j1939_tp_buf_t *tp_tx_buf; /**< Multi-packet transmit buffers. May be NULL if empty. */
 	uint16_t tp_tx_buf_len;    /**< Entries in tp_tx_buf. */
 	j1939_tp_buf_t *tp_rx_buf; /**< Multi-packet reassembly buffers. May be NULL if empty. */
 	uint16_t tp_rx_buf_len;    /**< Entries in tp_rx_buf. */
+#endif
 } j1939_cfg_t;
 
 /** Controller Application configuration. */
@@ -126,9 +127,11 @@ typedef struct j1939_ca {
 typedef struct j1939_stats {
 	uint32_t rx_msg_overflow; /**< Application messages dropped: all message slots in use. */
 	uint32_t tx_overflow;     /**< Stack generated frames dropped: tx queue full. */
-	uint32_t tp_tx_aborted;   /**< Multi-packet sends ended by an abort or a timeout. */
-	uint32_t tp_rx_aborted;   /**< Multi-packet receptions ended without delivery. */
-	uint32_t tp_rx_refused;   /**< RTS or BAM refused: no free session or reassembly buffer. */
+#if J1939_TP_ENABLE
+	uint32_t tp_tx_aborted; /**< Multi-packet sends ended by an abort or a timeout. */
+	uint32_t tp_rx_aborted; /**< Multi-packet receptions ended without delivery. */
+	uint32_t tp_rx_refused; /**< RTS or BAM refused: no free session or reassembly buffer. */
+#endif
 	uint32_t dm_tx_retry;    /**< DM1, DM2 or acknowledgement sends deferred, see j1939_dm.h. */
 	uint32_t dm_tx_dropped;  /**< DM1, DM2 or acknowledgement sends given up, see j1939_dm.h. */
 	uint32_t rxobj_rejected; /**< Payloads a receive object refused for their length. */
@@ -181,7 +184,9 @@ typedef struct j1939 {
 	j1939_stats_t stats;             /**< Event counters. */
 	/** Self-configurable addresses claimed by other nodes, one bit each. */
 	uint8_t addr_taken[J1939_ADDR_TAKEN_LEN];
+#if J1939_TP_ENABLE
 	j1939_tp_t tp; /**< Transport protocol sessions and buffers. */
+#endif
 	/** Diagnostic state of each CA; NULL while diagnostics are not enabled. */
 	struct j1939_dm *dm[J1939_CFG_CA_MAX];
 	const struct j1939_rxobj_cfg *rxobj_cfg; /**< Receive object table; NULL if none. */
@@ -305,7 +310,7 @@ j1939_ret_t j1939_msg_pop(j1939_t *s);
  *         to the same destination;
  *         J1939_RET_ERR_NO_ADDRESS while the CA has not claimed an address;
  *         J1939_RET_ERR_ARG on a NULL pointer, an unknown CA, a payload
- *         longer than J1939_CFG_TP_BUF_SIZE or an invalid identifier.
+ *         longer than J1939_MAX_MSG_LEN or an invalid identifier.
  */
 j1939_ret_t j1939_send(j1939_t *s, j1939_ca_id_t ca, const j1939_msg_t *msg);
 

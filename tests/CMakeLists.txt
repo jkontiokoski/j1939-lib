@@ -29,16 +29,24 @@ endfunction()
 set(MOCK_PORT_DIR "${PROJECT_SOURCE_DIR}/port/mock")
 set(SOCKETCAN_PORT_DIR "${PROJECT_SOURCE_DIR}/port/socketcan")
 
-# Unit and integration tests run against the mock port, with the test configuration.
-j1939_add_library(j1939_test_mock "${MOCK_PORT_DIR}")
-target_include_directories(j1939_test_mock PUBLIC config)
-target_compile_definitions(j1939_test_mock PUBLIC J1939_CONFIG_FILE="j1939_test_config.h")
+# j1939_add_test_mock(<library> <support> <config header>)
+#
+# Builds the library on the mock port with a configuration of tests/config, and <support>: the
+# virtual bus and the port fixture linked to it.
+function(j1939_add_test_mock library support config)
+	j1939_add_library(${library} "${MOCK_PORT_DIR}")
+	target_include_directories(${library} PUBLIC config)
+	target_compile_definitions(${library} PUBLIC J1939_CONFIG_FILE="${config}")
 
-add_library(test_support STATIC support/test_bus.c "${MOCK_PORT_DIR}/j1939_port_fixture.c")
-set_target_properties(test_support PROPERTIES C_STANDARD 99 C_EXTENSIONS OFF)
-target_include_directories(test_support PUBLIC support port)
-target_link_libraries(test_support PUBLIC j1939_test_mock unity)
-j1939_set_warnings(test_support)
+	add_library(${support} STATIC support/test_bus.c "${MOCK_PORT_DIR}/j1939_port_fixture.c")
+	set_target_properties(${support} PROPERTIES C_STANDARD 99 C_EXTENSIONS OFF)
+	target_include_directories(${support} PUBLIC support port)
+	target_link_libraries(${support} PUBLIC ${library} unity)
+	j1939_set_warnings(${support})
+endfunction()
+
+# Unit and integration tests run against the mock port, with every feature on.
+j1939_add_test_mock(j1939_test_mock test_support j1939_test_config.h)
 
 j1939_add_test(test_version test_support unit/test_version.c)
 j1939_add_test(test_id test_support unit/test_id.c)
@@ -78,6 +86,18 @@ target_include_directories(j1939_test_mock_small_tp PUBLIC config)
 target_compile_definitions(j1939_test_mock_small_tp PUBLIC
 	J1939_CONFIG_FILE="j1939_test_small_tp_config.h")
 j1939_add_test(test_tp_small_buf j1939_test_mock_small_tp unit/test_tp_small_buf.c)
+
+# Without the transport protocol: what changes, and the tests of the features that do not use
+# it, run again against this library.
+j1939_add_test_mock(j1939_test_mock_no_tp test_support_no_tp j1939_test_no_tp_config.h)
+j1939_add_test(test_tp_disabled test_support_no_tp unit/test_tp_disabled.c)
+foreach(_test IN ITEMS
+		unit/test_addr unit/test_request unit/test_names
+		integration/test_addr_claim integration/test_addr_preclaim_exchange
+		integration/test_request_exchange integration/test_rxobj_name_exchange)
+	get_filename_component(_name ${_test} NAME)
+	j1939_add_test(${_name}_no_tp test_support_no_tp ${_test}.c)
+endforeach()
 
 # Port conformance: the bundled ports, plus the configured port if it is another one.
 j1939_add_port_conformance(test_port_mock j1939_test_mock)

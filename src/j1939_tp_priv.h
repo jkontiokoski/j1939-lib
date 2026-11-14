@@ -16,6 +16,7 @@
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_stack.h"
 
+#if J1939_TP_ENABLE
 /**
  * @brief Checks the transport protocol members of a stack configuration.
  * @param cfg  Stack configuration.
@@ -66,5 +67,41 @@ void j1939_tp_process(j1939_t *s, uint32_t elapsed_us);
  *         as described for j1939_send().
  */
 j1939_ret_t j1939_tp_send(j1939_t *s, uint8_t sa, const j1939_msg_t *msg);
+
+/**
+ * @brief Checks if a TP buffer has been allocated to the stack.
+ * @param s    Stack.
+ * @return     true if the buffer has been allocated.
+ */
+static inline bool j1939_tp_tx_buf_allocated(const j1939_t *s) {
+	return (s->tp.tx_buf != NULL) && (s->tp.tx_buf_len > 0U);
+}
+
+#else
+static inline bool j1939_tp_cfg_valid(const j1939_cfg_t *cfg) {
+	(void)cfg;
+	return true;
+}
+
+static inline void j1939_tp_init(j1939_t *s, const j1939_cfg_t *cfg) {
+	(void)s;
+	(void)cfg;
+}
+
+static inline void j1939_tp_address_lost(j1939_t *s, uint8_t address) {
+	(void)s;
+	(void)address;
+}
+
+static inline void j1939_tp_process(j1939_t *s, uint32_t elapsed_us) {
+	(void)s;
+	(void)elapsed_us;
+}
+
+static inline bool j1939_tp_tx_buf_allocated(const j1939_t *s) {
+	(void)s;
+	return false;
+}
+#endif
 
 #endif /* J1939_TP_PRIV_H */

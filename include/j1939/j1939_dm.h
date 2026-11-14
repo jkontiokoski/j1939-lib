@@ -164,7 +164,7 @@ typedef struct j1939_dm {
  * @param cfg  Configuration.
  * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer, an unknown
  *         CA, a capacity above J1939_DIAG_DM_DTC_MAX, a missing or too small
- *         buffer, a payload larger than J1939_CFG_TP_BUF_SIZE, a payload that
+ *         buffer, a payload larger than J1939_MAX_MSG_LEN, a payload that
  *         needs the transport protocol while the stack has no transmit
  *         buffer, or a @p dm already used by another CA.
  */

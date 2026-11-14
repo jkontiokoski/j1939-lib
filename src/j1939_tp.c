@@ -19,6 +19,8 @@
 #include "j1939_stack_priv.h"
 #include "j1939_tp_priv.h"
 
+#if J1939_TP_ENABLE
+
 #define FRAME_LEN   8U    /**< TP.CM and TP.DT frames always carry 8 bytes. */
 #define PACKET_DATA 7U    /**< Payload bytes per TP.DT packet. */
 #define PAD         0xFFU /**< Reserved bytes, unused packet bytes, "no limit". */
@@ -194,7 +196,8 @@ static bool tp_timer_expired(const j1939_tp_session_t *se) {
  * @return true if still held.
  */
 static bool tp_buf_held(j1939_t *s, const j1939_tp_buf_t *buf) {
-	return j1939_ring_holds(&s->msgs.ring, buf->slot) && (s->msgs.buf[buf->slot].tp_buf == buf);
+	return j1939_ring_holds(&s->msgs.ring, buf->slot) &&
+	       (s->msgs.buf[buf->slot].msg.data == buf->data);
 }
 
 /**
@@ -408,7 +411,6 @@ static bool tp_deliver(j1939_t *s, j1939_tp_session_t *se) {
 		slot->msg.da = se->local;
 		slot->msg.len = se->len;
 		slot->msg.data = se->buf->data;
-		slot->tp_buf = se->buf;
 		se->buf->state = BUF_DELIVERED;
 		se->buf->slot = index;
 		(void)j1939_ring_push(&s->msgs.ring);
@@ -1026,3 +1028,5 @@ j1939_ret_t j1939_tp_send(j1939_t *s, uint8_t sa, const j1939_msg_t *msg) {
 	}
 	return ret;
 }
+
+#endif

@@ -19,8 +19,8 @@
 #include "j1939_rxobj_priv.h"
 #include "j1939_stack_priv.h"
 
-#define SA_MAX      0xFDU /**< Highest source address a node can claim. */
-#define BUF_LEN_MAX ((uint16_t)J1939_CFG_TP_BUF_SIZE) /**< Largest payload an object can hold. */
+#define SA_MAX      0xFDU                         /**< Highest source address a node can claim. */
+#define BUF_LEN_MAX ((uint16_t)J1939_MAX_MSG_LEN) /**< Largest payload an object can hold. */
 
 /**
  * @brief Tells whether the stack handles a PGN itself, so that it never reaches a receive object.
@@ -37,7 +37,7 @@ static bool pgn_owned(uint32_t pgn) {
  * @param s  Stack, for the NAME table.
  * @param c  Entry.
  * @return true if it has a buffer, a valid PGN the stack does not own,
- *         1 <= min_len <= buf_len <= J1939_CFG_TP_BUF_SIZE, and either a
+ *         1 <= min_len <= buf_len <= J1939_MAX_MSG_LEN, and either a
  *         source address of at most 253 or a NAME with a NAME table set up.
  */
 static bool rx_entry_valid(const j1939_t *s, const j1939_rxobj_cfg_t *c) {
