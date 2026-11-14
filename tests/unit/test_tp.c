@@ -304,7 +304,7 @@ static void test_bam_lost_packet_drops_the_message(void) {
 	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
 	TEST_ASSERT_NULL(j1939_msg_peek(&s));
 	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_rx_aborted);
-	TEST_ASSERT_EQUAL_UINT8(0U, tp_rx[0].state); /* buffer free again */
+	TEST_ASSERT_FALSE(tp_rx[0].used); /* buffer free again */
 }
 
 static void test_bam_times_out_after_t1(void) {
@@ -384,7 +384,7 @@ static void test_bam_without_message_slot_is_dropped(void) {
 	run(0U);
 	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.rx_msg_overflow);
 	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_rx_aborted);
-	TEST_ASSERT_EQUAL_UINT8(0U, tp_rx[0].state);
+	TEST_ASSERT_FALSE(tp_rx[0].used);
 }
 
 static void test_abort_to_global_ends_broadcast_of_its_sender(void) {
@@ -398,24 +398,25 @@ static void test_abort_to_global_ends_broadcast_of_its_sender(void) {
 	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_rx_aborted);
 }
 
-static void test_buffer_is_reclaimed_when_its_slot_is_reused(void) {
-	const uint8_t d[8] = {0};
-
+/* A delivered message keeps its reassembly buffer until the application pops it. */
+static void test_buffer_is_freed_when_its_message_is_popped(void) {
 	init(BUF_LEN, 1U);
 	rx_bam(PEER, LEN_20, 3U, PGN_A);
 	rx_dt(PEER, J1939_ADDR_GLOBAL, 1U);
 	rx_dt(PEER, J1939_ADDR_GLOBAL, 2U);
 	rx_dt(PEER, J1939_ADDR_GLOBAL, 3U);
 	run(0U);
+	TEST_ASSERT_TRUE(tp_rx[0].used);
+	rx_bam(PEER, LEN_20, 3U, PGN_A); /* the only buffer is still held */
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
+	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_rx_refused);
+
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_msg_pop(&s));
-	/* Two single frame messages: the second one reuses the slot of the popped message. */
-	rx_raw(make_id(6U, PGN_A, J1939_ADDR_GLOBAL, PEER3), d, 8U);
-	rx_raw(make_id(6U, PGN_A, J1939_ADDR_GLOBAL, PEER3), d, 8U);
+	TEST_ASSERT_FALSE(tp_rx[0].used);
 	rx_bam(PEER, LEN_20, 3U, PGN_A);
 	run(0U);
-	TEST_ASSERT_EQUAL_UINT16(0U, tp_rx[0].slot);
 	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open());
-	TEST_ASSERT_EQUAL_UINT32(0U, s.stats.tp_rx_refused);
+	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_rx_refused);
 }
 
 /* ---- RTS/CTS receive ---- */
@@ -693,9 +694,9 @@ static void test_bam_send_waits_for_tx_queue_then_gives_up(void) {
 	run(GAP);
 	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
 	(void)j1939_tx_pop(&s); /* room for one packet */
-	run(J1939_TP_TR_US);
+	run(J1939_TR_US);
 	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
-	run(GAP + J1939_TP_TR_US - 1U);
+	run(GAP + J1939_TR_US - 1U);
 	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open());
 	run(1U);
 	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
@@ -875,7 +876,7 @@ static void test_peer_abort_ends_the_send(void) {
 	expect_none();
 	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
 	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_tx_aborted);
-	TEST_ASSERT_EQUAL_UINT8(0U, tp_tx[0].state);
+	TEST_ASSERT_FALSE(tp_tx[0].used);
 }
 
 static void test_data_waits_for_tx_queue_then_aborts(void) {
@@ -890,9 +891,9 @@ static void test_data_waits_for_tx_queue_then_aborts(void) {
 	run(0U);
 	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
 	(void)j1939_tx_pop(&s);
-	run(J1939_TP_TR_US - 1U); /* one packet goes out and restarts Tr */
+	run(J1939_TR_US - 1U); /* one packet goes out and restarts Tr */
 	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
-	run(J1939_TP_TR_US - 1U);
+	run(J1939_TR_US - 1U);
 	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open());
 	run(1U);
 	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
@@ -918,7 +919,7 @@ static void test_send_resource_errors(void) {
 	}
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_FULL, send(PEER, PGN_B, LEN_20)); /* no room for RTS */
 	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
-	TEST_ASSERT_EQUAL_UINT8(0U, tp_tx[0].state);
+	TEST_ASSERT_FALSE(tp_tx[0].used);
 }
 
 static void test_timer_saturates(void) {
@@ -947,7 +948,7 @@ static void test_unclaimed_ca_cannot_send_multi_packet(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_NO_ADDRESS, send(PEER, PGN_B, LEN_20));
 	expect_none();
 	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
-	TEST_ASSERT_EQUAL_UINT8(0U, tp_tx[0].state);
+	TEST_ASSERT_FALSE(tp_tx[0].used);
 }
 
 static void test_rts_to_claiming_ca_is_not_answered(void) {
@@ -992,7 +993,7 @@ static void test_address_loss_ends_sessions_without_abort(void) {
 	expect_no_tp();
 	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_tx_aborted);
 	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open());
-	TEST_ASSERT_EQUAL_UINT8(0U, tp_tx[0].state);
+	TEST_ASSERT_FALSE(tp_tx[0].used);
 	rx_dt(PEER3, J1939_ADDR_GLOBAL, 3U);
 	run(0U);
 	expect_msg(PGN_A, PEER3, J1939_ADDR_GLOBAL, LEN_20);
@@ -1011,7 +1012,7 @@ static void test_address_loss_ends_sessions_without_abort(void) {
 	expect_no_tp();
 	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_rx_aborted);
 	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
-	TEST_ASSERT_EQUAL_UINT8(0U, tp_rx[0].state);
+	TEST_ASSERT_FALSE(tp_rx[0].used);
 	TEST_ASSERT_NULL(j1939_msg_peek(&s));
 }
 
@@ -1034,8 +1035,8 @@ static void test_corrupted_claim_state_ends_sessions_without_abort(void) {
 	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
 	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_tx_aborted);
 	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_rx_aborted);
-	TEST_ASSERT_EQUAL_UINT8(0U, tp_tx[0].state);
-	TEST_ASSERT_EQUAL_UINT8(0U, tp_rx[0].state);
+	TEST_ASSERT_FALSE(tp_tx[0].used);
+	TEST_ASSERT_FALSE(tp_rx[0].used);
 
 	/* Corrupted again without an address: nothing left to end. */
 	s.ca[ca].state = (j1939_addr_state_t)0x55;
@@ -1068,7 +1069,7 @@ int main(void) {
 	RUN_TEST(test_bam_without_session_or_buffer_is_counted);
 	RUN_TEST(test_bam_without_message_slot_is_dropped);
 	RUN_TEST(test_abort_to_global_ends_broadcast_of_its_sender);
-	RUN_TEST(test_buffer_is_reclaimed_when_its_slot_is_reused);
+	RUN_TEST(test_buffer_is_freed_when_its_message_is_popped);
 	RUN_TEST(test_rts_cts_is_received_and_acknowledged);
 	RUN_TEST(test_rts_limit_splits_the_transfer_into_windows);
 	RUN_TEST(test_rts_that_cannot_be_received_is_aborted);

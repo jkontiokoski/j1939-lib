@@ -16,9 +16,7 @@
 #include "j1939/j1939_addr.h"
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
-#include "j1939_addr_priv.h"
-#include "j1939_dm_priv.h"
-#include "j1939_tp_priv.h"
+#include "j1939_internal.h"
 
 #define CLEAR_DM3    0U                     /**< Index of the DM3 request in j1939_dm_t::clear. */
 #define CLEAR_DM11   1U                     /**< Index of the DM11 request. */
@@ -27,13 +25,7 @@
 #define ANSWER_DM2   1U                     /**< Index of the DM2 answer. */
 #define ANSWER_KINDS 2U                     /**< Number of answer kinds. */
 #define DM_PRIO      J1939_DTC_PRIO_DEFAULT /**< Priority of DM1 and DM2. */
-#define ACK_PRIO     6U                     /**< Priority of Acknowledgements. */
-#define ACK_PAD      0xFFU                  /**< Reserved bytes of an Acknowledgement. */
-#define BYTE_MASK    0xFFU                  /**< Mask of one byte. */
-#define BYTE_SHIFT   8U                     /**< Bits per byte. */
-#define FRAME_LEN    8U                     /**< Largest single frame payload. */
 #define MSG_LEN_MAX  ((uint32_t)J1939_MAX_MSG_LEN) /**< Largest DM payload. */
-#define NO_EXPIRY    0U /**< Age of a send that is retried until it succeeds. */
 /** PGN of the clear request kind @p k. */
 #define CLEAR_PGN(k) (((k) == CLEAR_DM3) ? J1939_PGN_DM3 : J1939_PGN_DM11)
 #define DM_DTC_MAX   ((uint16_t)J1939_DTC_DM_DTC_MAX) /**< Largest DTC list. */
@@ -68,20 +60,6 @@ static j1939_ret_t dm_lookup_mut(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t **dm) 
 		ret = (*dm != NULL) ? J1939_RET_OK : J1939_RET_ERR_STATE;
 	}
 	return ret;
-}
-
-/**
- * Advances a timer, except in the call after it was started (fresh, cleared here); saturates at
- * UINT32_MAX.
- */
-static void timer_advance(uint32_t *timer_us, bool *fresh, uint32_t elapsed_us) {
-	if (*fresh) {
-		*fresh = false;
-	} else if (elapsed_us > (UINT32_MAX - *timer_us)) {
-		*timer_us = UINT32_MAX;
-	} else {
-		*timer_us += elapsed_us;
-	}
 }
 
 /** Tells whether two DTCs are the same: DTCs are identified by SPN and FMI. */
@@ -215,25 +193,11 @@ static void active_update(j1939_dm_t *dm, const j1939_dtc_t *dtcs, uint16_t coun
  * Returns true when the send is over, sent or given up.
  *
  * Retries are counted in dm_tx_retry; a send given up, at the latest when age_us reaches
- * J1939_DM_RESPONSE_US, in dm_tx_dropped. With NO_EXPIRY as its age a send is retried until it
+ * J1939_TR_US, in dm_tx_dropped. With J1939_STACK_NO_EXPIRY as its age a send is retried until it
  * succeeds.
  */
 static bool send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
-	bool done = true;
-
-	if (ret == J1939_RET_OK) {
-		/* Sent. */
-	} else if ((ret == J1939_RET_ERR_FULL) || (ret == J1939_RET_ERR_BUSY)) {
-		if (age_us >= J1939_DM_RESPONSE_US) {
-			s->stats.dm_tx_dropped++;
-		} else {
-			s->stats.dm_tx_retry++;
-			done = false;
-		}
-	} else {
-		s->stats.dm_tx_dropped++;
-	}
-	return done;
+	return j1939_stack_retry_done(ret, age_us, &s->stats.dm_tx_retry, &s->stats.dm_tx_dropped);
 }
 
 /**
@@ -251,31 +215,19 @@ static j1939_ret_t dm_send(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, const j19
 
 	if (ret == J1939_RET_OK) {
 		const j1939_msg_t msg = {
-		        pgn, DM_PRIO, 0U, (len > FRAME_LEN) ? da : J1939_ADDR_GLOBAL, len, dm->buf};
+		        pgn, DM_PRIO,
+		        0U,  (len > J1939_MSG_SINGLE_FRAME_MAX) ? da : J1939_ADDR_GLOBAL,
+		        len, dm->buf};
 
 		ret = j1939_send(s, ca, &msg);
 	}
 	return ret;
 }
 
-/**
- * Sends an Acknowledgement (ACK, NACK or Cannot Respond) to the global address, addressed to the
- * requester in its data. Returns as j1939_send().
- */
+/** Sends an Acknowledgement (ACK, NACK or Cannot Respond) from a CA that may transmit. */
 static j1939_ret_t ack_send(j1939_t *s, j1939_ca_id_t ca, uint8_t ctrl, uint8_t requester,
                             uint32_t pgn) {
-	const uint8_t data[FRAME_LEN] = {ctrl,
-	                                 ACK_PAD,
-	                                 ACK_PAD,
-	                                 ACK_PAD,
-	                                 requester,
-	                                 (uint8_t)(pgn & BYTE_MASK),
-	                                 (uint8_t)((pgn >> BYTE_SHIFT) & BYTE_MASK),
-	                                 (uint8_t)((pgn >> (2U * BYTE_SHIFT)) & BYTE_MASK)};
-	const j1939_msg_t msg = {J1939_PGN_ACK,       ACK_PRIO, 0U, J1939_ADDR_GLOBAL,
-	                         (uint16_t)FRAME_LEN, data};
-
-	return j1939_send(s, ca, &msg);
+	return j1939_request_ack_tx(s, s->ca[ca].address, ctrl, requester, pgn);
 }
 
 /**
@@ -296,7 +248,7 @@ static void clear_decide(j1939_dm_clear_t *c, bool accept, bool fresh) {
 
 /**
  * Sends the decided ACK or NACK of a clear request in ACK or NACK state, retried at most
- * J1939_DM_RESPONSE_US.
+ * J1939_TR_US.
  */
 static void ack_try(j1939_t *s, j1939_ca_id_t ca, j1939_dm_clear_t *c, uint32_t pgn) {
 	uint8_t ctrl = (uint8_t)((c->state == J1939_DM_CLEAR_ACK) ? J1939_ACK_CTRL_ACK
@@ -310,12 +262,12 @@ static void ack_try(j1939_t *s, j1939_ca_id_t ca, j1939_dm_clear_t *c, uint32_t 
 /** Advances a clear request: refuses it when undecided in time, sends its acknowledgement. */
 static void clear_tick(j1939_t *s, j1939_ca_id_t ca, j1939_dm_clear_t *c, uint32_t pgn,
                        uint32_t elapsed_us) {
-	timer_advance(&c->timer_us, &c->fresh, elapsed_us);
+	j1939_stack_timer_advance(&c->timer_us, &c->fresh, elapsed_us);
 	switch (c->state) {
 	case J1939_DM_CLEAR_IDLE:
 		break;
 	case J1939_DM_CLEAR_REQUESTED:
-		if (c->timer_us >= J1939_DM_RESPONSE_US) {
+		if (c->timer_us >= J1939_TR_US) {
 			/* No decision in time: nothing is cleared. */
 			clear_decide(c, false, false);
 			if (c->state == J1939_DM_CLEAR_NACK) {
@@ -403,9 +355,7 @@ static void dm1_tick(j1939_t *s, j1939_dm_t *dm, uint32_t elapsed_us) {
 		dm->dm1_due = true;
 		dm->dm1_timer_us = 0U;
 	} else {
-		bool fresh = false;
-
-		timer_advance(&dm->dm1_timer_us, &fresh, elapsed_us);
+		j1939_stack_timer_add(&dm->dm1_timer_us, elapsed_us);
 		if (dm->dm1_timer_us >= J1939_DM1_PERIOD_US) {
 			if (dm->dm1_due) {
 				/* The previous DM1 never went out. */
@@ -417,11 +367,11 @@ static void dm1_tick(j1939_t *s, j1939_dm_t *dm, uint32_t elapsed_us) {
 	}
 }
 
-/** Sends a pending answer to a Request for DM1 or DM2, retried at most J1939_DM_RESPONSE_US. */
+/** Sends a pending answer to a Request for DM1 or DM2, retried at most J1939_TR_US. */
 static void answer_tick(j1939_t *s, j1939_ca_id_t ca, j1939_dm_answer_t *a, uint32_t pgn,
                         const j1939_dtc_t *dtcs, uint16_t count, uint32_t elapsed_us) {
 	if (a->due) {
-		timer_advance(&a->timer_us, &a->fresh, elapsed_us);
+		j1939_stack_timer_advance(&a->timer_us, &a->fresh, elapsed_us);
 		if (send_done(s, dm_send(s, ca, pgn, dtcs, count, a->da), a->timer_us)) {
 			a->due = false;
 		}
@@ -448,7 +398,7 @@ static void answer_request(j1939_dm_answer_t *a, uint8_t requester) {
 /** Runs the diagnostics of one CA: holds, DM1 schedule, clear requests and answers. */
 static void ca_process(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_t elapsed_us) {
 	dm_hold_tick(dm, elapsed_us);
-	if (!j1939_addr_tx_allowed(&s->ca[ca])) {
+	if (!j1939_addr_ca_claimed(&s->ca[ca])) {
 		dm_stop(s, dm);
 	} else {
 		uint32_t k;
@@ -460,7 +410,7 @@ static void ca_process(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_t el
 		if (dm->dm1_due && send_done(s,
 		                             dm_send(s, ca, J1939_PGN_DM1, dm->active,
 		                                     dm->active_count, J1939_ADDR_GLOBAL),
-		                             NO_EXPIRY)) {
+		                             J1939_STACK_NO_EXPIRY)) {
 			dm->dm1_due = false;
 		}
 		answer_tick(s, ca, &dm->answer[ANSWER_DM1], J1939_PGN_DM1, dm->active,
@@ -468,13 +418,6 @@ static void ca_process(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_t el
 		answer_tick(s, ca, &dm->answer[ANSWER_DM2], J1939_PGN_DM2, dm->prev, dm->prev_count,
 		            elapsed_us);
 	}
-}
-
-/** Tells whether a Request addresses a CA: it is global, or sent to the address the CA holds. */
-static bool ca_addressed(const j1939_ca_t *ca, uint8_t da) {
-	return (da == J1939_ADDR_GLOBAL) ||
-	       ((ca->address == da) && ((ca->state == J1939_ADDR_STATE_CLAIMING) ||
-	                                (ca->state == J1939_ADDR_STATE_CLAIMED)));
 }
 
 /**
@@ -549,7 +492,7 @@ static bool dm_cfg_valid(const j1939_t *s, const j1939_dm_cfg_t *cfg) {
 	       ((cfg->prev != NULL) || (cfg->prev_len == 0U)) &&
 	       ((cfg->hold != NULL) || (cfg->hold_len == 0U)) && (cfg->buf != NULL) &&
 	       ((uint32_t)cfg->buf_len >= need) && (need <= MSG_LEN_MAX) &&
-	       ((need <= FRAME_LEN) || (j1939_tp_tx_buf_allocated(s)));
+	       ((need <= J1939_MSG_SINGLE_FRAME_MAX) || (j1939_tp_tx_buf_allocated(s)));
 }
 
 /** Tells whether diagnostic state storage is registered for a CA other than ca. */
@@ -573,20 +516,19 @@ void j1939_dm_stack_init(j1939_t *s) {
 	s->stats.dm_tx_dropped = 0U;
 }
 
-bool j1939_dm_request_handle(j1939_t *s, uint32_t id, uint32_t pgn) {
+bool j1939_dm_request_handle(j1939_t *s, const j1939_msg_t *req, uint32_t pgn) {
 	bool handled = false;
-	uint8_t da = j1939_id_da_get(id);
-	uint8_t requester = (da == J1939_ADDR_GLOBAL) ? J1939_ADDR_GLOBAL : j1939_id_sa_get(id);
 	uint8_t i;
 
 	for (i = 0U; i < s->ca_count; i++) {
 		j1939_dm_t *dm = s->dm[i];
 
-		if ((dm != NULL) && ca_addressed(&s->ca[i], da) && dm_supported(dm, pgn)) {
+		if ((dm != NULL) && j1939_addr_ca_addressed(&s->ca[i], req->da) &&
+		    dm_supported(dm, pgn)) {
 			handled = true;
 			/* Nothing is sent before the claim completes. */
-			if (j1939_addr_tx_allowed(&s->ca[i])) {
-				request_accept(s, i, dm, pgn, requester);
+			if (j1939_addr_ca_claimed(&s->ca[i])) {
+				request_accept(s, i, dm, pgn, j1939_request_requester(req));
 			}
 		}
 	}

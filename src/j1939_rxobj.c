@@ -13,23 +13,12 @@
 #include <string.h>
 
 #include "j1939/j1939_addr.h"
+#include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_tp.h"
-#include "j1939_nametab_priv.h"
-#include "j1939_rxobj_priv.h"
-#include "j1939_stack_priv.h"
+#include "j1939_internal.h"
 
-#define SA_MAX      0xFDU                         /**< Highest source address a node can claim. */
 #define BUF_LEN_MAX ((uint16_t)J1939_MAX_MSG_LEN) /**< Largest payload an object can hold. */
-
-/**
- * Tells whether the stack handles a PGN itself, so that it never reaches a receive object: Request,
- * Address Claimed, TP.CM and TP.DT.
- */
-static bool pgn_owned(uint32_t pgn) {
-	return (pgn == J1939_PGN_REQUEST) || (pgn == J1939_PGN_ADDRESS_CLAIMED) ||
-	       (pgn == J1939_PGN_TP_CM) || (pgn == J1939_PGN_TP_DT);
-}
 
 /**
  * Checks one entry of a receive object table: it has a buffer, a valid PGN the stack does not own,
@@ -37,9 +26,9 @@ static bool pgn_owned(uint32_t pgn) {
  * NAME with a NAME table set up.
  */
 static bool rx_entry_valid(const j1939_t *s, const j1939_rxobj_cfg_t *c) {
-	bool sender_valid = (c->name == 0U) ? (c->sa <= SA_MAX) : (s->nametab.buf != NULL);
+	bool sender_valid = (c->name == 0U) ? (c->sa <= J1939_ADDR_MAX) : (s->nametab.buf != NULL);
 
-	return (c->buf != NULL) && j1939_stack_pgn_valid(c->pgn) && !pgn_owned(c->pgn) &&
+	return (c->buf != NULL) && j1939_pgn_valid(c->pgn) && !j1939_stack_pgn_owned(c->pgn) &&
 	       sender_valid && (c->min_len >= 1U) && (c->min_len <= c->buf_len) &&
 	       (c->buf_len <= BUF_LEN_MAX);
 }
@@ -100,7 +89,7 @@ static bool rx_matches(const j1939_t *s, const j1939_rxobj_cfg_t *c, uint32_t pg
 	} else {
 		if (!sender->known) {
 			sender->known = true;
-			if ((s->nametab.buf == NULL) || (sender->sa > SA_MAX) ||
+			if ((s->nametab.buf == NULL) || (sender->sa > J1939_ADDR_MAX) ||
 			    !j1939_nametab_lookup(s, sender->sa, &sender->name)) {
 				sender->name = 0U;
 			}
@@ -174,21 +163,21 @@ bool j1939_rxobj_wanted(const j1939_t *s, uint32_t pgn, uint8_t sa) {
 	return wanted;
 }
 
-void j1939_rxobj_handle(j1939_t *s, uint32_t pgn, uint8_t sa, const uint8_t *data, uint16_t len) {
-	rx_sender_t sender = {0U, sa, false};
+void j1939_rxobj_handle(j1939_t *s, const j1939_msg_t *msg) {
+	rx_sender_t sender = {0U, msg->sa, false};
 	uint16_t i;
 
 	for (i = 0U; i < s->rxobj_len; i++) {
 		const j1939_rxobj_cfg_t *c = &s->rxobj_cfg[i];
 
-		if (rx_matches(s, c, pgn, &sender)) {
+		if (rx_matches(s, c, msg->pgn, &sender)) {
 			j1939_rxobj_t *o = &s->rxobj[i];
 
-			if ((len < c->min_len) || (len > c->buf_len)) {
+			if ((msg->len < c->min_len) || (msg->len > c->buf_len)) {
 				s->stats.rxobj_rejected++;
 			} else {
-				(void)memcpy(c->buf, data, len);
-				o->len = len;
+				(void)memcpy(c->buf, msg->data, msg->len);
+				o->len = msg->len;
 				o->age_us = 0U;
 				o->received = true;
 				o->timed_out = false;
@@ -206,17 +195,10 @@ void j1939_rxobj_process(j1939_t *s, uint32_t elapsed_us) {
 		const j1939_rxobj_cfg_t *c = &s->rxobj_cfg[i];
 		j1939_rxobj_t *o = &s->rxobj[i];
 
-		if (!o->received) {
-			/* Nothing to supervise yet. */
-		} else if (o->fresh) {
+		/* Nothing is supervised before the first reception. */
+		if (o->received) {
 			/* A reception counts from the next call. */
-			o->fresh = false;
-		} else {
-			if (elapsed_us > (UINT32_MAX - o->age_us)) {
-				o->age_us = UINT32_MAX;
-			} else {
-				o->age_us += elapsed_us;
-			}
+			j1939_stack_timer_advance(&o->age_us, &o->fresh, elapsed_us);
 			if ((c->timeout_us > 0U) && !o->timed_out && (o->age_us >= c->timeout_us)) {
 				o->timed_out = true;
 				s->stats.rxobj_timeout++;

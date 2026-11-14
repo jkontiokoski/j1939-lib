@@ -44,6 +44,7 @@
 #define J1939_PRIO_MAX     7U       /**< Lowest priority. */
 #define J1939_PRIO_DEFAULT 6U       /**< Default priority of most messages. */
 #define J1939_PF_PDU2_MIN  240U     /**< First PDU2 PDU format. */
+#define J1939_ADDR_MAX     0xFDU    /**< Highest address a node can claim (253). */
 #define J1939_ADDR_NULL    0xFEU    /**< Null address, used before a successful claim. */
 #define J1939_ADDR_GLOBAL  0xFFU    /**< Global (broadcast) destination address. */
 
@@ -61,6 +62,9 @@ uint8_t j1939_id_sa_get(uint32_t id);
 
 /** @return true if @p pgn uses the PDU1 (destination specific) format. */
 bool j1939_pgn_is_pdu1(uint32_t pgn);
+
+/** @return true if @p pgn is at most J1939_PGN_MAX and, for a PDU1 format, its lowest byte is 0. */
+bool j1939_pgn_valid(uint32_t pgn);
 
 /**
  * @brief Builds a 29-bit identifier.

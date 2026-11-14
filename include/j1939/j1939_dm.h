@@ -66,7 +66,7 @@
  * DM1, DM2 and acknowledgements that find the tx queue full or the CA's
  * broadcast busy are retried with every j1939_process() and counted in
  * j1939_stats_t::dm_tx_retry. DM2 answers and acknowledgements not sent
- * within J1939_DM_RESPONSE_US, and periodic DM1s still unsent when the next
+ * within J1939_TR_US, and periodic DM1s still unsent when the next
  * one is due, are counted in j1939_stats_t::dm_tx_dropped. A BAM of many DTCs
  * can outlast a DM1 period: size the DTC lists for what the bus carries.
  *
@@ -77,9 +77,6 @@
  */
 
 #define J1939_DM1_PERIOD_US 1000000U /**< DM1 period, and the per-DTC change hold time. */
-
-/** Response time Tr of J1939/21: for DM2 answers, acknowledgements and clear decisions. */
-#define J1939_DM_RESPONSE_US 200000U
 
 /** Bytes of the payload buffer for up to @p dtcs DTCs (see j1939_dm_cfg_t::buf). */
 #define J1939_DM_BUF_LEN(dtcs) (((dtcs) <= 1U) ? 8U : (2U + (4U * (dtcs))))
@@ -213,7 +210,7 @@ j1939_ret_t j1939_dm_prev_set(j1939_t *s, j1939_ca_id_t ca, const j1939_dtc_t *d
 /**
  * @brief Reads a clear request waiting for the application's decision.
  *
- * A request waits at most J1939_DM_RESPONSE_US after the first
+ * A request waits at most J1939_TR_US after the first
  * j1939_process() following its reception. When both are waiting, DM3 is
  * reported first.
  *

@@ -17,10 +17,7 @@
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_tp.h"
-#include "j1939_addr_priv.h"
-#include "j1939_stack_priv.h"
-#include "j1939_tp_priv.h"
-#include "j1939_txobj_priv.h"
+#include "j1939_internal.h"
 
 #define FLAG_STARTED 0x01U /**< The CA has claimed its address; the schedule runs. */
 #define FLAG_DUE     0x02U /**< Periodic send due. */
@@ -28,9 +25,7 @@
 #define FLAG_ANSWER  0x08U /**< Answer to a Request pending. */
 #define FLAG_FRESH   0x10U /**< Answer recorded since the last j1939_process(). */
 #define PAD          0xFFU /**< Initial payload byte: "not available". */
-#define FRAME_LEN    8U    /**< Largest single frame payload. */
 #define MSG_LEN_MAX  ((uint32_t)J1939_MAX_MSG_LEN) /**< Largest object payload. */
-#define NO_EXPIRY    0U /**< Age of a send that is retried until it succeeds. */
 
 /** Reads a state flag of an object, one of the FLAG_ bits. */
 static bool flag_get(const j1939_txobj_t *o, uint8_t flag) {
@@ -46,22 +41,12 @@ static void flag_put(j1939_txobj_t *o, uint8_t flag, bool on) {
 	}
 }
 
-/** Advances a timer, saturating at UINT32_MAX. */
-static void timer_add(uint32_t *timer_us, uint32_t elapsed_us) {
-	if (elapsed_us > (UINT32_MAX - *timer_us)) {
-		*timer_us = UINT32_MAX;
-	} else {
-		*timer_us += elapsed_us;
-	}
-}
-
 /**
- * Tells whether the stack builds or answers the messages of a PGN itself: Request, Acknowledgement,
- * TP.CM, TP.DT, Address Claimed, Commanded Address, DM1, DM2, DM3 and DM11.
+ * Tells whether the stack builds or answers the messages of a PGN itself: what the receive path
+ * consumes, Acknowledgement, Commanded Address, DM1, DM2, DM3 and DM11.
  */
 static bool pgn_stack_owned(uint32_t pgn) {
-	return (pgn == J1939_PGN_REQUEST) || (pgn == J1939_PGN_ACK) || (pgn == J1939_PGN_TP_CM) ||
-	       (pgn == J1939_PGN_TP_DT) || (pgn == J1939_PGN_ADDRESS_CLAIMED) ||
+	return j1939_stack_pgn_owned(pgn) || (pgn == J1939_PGN_ACK) ||
 	       (pgn == J1939_PGN_COMMANDED_ADDRESS) || (pgn == J1939_PGN_DM1) ||
 	       (pgn == J1939_PGN_DM2) || (pgn == J1939_PGN_DM3) || (pgn == J1939_PGN_DM11);
 }
@@ -73,9 +58,9 @@ static bool pgn_stack_owned(uint32_t pgn) {
  * frame PDU2 PGN.
  */
 static bool tx_entry_valid(const j1939_t *s, const j1939_txobj_cfg_t *c) {
-	bool single = c->len <= FRAME_LEN;
+	bool single = c->len <= J1939_MSG_SINGLE_FRAME_MAX;
 
-	return (c->buf != NULL) && (c->ca < s->ca_count) && j1939_stack_pgn_valid(c->pgn) &&
+	return (c->buf != NULL) && (c->ca < s->ca_count) && j1939_pgn_valid(c->pgn) &&
 	       (c->prio <= J1939_PRIO_MAX) && (c->len > 0U) && ((uint32_t)c->len <= MSG_LEN_MAX) &&
 	       (single || j1939_tp_tx_buf_allocated(s)) && (c->da != J1939_ADDR_NULL) &&
 	       (j1939_pgn_is_pdu1(c->pgn) || !single || (c->da == J1939_ADDR_GLOBAL)) &&
@@ -114,8 +99,9 @@ static j1939_ret_t obj_send(j1939_t *s, const j1939_txobj_cfg_t *c, uint8_t da) 
  * PGN, else the requester, which is J1939_ADDR_GLOBAL for a global Request.
  */
 static uint8_t answer_da(const j1939_txobj_cfg_t *c, uint8_t requester) {
-	return ((c->len <= FRAME_LEN) && !j1939_pgn_is_pdu1(c->pgn)) ? J1939_ADDR_GLOBAL
-	                                                             : requester;
+	return ((c->len <= J1939_MSG_SINGLE_FRAME_MAX) && !j1939_pgn_is_pdu1(c->pgn))
+	               ? J1939_ADDR_GLOBAL
+	               : requester;
 }
 
 /**
@@ -123,25 +109,12 @@ static uint8_t answer_da(const j1939_txobj_cfg_t *c, uint8_t requester) {
  * busy. Returns true when the send is over, sent or given up.
  *
  * Retries are counted in txobj_tx_retry; a send given up, at the latest when age_us reaches
- * J1939_TXOBJ_RESPONSE_US, in txobj_tx_dropped. With NO_EXPIRY as its age a send is retried until
+ * J1939_TR_US, in txobj_tx_dropped. With J1939_STACK_NO_EXPIRY as its age a send is retried until
  * it succeeds.
  */
 static bool obj_send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
-	bool done = true;
-
-	if (ret == J1939_RET_OK) {
-		/* Sent. */
-	} else if ((ret == J1939_RET_ERR_FULL) || (ret == J1939_RET_ERR_BUSY)) {
-		if (age_us >= J1939_TXOBJ_RESPONSE_US) {
-			s->stats.txobj_tx_dropped++;
-		} else {
-			s->stats.txobj_tx_retry++;
-			done = false;
-		}
-	} else {
-		s->stats.txobj_tx_dropped++;
-	}
-	return done;
+	return j1939_stack_retry_done(ret, age_us, &s->stats.txobj_tx_retry,
+	                              &s->stats.txobj_tx_dropped);
 }
 
 /**
@@ -175,9 +148,9 @@ static void obj_start(const j1939_txobj_cfg_t *c, j1939_txobj_t *o) {
  */
 static void schedule_tick(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_t *o,
                           uint32_t elapsed_us) {
-	timer_add(&o->since_us, elapsed_us);
+	j1939_stack_timer_add(&o->since_us, elapsed_us);
 	if (c->period_us > 0U) {
-		timer_add(&o->period_us, elapsed_us);
+		j1939_stack_timer_add(&o->period_us, elapsed_us);
 		if (o->period_us >= c->period_us) {
 			if (flag_get(o, (uint8_t)FLAG_DUE)) {
 				/* The previous periodic send never went out. */
@@ -200,7 +173,7 @@ static void schedule_send(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_t 
 	    (flag_get(o, (uint8_t)FLAG_CHANGED) && (o->since_us >= c->inhibit_us))) {
 		j1939_ret_t ret = obj_send(s, c, c->da);
 
-		if (obj_send_done(s, ret, NO_EXPIRY)) {
+		if (obj_send_done(s, ret, J1939_STACK_NO_EXPIRY)) {
 			flag_put(o, (uint8_t)FLAG_DUE, false);
 			flag_put(o, (uint8_t)FLAG_CHANGED, false);
 			if (ret == J1939_RET_OK) {
@@ -216,14 +189,14 @@ static void schedule_send(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_t 
 	}
 }
 
-/** Sends a pending answer to a Request, retried at most J1939_TXOBJ_RESPONSE_US. */
+/** Sends a pending answer to a Request, retried at most J1939_TR_US. */
 static void obj_answer_tick(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_t *o,
                             uint32_t elapsed_us) {
 	if (flag_get(o, (uint8_t)FLAG_ANSWER)) {
 		if (flag_get(o, (uint8_t)FLAG_FRESH)) {
 			flag_put(o, (uint8_t)FLAG_FRESH, false);
 		} else {
-			timer_add(&o->answer_us, elapsed_us);
+			j1939_stack_timer_add(&o->answer_us, elapsed_us);
 		}
 		if (obj_send_done(s, obj_send(s, c, answer_da(c, o->requester)), o->answer_us)) {
 			flag_put(o, (uint8_t)FLAG_ANSWER, false);
@@ -248,11 +221,19 @@ static void obj_answer_request(j1939_txobj_t *o, uint8_t requester) {
 	}
 }
 
-/** Tells whether a Request addresses a CA: it is global, or sent to the address the CA holds. */
-static bool obj_ca_addressed(const j1939_ca_t *ca, uint8_t da) {
-	return (da == J1939_ADDR_GLOBAL) ||
-	       ((ca->address == da) && ((ca->state == J1939_ADDR_STATE_CLAIMING) ||
-	                                (ca->state == J1939_ADDR_STATE_CLAIMED)));
+/**
+ * Tells whether an object is the first of its CA with its PGN: that one answers a Request, the
+ * later ones differ only in their destination.
+ */
+static bool obj_first_of_pgn(const j1939_t *s, uint16_t index) {
+	const j1939_txobj_cfg_t *c = &s->txobj_cfg[index];
+	bool first = true;
+	uint16_t i;
+
+	for (i = 0U; first && (i < index); i++) {
+		first = (s->txobj_cfg[i].ca != c->ca) || (s->txobj_cfg[i].pgn != c->pgn);
+	}
+	return first;
 }
 
 void j1939_txobj_stack_init(j1939_t *s) {
@@ -263,25 +244,20 @@ void j1939_txobj_stack_init(j1939_t *s) {
 	s->stats.txobj_tx_dropped = 0U;
 }
 
-bool j1939_txobj_request_handle(j1939_t *s, uint32_t id, uint32_t pgn) {
-	bool answered[J1939_CFG_CA_MAX];
+bool j1939_txobj_request_handle(j1939_t *s, const j1939_msg_t *req, uint32_t pgn) {
 	bool handled = false;
-	uint8_t da = j1939_id_da_get(id);
-	uint8_t requester = (da == J1939_ADDR_GLOBAL) ? J1939_ADDR_GLOBAL : j1939_id_sa_get(id);
 	uint16_t i;
 
-	(void)memset(answered, 0, sizeof(answered));
 	for (i = 0U; i < s->txobj_len; i++) {
 		const j1939_txobj_cfg_t *c = &s->txobj_cfg[i];
 		const j1939_ca_t *ca = &s->ca[c->ca];
 
-		/* The first object of a CA with the PGN answers. */
-		if ((c->pgn == pgn) && !answered[c->ca] && obj_ca_addressed(ca, da)) {
-			answered[c->ca] = true;
+		if ((c->pgn == pgn) && j1939_addr_ca_addressed(ca, req->da) &&
+		    obj_first_of_pgn(s, i)) {
 			handled = true;
 			/* Nothing is sent before the claim completes. */
-			if (j1939_addr_tx_allowed(ca)) {
-				obj_answer_request(&s->txobj[i], requester);
+			if (j1939_addr_ca_claimed(ca)) {
+				obj_answer_request(&s->txobj[i], j1939_request_requester(req));
 			}
 		}
 	}
@@ -295,7 +271,7 @@ void j1939_txobj_process(j1939_t *s, uint32_t elapsed_us) {
 		const j1939_txobj_cfg_t *c = &s->txobj_cfg[i];
 		j1939_txobj_t *o = &s->txobj[i];
 
-		if (!j1939_addr_tx_allowed(&s->ca[c->ca])) {
+		if (!j1939_addr_ca_claimed(&s->ca[c->ca])) {
 			obj_stop(s, o);
 		} else {
 			if (!flag_get(o, (uint8_t)FLAG_STARTED)) {

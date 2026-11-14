@@ -29,7 +29,7 @@
 
 #define PERIOD  100000U
 #define INHIBIT 30000U
-#define TR      J1939_TXOBJ_RESPONSE_US
+#define TR      J1939_TR_US
 #define GAP     J1939_CFG_TP_BAM_GAP_US
 
 #define BAM 0x20U

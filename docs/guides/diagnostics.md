@@ -75,7 +75,7 @@ if (j1939_dm_clear_get(&stack, ca, &pgn) == J1939_RET_OK) {
 }
 ```
 
-- Decide within `J1939_DM_RESPONSE_US` (200 ms); a request left undecided is refused.
+- Decide within `J1939_TR_US` (200 ms); a request left undecided is refused.
 - On acceptance the stack empties its copy of the cleared list; clear your own records before the next `j1939_process()`. Faults still present are reported again with the next `j1939_dm_active_set()`.
 - With `dm3_enable` or `dm11_enable` false, the request is handled like any unsupported PGN: a NACK when it was addressed to the CA.
 
