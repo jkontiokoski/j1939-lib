@@ -765,6 +765,38 @@ static void test_pdu2_pgn_is_sent_with_rts_cts(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, send(PEER, PGN_A, 8U));
 }
 
+/* The responder cannot have the message before the last packet was sent: an EndOfMsgAck then
+ * is a protocol error, and the transfer is not counted as done. */
+static void test_end_of_msg_ack_before_the_last_packet_aborts(void) {
+	/* Before any CTS. */
+	TEST_ASSERT_EQUAL(J1939_RET_OK, send(PEER, PGN_B, LEN_20));
+	expect_tx(6U, J1939_PGN_TP_CM, PEER);
+	rx_cm_to(PEER, OWN, EOMA, LEN_20, 0U, 3U, NA, PGN_B);
+	expect_abort(PEER, J1939_TP_ABORT_OTHER, PGN_B);
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
+	TEST_ASSERT_EQUAL_UINT32(1U, s.stats.tp_tx_aborted);
+
+	/* After a window that does not reach the last packet. */
+	TEST_ASSERT_EQUAL(J1939_RET_OK, send(PEER, PGN_B, LEN_20));
+	expect_tx(6U, J1939_PGN_TP_CM, PEER);
+	rx_cts(PEER, 2U, 1U, PGN_B);
+	run(0U);
+	expect_tx(6U, J1939_PGN_TP_DT, PEER);
+	expect_tx(6U, J1939_PGN_TP_DT, PEER);
+	rx_cm_to(PEER, OWN, EOMA, LEN_20, 0U, 3U, NA, PGN_B);
+	expect_abort(PEER, J1939_TP_ABORT_OTHER, PGN_B);
+	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
+	TEST_ASSERT_EQUAL_UINT32(2U, s.stats.tp_tx_aborted);
+
+	/* While held by the responder. */
+	TEST_ASSERT_EQUAL(J1939_RET_OK, send(PEER, PGN_B, LEN_20));
+	expect_tx(6U, J1939_PGN_TP_CM, PEER);
+	rx_cts(PEER, 0U, NA, PGN_B);
+	rx_cm_to(PEER, OWN, EOMA, LEN_20, 0U, 3U, NA, PGN_B);
+	expect_abort(PEER, J1939_TP_ABORT_OTHER, PGN_B);
+	TEST_ASSERT_EQUAL_UINT32(3U, s.stats.tp_tx_aborted);
+}
+
 static void test_originator_times_out_with_t3(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK, send(PEER, PGN_B, LEN_20));
 	expect_tx(6U, J1939_PGN_TP_CM, PEER);
@@ -1055,6 +1087,7 @@ int main(void) {
 	RUN_TEST(test_bam_send_waits_for_tx_queue_then_gives_up);
 	RUN_TEST(test_rts_cts_send);
 	RUN_TEST(test_pdu2_pgn_is_sent_with_rts_cts);
+	RUN_TEST(test_end_of_msg_ack_before_the_last_packet_aborts);
 	RUN_TEST(test_originator_times_out_with_t3);
 	RUN_TEST(test_originator_hold_and_t4);
 	RUN_TEST(test_invalid_cts_aborts);

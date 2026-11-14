@@ -34,13 +34,25 @@ static uint32_t make_id(uint8_t prio, uint32_t pgn, uint8_t da, uint8_t sa) {
 	return id;
 }
 
-static void rx_cm(uint8_t ctrl, uint8_t da, uint16_t len) {
+static void rx_cm_limit(uint8_t ctrl, uint8_t da, uint16_t len, uint8_t limit) {
 	const uint8_t d[8] = {
 	        ctrl,  (uint8_t)len,   (uint8_t)(len >> 8),   (uint8_t)((len + 6U) / 7U),
-	        0xFFU, (uint8_t)PGN_A, (uint8_t)(PGN_A >> 8), (uint8_t)(PGN_A >> 16)};
+	        limit, (uint8_t)PGN_A, (uint8_t)(PGN_A >> 8), (uint8_t)(PGN_A >> 16)};
 	j1939_port_frame_t f;
 
 	j1939_port_frame_build(&f, make_id(7U, J1939_PGN_TP_CM, da, PEER), d, 8U);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
+}
+
+static void rx_cm(uint8_t ctrl, uint8_t da, uint16_t len) {
+	rx_cm_limit(ctrl, da, len, 0xFFU);
+}
+
+static void rx_dt(uint8_t seq) {
+	const uint8_t d[8] = {seq, seq, seq, seq, seq, seq, seq, seq};
+	j1939_port_frame_t f;
+
+	j1939_port_frame_build(&f, make_id(7U, J1939_PGN_TP_DT, OWN, PEER), d, 8U);
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
 }
 
@@ -51,6 +63,19 @@ static void expect_frame(uint32_t id, const uint8_t *d) {
 	TEST_ASSERT_EQUAL_HEX32(id, j1939_port_frame_id_get(f));
 	TEST_ASSERT_EQUAL_HEX8_ARRAY(d, j1939_port_frame_data(f), 8U);
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
+}
+
+static void expect_cts(uint8_t packets, uint8_t next) {
+	const uint8_t cts[8] = {0x11U,
+	                        packets,
+	                        next,
+	                        0xFFU,
+	                        0xFFU,
+	                        (uint8_t)PGN_A,
+	                        (uint8_t)(PGN_A >> 8),
+	                        (uint8_t)(PGN_A >> 16)};
+
+	expect_frame(make_id(7U, J1939_PGN_TP_CM, PEER, OWN), cts);
 }
 
 void setUp(void) {
@@ -116,6 +141,43 @@ static void test_announcements_beyond_the_buffer_are_refused(void) {
 	TEST_ASSERT_EQUAL_UINT32(2U, j1939_stats_get(&s)->tp_rx_refused);
 }
 
+/* J1939_CFG_TP_CTS_PACKETS is 4 in this build: a CTS never asks for more, whatever the
+ * originator allows. */
+static void test_cts_asks_for_at_most_the_configured_packets(void) {
+	const uint8_t eoma[8] = {0x13U,
+	                         63U,
+	                         0U,
+	                         9U,
+	                         0xFFU,
+	                         (uint8_t)PGN_A,
+	                         (uint8_t)(PGN_A >> 8),
+	                         (uint8_t)(PGN_A >> 16)};
+	uint8_t seq;
+
+	/* 63 bytes, 9 packets, no limit from the originator: windows of 4, 4 and 1. */
+	rx_cm(0x10U, OWN, 63U);
+	expect_cts(4U, 1U);
+	for (seq = 1U; seq <= 4U; seq++) {
+		TEST_ASSERT_NULL(j1939_tx_peek(&s));
+		rx_dt(seq);
+	}
+	expect_cts(4U, 5U);
+	for (seq = 5U; seq <= 8U; seq++) {
+		TEST_ASSERT_NULL(j1939_tx_peek(&s));
+		rx_dt(seq);
+	}
+	expect_cts(1U, 9U);
+	rx_dt(9U);
+	expect_frame(make_id(7U, J1939_PGN_TP_CM, PEER, OWN), eoma);
+	TEST_ASSERT_NOT_NULL(j1939_msg_peek(&s));
+	TEST_ASSERT_EQUAL_UINT16(63U, j1939_msg_peek(&s)->len);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_msg_pop(&s));
+
+	/* The originator's own limit applies when it is lower. */
+	rx_cm_limit(0x10U, OWN, 63U, 2U);
+	expect_cts(2U, 1U);
+}
+
 static void test_multi_packet_send_beyond_the_buffer_or_invalid_is_rejected(void) {
 	static uint8_t data[BUF_MAX + 1U];
 	j1939_msg_t msg = {.pgn = PGN_A,
@@ -152,6 +214,7 @@ static void test_dm_payload_beyond_the_buffer_is_rejected(void) {
 int main(void) {
 	UNITY_BEGIN();
 	RUN_TEST(test_announcements_beyond_the_buffer_are_refused);
+	RUN_TEST(test_cts_asks_for_at_most_the_configured_packets);
 	RUN_TEST(test_multi_packet_send_beyond_the_buffer_or_invalid_is_rejected);
 	RUN_TEST(test_dm_payload_beyond_the_buffer_is_rejected);
 	return UNITY_END();

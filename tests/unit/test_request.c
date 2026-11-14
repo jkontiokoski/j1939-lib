@@ -19,7 +19,7 @@ static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_t s;
 static j1939_ca_id_t ca;
 
-static void rx_request(uint8_t da, uint32_t pgn, uint8_t len) {
+static void rx_request_from(uint8_t sa, uint8_t da, uint32_t pgn, uint8_t len) {
 	/* Requests are often padded to 8 bytes with 0xFF. */
 	uint8_t data[8] = {
 	        (uint8_t)pgn, (uint8_t)(pgn >> 8), (uint8_t)(pgn >> 16), 0xFFU, 0xFFU, 0xFFU, 0xFFU,
@@ -27,9 +27,13 @@ static void rx_request(uint8_t da, uint32_t pgn, uint8_t len) {
 	j1939_port_frame_t f;
 	uint32_t id = 0U;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_id_build(6U, J1939_PGN_REQUEST, da, OTHER, &id));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_id_build(6U, J1939_PGN_REQUEST, da, sa, &id));
 	j1939_port_frame_build(&f, id, data, len);
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rx(&s, &f));
+}
+
+static void rx_request(uint8_t da, uint32_t pgn, uint8_t len) {
+	rx_request_from(OTHER, da, pgn, len);
 }
 
 void setUp(void) {
@@ -110,6 +114,25 @@ static void test_requests_without_answer_are_ignored(void) {
 	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
 }
 
+/* A node without an address may only ask for the claims: it cannot be answered. */
+static void test_requests_from_no_address_are_ignored(void) {
+	const j1939_port_frame_t *f;
+
+	rx_request_from(J1939_ADDR_NULL, OWN, PGN_UNS, 3U);   /* would be NACKed */
+	rx_request_from(J1939_ADDR_NULL, OWN, PGN_SUP, 3U);   /* would be delivered */
+	rx_request_from(J1939_ADDR_GLOBAL, OWN, PGN_UNS, 3U); /* not a source address */
+	rx_request_from(J1939_ADDR_GLOBAL, J1939_ADDR_GLOBAL, PGN_SUP, 3U);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
+	TEST_ASSERT_NULL(j1939_msg_peek(&s));
+	TEST_ASSERT_NULL(j1939_tx_peek(&s));
+
+	/* The Request for Address Claimed of a node without an address is answered. */
+	rx_request_from(J1939_ADDR_NULL, J1939_ADDR_GLOBAL, J1939_PGN_ADDRESS_CLAIMED, 3U);
+	f = j1939_tx_peek(&s);
+	TEST_ASSERT_NOT_NULL(f);
+	TEST_ASSERT_EQUAL_HEX32(0x18EEFF00U | OWN, j1939_port_frame_id_get(f));
+}
+
 static void test_nack_overflow_is_counted(void) {
 	uint32_t i;
 
@@ -168,6 +191,7 @@ int main(void) {
 	RUN_TEST(test_request_for_supported_pgn_is_delivered);
 	RUN_TEST(test_specific_request_for_unsupported_pgn_is_nacked);
 	RUN_TEST(test_requests_without_answer_are_ignored);
+	RUN_TEST(test_requests_from_no_address_are_ignored);
 	RUN_TEST(test_nack_overflow_is_counted);
 	RUN_TEST(test_request_send_builds_request);
 	RUN_TEST(test_request_pgn_get_rejects_invalid_messages);

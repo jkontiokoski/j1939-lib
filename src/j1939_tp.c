@@ -60,8 +60,9 @@
 
 #define BAM_GAP_US   ((uint32_t)J1939_CFG_TP_BAM_GAP_US) /**< Gap between sent BAM packets. */
 #define BAM_STALL_US (BAM_GAP_US + J1939_TP_TR_US) /**< Longest wait for room for a BAM packet. */
-#define SESSIONS     ((uint8_t)J1939_CFG_TP_SESSIONS)  /**< Sessions in the pool. */
-#define BUF_SIZE     ((uint16_t)J1939_CFG_TP_BUF_SIZE) /**< Largest message a buffer holds. */
+#define SESSIONS     ((uint8_t)J1939_CFG_TP_SESSIONS)     /**< Sessions in the pool. */
+#define CTS_PACKETS  ((uint16_t)J1939_CFG_TP_CTS_PACKETS) /**< Most packets asked for per CTS. */
+#define BUF_SIZE     ((uint16_t)J1939_CFG_TP_BUF_SIZE)    /**< Largest message a buffer holds. */
 
 /**
  * @brief Reads the PGN of a TP.CM frame.
@@ -322,6 +323,7 @@ static void session_open(j1939_tp_session_t *se, bool tx, uint8_t local, uint8_t
 	se->last = 0U;
 	se->limit = PAD;
 	se->holds = 0U;
+	se->sent_all = false;
 }
 
 /**
@@ -557,8 +559,11 @@ static void rts_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 		}
 		reason = rx_open(s, id, d, own, &se);
 		if (se != NULL) {
-			/* A limit of 0 is invalid; one packet per CTS suits every originator. */
-			se->limit = (d[CM_LIMIT] == 0U) ? 1U : d[CM_LIMIT];
+			/* A limit of 0 is invalid; one packet per CTS suits every originator. No
+			 * more than the receive path is sized for either. */
+			uint16_t limit = (d[CM_LIMIT] == 0U) ? 1U : d[CM_LIMIT];
+
+			se->limit = (uint8_t)((limit > CTS_PACKETS) ? CTS_PACKETS : limit);
 			window_request(s, se, true);
 		}
 	}
@@ -622,6 +627,23 @@ static void cts_handle(j1939_t *s, j1939_tp_session_t *se, const uint8_t *d) {
 }
 
 /**
+ * @brief Originator: handles an EndOfMsgAck for an open connection.
+ *
+ * The responder has the whole message only after the last packet was sent; an earlier
+ * acknowledgement is a protocol error and aborts the connection.
+ *
+ * @param s   Stack.
+ * @param se  Sending session.
+ */
+static void eoma_handle(j1939_t *s, j1939_tp_session_t *se) {
+	if ((se->state == J1939_TP_TX_WAIT) && se->sent_all) {
+		session_close(se);
+	} else {
+		session_abort(s, se, J1939_TP_ABORT_OTHER);
+	}
+}
+
+/**
  * @brief Ends the sessions a received Connection Abort concerns: same peer and PGN.
  * @param s     Stack.
  * @param own   Destination of the abort.
@@ -670,7 +692,7 @@ static void cm_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 	case CTRL_EOMA:
 		se = session_match(s, true, own, peer, pgn);
 		if (se != NULL) {
-			session_close(se);
+			eoma_handle(s, se);
 		}
 		break;
 	case CTRL_BAM:
@@ -836,6 +858,7 @@ static void data_tick(j1939_t *s, j1939_tp_session_t *se) {
 	for (i = 0U; sent && (i < n); i++) {
 		sent = dt_send(s, se);
 		if (sent) {
+			se->sent_all = se->sent_all || (se->next == se->packets);
 			se->next++;
 			progress = true;
 		}

@@ -84,6 +84,9 @@ void j1939_request_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t 
 			/* Malformed Request. */
 		} else if (pgn == J1939_PGN_ADDRESS_CLAIMED) {
 			j1939_addr_request_handle(s, da);
+		} else if (j1939_id_sa_get(id) >= J1939_ADDR_NULL) {
+			/* A node without an address may only ask for the claims; it cannot be
+			 * answered or acknowledged. */
 		} else if (j1939_dm_request_handle(s, id, pgn)) {
 			/* Diagnostic message answered by the stack. */
 		} else if (j1939_txobj_request_handle(s, id, pgn)) {

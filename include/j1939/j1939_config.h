@@ -47,6 +47,15 @@
 #define J1939_CFG_TP_BUF_SIZE 1785
 #endif
 
+/**
+ * Most data packets the stack asks for with one CTS when it receives with RTS/CTS. The packets
+ * of a CTS arrive back to back, so the receive path from the CAN driver must hold this many
+ * frames between two rounds of j1939_rx() calls.
+ */
+#ifndef J1939_CFG_TP_CTS_PACKETS
+#define J1939_CFG_TP_CTS_PACKETS 16
+#endif
+
 /** Gap between the packets of a sent broadcast (BAM), in microseconds. */
 #ifndef J1939_CFG_TP_BAM_GAP_US
 #define J1939_CFG_TP_BAM_GAP_US 50000
@@ -67,6 +76,10 @@
 
 #if (J1939_CFG_TP_BUF_SIZE < 9) || (J1939_CFG_TP_BUF_SIZE > 1785)
 #error "J1939_CFG_TP_BUF_SIZE must be in range 9..1785"
+#endif
+
+#if (J1939_CFG_TP_CTS_PACKETS < 1) || (J1939_CFG_TP_CTS_PACKETS > 255)
+#error "J1939_CFG_TP_CTS_PACKETS must be in range 1..255"
 #endif
 
 #if (J1939_CFG_TP_BAM_GAP_US < 50000) || (J1939_CFG_TP_BAM_GAP_US > 200000)

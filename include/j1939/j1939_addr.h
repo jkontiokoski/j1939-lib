@@ -40,7 +40,9 @@
  *   contending CA can answer.
  * - An Address Claimed from another node for an address a CA holds is
  *   arbitrated on the NAME: the numerically lower NAME wins. The winner sends
- *   Address Claimed again. The loser, if its NAME is arbitrary address
+ *   Address Claimed again; with the tx queue full, later j1939_process()
+ *   calls send it, as they do an answer to a Request for Address Claimed.
+ *   The loser, if its NAME is arbitrary address
  *   capable, claims the lowest self-configurable address that no other node
  *   has claimed and no CA of the stack uses. Otherwise, or if none is free,
  *   it becomes CANNOT_CLAIM and sends Cannot Claim (Address Claimed from

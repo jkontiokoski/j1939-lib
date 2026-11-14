@@ -157,13 +157,27 @@ static j1939_ret_t claim_tx(j1939_t *s, const j1939_ca_t *ca, uint8_t sa) {
 }
 
 /**
- * @brief Sends the CA's Address Claimed again; a full tx queue is counted.
+ * @brief Sends the CA's Address Claimed again: its defence in a contention, or its answer to a
+ *        Request for Address Claimed.
+ *
+ * With the tx queue full it stays pending and j1939_addr_process() sends it, so that the other
+ * node always learns that the address is held.
+ *
  * @param s   Stack.
  * @param ca  CA holding its address.
  */
-static void claim_repeat(j1939_t *s, const j1939_ca_t *ca) {
-	if (claim_tx(s, ca, ca->address) != J1939_RET_OK) {
-		s->stats.tx_overflow++;
+static void claim_repeat(j1939_t *s, j1939_ca_t *ca) {
+	ca->claim_pending = claim_tx(s, ca, ca->address) != J1939_RET_OK;
+}
+
+/**
+ * @brief Sends an Address Claimed that found the tx queue full when it was due.
+ * @param s   Stack.
+ * @param ca  CA holding its address.
+ */
+static void claim_retry(j1939_t *s, j1939_ca_t *ca) {
+	if (ca->claim_pending) {
+		claim_repeat(s, ca);
 	}
 }
 
@@ -177,6 +191,7 @@ static void claim_repeat(j1939_t *s, const j1939_ca_t *ca) {
  * @param ca  CA in UNCLAIMED state.
  */
 static void claim_start(j1939_t *s, j1939_ca_t *ca) {
+	ca->claim_pending = false;
 	if (claim_tx(s, ca, ca->address) == J1939_RET_OK) {
 		if (self_cfg(ca->address)) {
 			ca->state = J1939_ADDR_STATE_CLAIMING;
@@ -197,6 +212,7 @@ static void address_release(j1939_t *s, j1939_ca_t *ca) {
 		j1939_tp_address_lost(s, ca->address);
 	}
 	ca->address = J1939_ADDR_NULL;
+	ca->claim_pending = false;
 }
 
 /**
@@ -378,6 +394,7 @@ void j1939_addr_ca_init(j1939_ca_t *ca, const j1939_ca_cfg_t *cfg) {
 	ca->timer_fresh = false;
 	ca->address = cfg->address;
 	ca->cannot_claim_pending = false;
+	ca->claim_pending = false;
 	ca->accept_commanded = cfg->accept_commanded;
 	ca->commanded = J1939_ADDR_NULL;
 	ca->preclaim_sent = false;
@@ -397,12 +414,17 @@ void j1939_addr_process(j1939_t *s, uint32_t elapsed_us) {
 			}
 			break;
 		case J1939_ADDR_STATE_CLAIMING:
-			if (!command_apply(s, ca) && timer_expired(ca, elapsed_us)) {
-				ca->state = J1939_ADDR_STATE_CLAIMED;
+			if (!command_apply(s, ca)) {
+				claim_retry(s, ca);
+				if (timer_expired(ca, elapsed_us)) {
+					ca->state = J1939_ADDR_STATE_CLAIMED;
+				}
 			}
 			break;
 		case J1939_ADDR_STATE_CLAIMED:
-			(void)command_apply(s, ca);
+			if (!command_apply(s, ca)) {
+				claim_retry(s, ca);
+			}
 			break;
 		case J1939_ADDR_STATE_REQUESTING:
 			preclaim_tick(s, i, elapsed_us);

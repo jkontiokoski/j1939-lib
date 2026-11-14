@@ -512,15 +512,15 @@ static void test_full_tx_queue_delays_claims(void) {
 		TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(a));
 	}
 	b = ca_add(0x80U, ARB | NAME_LOSE);
-	rx_request(J1939_ADDR_GLOBAL); /* a's answer does not fit */
+	rx_request(J1939_ADDR_GLOBAL); /* a's answer does not fit: it waits for space */
 	process(0U);
 	expect_state(b, J1939_ADDR_STATE_UNCLAIMED, J1939_ADDR_NULL);
-	TEST_ASSERT_EQUAL_UINT32(1U, j1939_stats_get(&s)->tx_overflow);
 
 	for (i = 0U; i < TX_LEN; i++) {
 		(void)j1939_tx_pop(&s);
 	}
 	process(0U);
+	tx_expect_claim(OWN, NAME_OWN);
 	tx_expect_claim(0x80U, ARB | NAME_LOSE);
 	expect_state(b, J1939_ADDR_STATE_CLAIMING, 0x80U);
 
@@ -529,14 +529,15 @@ static void test_full_tx_queue_delays_claims(void) {
 		TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(a));
 	}
 	rx_claim(0x80U, NAME_WIN);
-	rx_claim(OWN, NAME_LOSE); /* a wins, but its answer does not fit */
+	rx_claim(OWN, NAME_LOSE); /* a wins; its defence waits for space too */
 	process(0U);
+	expect_state(a, J1939_ADDR_STATE_CLAIMED, OWN);
 	expect_state(b, J1939_ADDR_STATE_UNCLAIMED, J1939_ADDR_NULL);
-	TEST_ASSERT_EQUAL_UINT32(2U, j1939_stats_get(&s)->tx_overflow);
 	for (i = 0U; i < TX_LEN; i++) {
 		(void)j1939_tx_pop(&s);
 	}
 	process(0U);
+	tx_expect_claim(OWN, NAME_OWN);
 	tx_expect_claim(0x81U, ARB | NAME_LOSE);
 	expect_state(b, J1939_ADDR_STATE_CLAIMING, 0x81U);
 	tx_expect_empty();
@@ -547,7 +548,44 @@ static void test_full_tx_queue_delays_claims(void) {
 	}
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_FULL,
 	                  j1939_request_send(&s, b, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL));
-	TEST_ASSERT_EQUAL_UINT32(2U, j1939_stats_get(&s)->tx_overflow);
+	/* No claim was dropped: each one waited for space. */
+	TEST_ASSERT_EQUAL_UINT32(0U, j1939_stats_get(&s)->tx_overflow);
+}
+
+/* A defence that found the tx queue full is sent once, and not again after the CA lost the
+ * address in the meantime. */
+static void test_defence_waits_for_tx_space(void) {
+	j1939_ca_id_t a = ca_add(OWN, NAME_OWN);
+	uint32_t i;
+
+	process(0U);
+	tx_expect_claim(OWN, NAME_OWN);
+	for (i = 0U; i < TX_LEN; i++) {
+		TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(a));
+	}
+	rx_claim(OWN, NAME_LOSE);
+	process(0U);
+	process(1000000U); /* still no space: the defence stays pending */
+	for (i = 0U; i < TX_LEN; i++) {
+		(void)j1939_tx_pop(&s);
+	}
+	process(0U);
+	tx_expect_claim(OWN, NAME_OWN);
+	process(0U);
+	tx_expect_empty();
+
+	/* Pending again, then lost to a better NAME: the defence is void. */
+	for (i = 0U; i < TX_LEN; i++) {
+		TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(a));
+	}
+	rx_claim(OWN, NAME_LOSE);
+	for (i = 0U; i < TX_LEN; i++) {
+		(void)j1939_tx_pop(&s);
+	}
+	rx_claim(OWN, NAME_WIN);
+	expect_state(a, J1939_ADDR_STATE_CANNOT_CLAIM, J1939_ADDR_NULL);
+	process(0U);
+	tx_expect_empty();
 }
 
 static void test_cannot_claim_waits_for_tx_space(void) {
@@ -630,6 +668,7 @@ int main(void) {
 	RUN_TEST(test_delay_started_between_calls_counts_from_next_call);
 	RUN_TEST(test_request_send_uses_null_address_until_claimed);
 	RUN_TEST(test_full_tx_queue_delays_claims);
+	RUN_TEST(test_defence_waits_for_tx_space);
 	RUN_TEST(test_cannot_claim_waits_for_tx_space);
 	RUN_TEST(test_corrupted_state_stops_transmission);
 	RUN_TEST(test_addr_get_rejects_invalid_arguments);
