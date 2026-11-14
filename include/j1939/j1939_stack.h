@@ -38,7 +38,7 @@
  * 1. Standard (11-bit) frames, remote frames and frames with the extended
  *    data page bit set are dropped.
  * 2. Address Claimed goes to address claiming whatever its destination, see
- *    @ref grp_addr, then to the NAME table (@ref grp_names), and to the
+ *    @ref grp_addr, then to the NAME table (@ref grp_nametab), and to the
  *    application too if its PGN is in rx_pgns.
  * 3. Frames to an address that no CA of the stack holds are dropped; frames
  *    to the global address pass.
@@ -139,7 +139,7 @@ typedef struct j1939_stats {
 	uint32_t rxobj_timeout;  /**< Receive objects that timed out, see j1939_rxobj.h. */
 	uint32_t txobj_tx_retry; /**< Transmit object sends deferred, see j1939_txobj.h. */
 	uint32_t txobj_tx_dropped; /**< Transmit object sends given up, see j1939_txobj.h. */
-	uint32_t names_dropped;    /**< New NAMEs not recorded: NAME table full. */
+	uint32_t nametab_dropped;  /**< New NAMEs not recorded: NAME table full. */
 } j1939_stats_t;
 
 /** Transmit frame queue. Members are private. */
@@ -154,23 +154,23 @@ typedef struct j1939_msg_queue {
 	j1939_ring_t ring;     /**< Indices into buf. */
 } j1939_msg_queue_t;
 
-struct j1939_dm;          /* Diagnostic state of a CA, see j1939_dm.h. */
-struct j1939_rxobj_cfg;   /* Receive object configuration, see j1939_rxobj.h. */
-struct j1939_rxobj;       /* Receive object state, see j1939_rxobj.h. */
-struct j1939_txobj_cfg;   /* Transmit object configuration, see j1939_txobj.h. */
-struct j1939_txobj;       /* Transmit object state, see j1939_txobj.h. */
-struct j1939_names_entry; /* NAME table entry, see j1939_names.h. */
+struct j1939_dm;            /* Diagnostic state of a CA, see j1939_dm.h. */
+struct j1939_rxobj_cfg;     /* Receive object configuration, see j1939_rxobj.h. */
+struct j1939_rxobj;         /* Receive object state, see j1939_rxobj.h. */
+struct j1939_txobj_cfg;     /* Transmit object configuration, see j1939_txobj.h. */
+struct j1939_txobj;         /* Transmit object state, see j1939_txobj.h. */
+struct j1939_nametab_entry; /* NAME table entry, see j1939_nametab.h. */
 
-/** NAME table state, see j1939_names.h. Members are private. */
-typedef struct j1939_names_tab {
-	struct j1939_names_entry *buf; /**< Entries; NULL while no table is set up. */
-	uint32_t hold_us;              /**< Time before the next Request for an unknown address. */
-	uint16_t len;                  /**< Entries in buf. */
-	uint16_t count;                /**< Entries in use. */
-	uint16_t changes;              /**< Change counter. */
-	uint8_t request;               /**< Unknown address to request; J1939_ADDR_NULL if none. */
-	bool startup_due;              /**< The global Request is still to be sent. */
-} j1939_names_tab_t;
+/** NAME table state, see j1939_nametab.h. Members are private. */
+typedef struct j1939_nametab {
+	struct j1939_nametab_entry *buf; /**< Entries; NULL while no table is set up. */
+	uint32_t hold_us; /**< Time before the next Request for an unknown address. */
+	uint16_t len;     /**< Entries in buf. */
+	uint16_t count;   /**< Entries in use. */
+	uint16_t changes; /**< Change counter. */
+	uint8_t request;  /**< Unknown address to request; J1939_ADDR_NULL if none. */
+	bool startup_due; /**< The global Request is still to be sent. */
+} j1939_nametab_t;
 
 /** Stack instance. Allocated by the integrator, members are private. */
 typedef struct j1939 {
@@ -196,7 +196,7 @@ typedef struct j1939 {
 	const struct j1939_txobj_cfg *txobj_cfg; /**< Transmit objects; NULL while none are set. */
 	struct j1939_txobj *txobj;               /**< State of the transmit objects. */
 	uint16_t txobj_len;                      /**< Number of transmit objects. */
-	j1939_names_tab_t names;                 /**< NAME table. */
+	j1939_nametab_t nametab;                 /**< NAME table. */
 } j1939_t;
 
 /**

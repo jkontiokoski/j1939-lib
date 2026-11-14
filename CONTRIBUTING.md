@@ -144,7 +144,7 @@ A new deviation goes into `cppcheck-suppressions.txt` or `cppcheck-misra-suppres
 - Tasks that do not depend on each other are developed in parallel, each in its own git worktree and branch.
 - Commit messages follow Conventional Commits, `<type>(<scope>): <summary>`:
   - types: `feat`, `fix`, `docs`, `test`, `build`, `refactor`;
-  - the scope names the module or feature, e.g. `stack`, `tp`, `addr`, `names`, `rxobj`, `txobj`, `dm`, `signal`, `socketcan`, `docs`, `build`, `lint`;
+  - the scope names the module or feature, e.g. `stack`, `tp`, `addr`, `nametab`, `rxobj`, `txobj`, `dm`, `dtc`, `signal`, `socketcan`, `docs`, `build`, `lint`;
   - the summary says what changed, in the imperative mood; the body is a few lines on what was done and why;
   - roadmap milestone identifiers do not appear in commit messages or branch names;
   - no `Co-Authored-By` or other tool attribution trailers: the committer is responsible for every commit.

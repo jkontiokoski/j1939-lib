@@ -12,12 +12,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "j1939/j1939_diag.h"
+#include "j1939/j1939_dtc.h"
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_stack.h"
 
 /**
- * @addtogroup grp_diag
+ * @addtogroup grp_dm
  *
  * j1939_dm_init() enables diagnostics for a CA. The application owns its
  * fault memory (detection, occurrence counts, moving a DTC from active to
@@ -94,11 +94,11 @@ typedef struct j1939_dm_hold {
 
 /** Diagnostics configuration of a CA. All storage must outlive the stack. */
 typedef struct j1939_dm_cfg {
-	j1939_diag_dtc_t *active; /**< Active DTC storage. May be NULL if active_len is 0. */
-	uint16_t active_len;      /**< Active DTCs the CA can report, 0..J1939_DIAG_DM_DTC_MAX. */
-	j1939_diag_dtc_t *prev; /**< Previously active DTC storage. May be NULL if prev_len is 0. */
-	uint16_t prev_len; /**< Previously active DTCs the CA can report, 0..J1939_DIAG_DM_DTC_MAX.
-	                    */
+	j1939_dtc_t *active; /**< Active DTC storage. May be NULL if active_len is 0. */
+	uint16_t active_len; /**< Active DTCs the CA can report, 0..J1939_DTC_DM_DTC_MAX. */
+	j1939_dtc_t *prev;   /**< Previously active DTC storage. May be NULL if prev_len is 0. */
+	uint16_t prev_len;   /**< Previously active DTCs the CA can report, 0..J1939_DTC_DM_DTC_MAX.
+	                      */
 	j1939_dm_hold_t *hold; /**< Change hold records. May be NULL if hold_len is 0. */
 	uint16_t hold_len; /**< Records: DTCs whose changes can trigger a DM1 within one second. */
 	uint8_t *buf;      /**< Payload buffer for building DM1 and DM2. */
@@ -134,8 +134,8 @@ typedef struct j1939_dm_answer {
 
 /** Diagnostic state of a CA. Allocated by the integrator, members are private. */
 typedef struct j1939_dm {
-	j1939_diag_dtc_t *active;    /**< Active DTCs. */
-	j1939_diag_dtc_t *prev;      /**< Previously active DTCs. */
+	j1939_dtc_t *active;         /**< Active DTCs. */
+	j1939_dtc_t *prev;           /**< Previously active DTCs. */
 	j1939_dm_hold_t *hold;       /**< Change hold records. */
 	uint8_t *buf;                /**< Payload buffer. */
 	uint16_t active_len;         /**< Capacity of active. */
@@ -144,7 +144,7 @@ typedef struct j1939_dm {
 	uint16_t prev_count;         /**< DTCs in prev. */
 	uint16_t hold_len;           /**< Entries in hold. */
 	uint16_t buf_len;            /**< Size of buf. */
-	j1939_diag_lamps_t lamps;    /**< Lamp status sent with DM1 and DM2. */
+	j1939_dtc_lamps_t lamps;     /**< Lamp status sent with DM1 and DM2. */
 	uint32_t dm1_timer_us;       /**< Time since the periodic DM1 was last due. */
 	j1939_dm_answer_t answer[2]; /**< Answers to Requests for DM1 and DM2. */
 	j1939_dm_clear_t clear[2];   /**< DM3 and DM11 requests. */
@@ -163,7 +163,7 @@ typedef struct j1939_dm {
  * @param dm   State storage for the CA.
  * @param cfg  Configuration.
  * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer, an unknown
- *         CA, a capacity above J1939_DIAG_DM_DTC_MAX, a missing or too small
+ *         CA, a capacity above J1939_DTC_DM_DTC_MAX, a missing or too small
  *         buffer, a payload larger than J1939_MAX_MSG_LEN, a payload that
  *         needs the transport protocol while the stack has no transmit
  *         buffer, or a @p dm already used by another CA.
@@ -175,9 +175,9 @@ j1939_ret_t j1939_dm_init(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, const j1
  *
  * @return J1939_RET_OK, J1939_RET_ERR_STATE if diagnostics are not enabled
  *         for @p ca, or J1939_RET_ERR_ARG on a NULL pointer, an unknown CA or
- *         a lamp value above J1939_DIAG_LAMP_MAX.
+ *         a lamp value above J1939_DTC_LAMP_MAX.
  */
-j1939_ret_t j1939_dm_lamps_set(j1939_t *s, j1939_ca_id_t ca, const j1939_diag_lamps_t *lamps);
+j1939_ret_t j1939_dm_lamps_set(j1939_t *s, j1939_ca_id_t ca, const j1939_dtc_lamps_t *lamps);
 
 /**
  * @brief Replaces the active DTCs.
@@ -195,10 +195,10 @@ j1939_ret_t j1939_dm_lamps_set(j1939_t *s, j1939_ca_id_t ca, const j1939_diag_la
  *         J1939_RET_ERR_FULL if @p count exceeds j1939_dm_cfg_t::active_len;
  *         J1939_RET_ERR_STATE if diagnostics are not enabled for @p ca;
  *         J1939_RET_ERR_ARG on a NULL pointer, an unknown CA, a DTC that
- *         j1939_diag_dm_build() rejects, or two DTCs with the same SPN and
+ *         j1939_dtc_dm_build() rejects, or two DTCs with the same SPN and
  *         FMI. Nothing changes on error.
  */
-j1939_ret_t j1939_dm_active_set(j1939_t *s, j1939_ca_id_t ca, const j1939_diag_dtc_t *dtcs,
+j1939_ret_t j1939_dm_active_set(j1939_t *s, j1939_ca_id_t ca, const j1939_dtc_t *dtcs,
                                 uint16_t count);
 
 /**
@@ -207,7 +207,7 @@ j1939_ret_t j1939_dm_active_set(j1939_t *s, j1939_ca_id_t ca, const j1939_diag_d
  * @return As j1939_dm_active_set(), with j1939_dm_cfg_t::prev_len as the
  *         capacity. A change triggers no transmission.
  */
-j1939_ret_t j1939_dm_prev_set(j1939_t *s, j1939_ca_id_t ca, const j1939_diag_dtc_t *dtcs,
+j1939_ret_t j1939_dm_prev_set(j1939_t *s, j1939_ca_id_t ca, const j1939_dtc_t *dtcs,
                               uint16_t count);
 
 /**

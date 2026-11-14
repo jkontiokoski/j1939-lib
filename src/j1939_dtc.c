@@ -2,11 +2,11 @@
 /* Copyright (c) 2026 jkontiokoski */
 
 /**
- * @file j1939_diag.c
+ * @file j1939_dtc.c
  * @brief J1939/73 codec: DTCs, lamp status and DM1/DM2 payloads.
  */
 
-#include "j1939/j1939_diag.h"
+#include "j1939/j1939_dtc.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -35,9 +35,9 @@
  * @param dtc  DTC.
  * @return true if SPN, FMI and occurrence count fit and the conversion method is 0.
  */
-static bool dtc_valid(const j1939_diag_dtc_t *dtc) {
-	return (dtc->spn <= J1939_DIAG_SPN_MAX) && (dtc->fmi <= J1939_DIAG_FMI_MAX) &&
-	       (dtc->oc <= J1939_DIAG_OC_NA) && (dtc->cm == J1939_DIAG_CM_V4);
+static bool dtc_valid(const j1939_dtc_t *dtc) {
+	return (dtc->spn <= J1939_DTC_SPN_MAX) && (dtc->fmi <= J1939_DTC_FMI_MAX) &&
+	       (dtc->oc <= J1939_DTC_OC_NA) && (dtc->cm == J1939_DTC_CM_V4);
 }
 
 /**
@@ -45,7 +45,7 @@ static bool dtc_valid(const j1939_diag_dtc_t *dtc) {
  * @param dtc  DTC.
  * @return true for SPN 0 with FMI 0.
  */
-static bool dtc_is_none(const j1939_diag_dtc_t *dtc) {
+static bool dtc_is_none(const j1939_dtc_t *dtc) {
 	return (dtc->spn == 0U) && (dtc->fmi == 0U);
 }
 
@@ -54,7 +54,7 @@ static bool dtc_is_none(const j1939_diag_dtc_t *dtc) {
  * @param dtc  DTC with valid fields.
  * @param buf  Four bytes.
  */
-static void dtc_write(const j1939_diag_dtc_t *dtc, uint8_t *buf) {
+static void dtc_write(const j1939_dtc_t *dtc, uint8_t *buf) {
 	buf[0] = (uint8_t)(dtc->spn & BYTE_MASK);
 	buf[1] = (uint8_t)((dtc->spn >> BYTE_SHIFT) & BYTE_MASK);
 	buf[2] = (uint8_t)((((dtc->spn >> SPN_HIGH_SHIFT) & SPN_HIGH_MASK) << SPN_HIGH_POS) |
@@ -67,7 +67,7 @@ static void dtc_write(const j1939_diag_dtc_t *dtc, uint8_t *buf) {
  * @param buf  Four bytes.
  * @param dtc  Decoded DTC.
  */
-static void dtc_read(const uint8_t *buf, j1939_diag_dtc_t *dtc) {
+static void dtc_read(const uint8_t *buf, j1939_dtc_t *dtc) {
 	dtc->spn = (uint32_t)buf[0] | ((uint32_t)buf[1] << BYTE_SHIFT) |
 	           ((((uint32_t)buf[2] >> SPN_HIGH_POS) & SPN_HIGH_MASK) << SPN_HIGH_SHIFT);
 	dtc->fmi = (uint8_t)((uint32_t)buf[2] & FMI_MASK);
@@ -76,17 +76,16 @@ static void dtc_read(const uint8_t *buf, j1939_diag_dtc_t *dtc) {
 }
 
 /**
- * @brief Checks every lamp and flash field against J1939_DIAG_LAMP_MAX.
+ * @brief Checks every lamp and flash field against J1939_DTC_LAMP_MAX.
  * @param l  Lamp status.
  * @return true if all fields fit two bits.
  */
-static bool lamps_valid(const j1939_diag_lamps_t *l) {
-	return (l->mil <= J1939_DIAG_LAMP_MAX) && (l->red_stop <= J1939_DIAG_LAMP_MAX) &&
-	       (l->amber_warning <= J1939_DIAG_LAMP_MAX) && (l->protect <= J1939_DIAG_LAMP_MAX) &&
-	       (l->mil_flash <= J1939_DIAG_LAMP_MAX) &&
-	       (l->red_stop_flash <= J1939_DIAG_LAMP_MAX) &&
-	       (l->amber_warning_flash <= J1939_DIAG_LAMP_MAX) &&
-	       (l->protect_flash <= J1939_DIAG_LAMP_MAX);
+static bool lamps_valid(const j1939_dtc_lamps_t *l) {
+	return (l->mil <= J1939_DTC_LAMP_MAX) && (l->red_stop <= J1939_DTC_LAMP_MAX) &&
+	       (l->amber_warning <= J1939_DTC_LAMP_MAX) && (l->protect <= J1939_DTC_LAMP_MAX) &&
+	       (l->mil_flash <= J1939_DTC_LAMP_MAX) && (l->red_stop_flash <= J1939_DTC_LAMP_MAX) &&
+	       (l->amber_warning_flash <= J1939_DTC_LAMP_MAX) &&
+	       (l->protect_flash <= J1939_DTC_LAMP_MAX);
 }
 
 /**
@@ -119,7 +118,7 @@ static uint8_t lamp_get(uint8_t byte, uint32_t pos) {
  * @param l    Lamp status with valid fields.
  * @param buf  Two bytes.
  */
-static void lamps_write(const j1939_diag_lamps_t *l, uint8_t *buf) {
+static void lamps_write(const j1939_dtc_lamps_t *l, uint8_t *buf) {
 	buf[0] = lamp_byte(l->mil, l->red_stop, l->amber_warning, l->protect);
 	buf[1] = lamp_byte(l->mil_flash, l->red_stop_flash, l->amber_warning_flash,
 	                   l->protect_flash);
@@ -130,7 +129,7 @@ static void lamps_write(const j1939_diag_lamps_t *l, uint8_t *buf) {
  * @param buf  Two bytes: status, then flash.
  * @param l    Decoded lamp status.
  */
-static void lamps_read(const uint8_t *buf, j1939_diag_lamps_t *l) {
+static void lamps_read(const uint8_t *buf, j1939_dtc_lamps_t *l) {
 	l->mil = lamp_get(buf[0], MIL_POS);
 	l->red_stop = lamp_get(buf[0], RSL_POS);
 	l->amber_warning = lamp_get(buf[0], AWL_POS);
@@ -147,7 +146,7 @@ static void lamps_read(const uint8_t *buf, j1939_diag_lamps_t *l) {
  * @param count  Number of DTCs.
  * @return true if every DTC is valid and none is the no-DTC marker.
  */
-static bool dtc_list_valid(const j1939_diag_dtc_t *dtcs, uint16_t count) {
+static bool dtc_list_valid(const j1939_dtc_t *dtcs, uint16_t count) {
 	bool valid = true;
 	uint16_t i;
 
@@ -159,14 +158,14 @@ static bool dtc_list_valid(const j1939_diag_dtc_t *dtcs, uint16_t count) {
 
 /**
  * @brief Computes the payload length of a DM.
- * @param count  Number of DTCs, at most J1939_DIAG_DM_DTC_MAX.
- * @return 2 + 4 * count bytes, at least J1939_DIAG_DM_LEN_MIN.
+ * @param count  Number of DTCs, at most J1939_DTC_DM_DTC_MAX.
+ * @return 2 + 4 * count bytes, at least J1939_DTC_DM_LEN_MIN.
  */
 static uint16_t dm_len(uint16_t count) {
-	uint16_t len = (uint16_t)(J1939_DIAG_LAMPS_LEN + ((uint32_t)count * J1939_DIAG_DTC_LEN));
+	uint16_t len = (uint16_t)(J1939_DTC_LAMPS_LEN + ((uint32_t)count * J1939_DTC_LEN));
 
-	if (len < J1939_DIAG_DM_LEN_MIN) {
-		len = (uint16_t)J1939_DIAG_DM_LEN_MIN;
+	if (len < J1939_DTC_DM_LEN_MIN) {
+		len = (uint16_t)J1939_DTC_DM_LEN_MIN;
 	}
 	return len;
 }
@@ -181,19 +180,19 @@ static uint16_t dm_len(uint16_t count) {
 static uint16_t dm_entries(const uint8_t *data, uint16_t len) {
 	uint16_t entries = 0U;
 
-	if ((len == J1939_DIAG_DM_LEN_MIN) && (data[J1939_DIAG_DM_LEN_MIN - 2U] == PAD) &&
-	    (data[J1939_DIAG_DM_LEN_MIN - 1U] == PAD)) {
+	if ((len == J1939_DTC_DM_LEN_MIN) && (data[J1939_DTC_DM_LEN_MIN - 2U] == PAD) &&
+	    (data[J1939_DTC_DM_LEN_MIN - 1U] == PAD)) {
 		entries = 1U;
-	} else if ((len > J1939_DIAG_LAMPS_LEN) && (len <= J1939_DIAG_DM_LEN_MAX) &&
-	           (((uint32_t)len - J1939_DIAG_LAMPS_LEN) % J1939_DIAG_DTC_LEN) == 0U) {
-		entries = (uint16_t)(((uint32_t)len - J1939_DIAG_LAMPS_LEN) / J1939_DIAG_DTC_LEN);
+	} else if ((len > J1939_DTC_LAMPS_LEN) && (len <= J1939_DTC_DM_LEN_MAX) &&
+	           (((uint32_t)len - J1939_DTC_LAMPS_LEN) % J1939_DTC_LEN) == 0U) {
+		entries = (uint16_t)(((uint32_t)len - J1939_DTC_LAMPS_LEN) / J1939_DTC_LEN);
 	} else {
 		/* Malformed length. */
 	}
 	return entries;
 }
 
-j1939_ret_t j1939_diag_dtc_encode(const j1939_diag_dtc_t *dtc, uint8_t *buf) {
+j1939_ret_t j1939_dtc_encode(const j1939_dtc_t *dtc, uint8_t *buf) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((dtc != NULL) && (buf != NULL) && dtc_valid(dtc)) {
@@ -203,7 +202,7 @@ j1939_ret_t j1939_diag_dtc_encode(const j1939_diag_dtc_t *dtc, uint8_t *buf) {
 	return ret;
 }
 
-j1939_ret_t j1939_diag_dtc_decode(const uint8_t *buf, j1939_diag_dtc_t *dtc) {
+j1939_ret_t j1939_dtc_decode(const uint8_t *buf, j1939_dtc_t *dtc) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((buf != NULL) && (dtc != NULL)) {
@@ -213,7 +212,7 @@ j1939_ret_t j1939_diag_dtc_decode(const uint8_t *buf, j1939_diag_dtc_t *dtc) {
 	return ret;
 }
 
-j1939_ret_t j1939_diag_lamps_encode(const j1939_diag_lamps_t *lamps, uint8_t *buf) {
+j1939_ret_t j1939_dtc_lamps_encode(const j1939_dtc_lamps_t *lamps, uint8_t *buf) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((lamps != NULL) && (buf != NULL) && lamps_valid(lamps)) {
@@ -223,7 +222,7 @@ j1939_ret_t j1939_diag_lamps_encode(const j1939_diag_lamps_t *lamps, uint8_t *bu
 	return ret;
 }
 
-j1939_ret_t j1939_diag_lamps_decode(const uint8_t *buf, j1939_diag_lamps_t *lamps) {
+j1939_ret_t j1939_dtc_lamps_decode(const uint8_t *buf, j1939_dtc_lamps_t *lamps) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((buf != NULL) && (lamps != NULL)) {
@@ -233,12 +232,12 @@ j1939_ret_t j1939_diag_lamps_decode(const uint8_t *buf, j1939_diag_lamps_t *lamp
 	return ret;
 }
 
-j1939_ret_t j1939_diag_dm_build(const j1939_diag_lamps_t *lamps, const j1939_diag_dtc_t *dtcs,
-                                uint16_t dtc_count, uint8_t *buf, uint16_t buf_len, uint16_t *len) {
+j1939_ret_t j1939_dtc_dm_build(const j1939_dtc_lamps_t *lamps, const j1939_dtc_t *dtcs,
+                               uint16_t dtc_count, uint8_t *buf, uint16_t buf_len, uint16_t *len) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((lamps == NULL) || (buf == NULL) || (len == NULL) ||
-	    (dtc_count > J1939_DIAG_DM_DTC_MAX) || ((dtcs == NULL) && (dtc_count > 0U))) {
+	    (dtc_count > J1939_DTC_DM_DTC_MAX) || ((dtcs == NULL) && (dtc_count > 0U))) {
 		/* Invalid arguments. */
 	} else if (!lamps_valid(lamps) || !dtc_list_valid(dtcs, dtc_count)) {
 		/* Invalid content. */
@@ -246,19 +245,19 @@ j1939_ret_t j1939_diag_dm_build(const j1939_diag_lamps_t *lamps, const j1939_dia
 		ret = J1939_RET_ERR_FULL;
 	} else {
 		const uint16_t n = dm_len(dtc_count);
-		uint16_t pos = (uint16_t)J1939_DIAG_LAMPS_LEN;
+		uint16_t pos = (uint16_t)J1939_DTC_LAMPS_LEN;
 		uint16_t i;
 
 		lamps_write(lamps, buf);
 		if (dtc_count == 0U) {
-			const j1939_diag_dtc_t none = {0U, 0U, 0U, J1939_DIAG_CM_V4};
+			const j1939_dtc_t none = {0U, 0U, 0U, J1939_DTC_CM_V4};
 
 			dtc_write(&none, &buf[pos]);
-			pos += (uint16_t)J1939_DIAG_DTC_LEN;
+			pos += (uint16_t)J1939_DTC_LEN;
 		}
 		for (i = 0U; i < dtc_count; i++) {
 			dtc_write(&dtcs[i], &buf[pos]);
-			pos += (uint16_t)J1939_DIAG_DTC_LEN;
+			pos += (uint16_t)J1939_DTC_LEN;
 		}
 		for (i = pos; i < n; i++) {
 			buf[i] = (uint8_t)PAD;
@@ -269,8 +268,8 @@ j1939_ret_t j1939_diag_dm_build(const j1939_diag_lamps_t *lamps, const j1939_dia
 	return ret;
 }
 
-j1939_ret_t j1939_diag_dm_parse(const uint8_t *data, uint16_t len, j1939_diag_lamps_t *lamps,
-                                j1939_diag_dtc_t *dtcs, uint16_t dtcs_len, uint16_t *dtc_count) {
+j1939_ret_t j1939_dtc_dm_parse(const uint8_t *data, uint16_t len, j1939_dtc_lamps_t *lamps,
+                               j1939_dtc_t *dtcs, uint16_t dtcs_len, uint16_t *dtc_count) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((data != NULL) && (lamps != NULL) && (dtc_count != NULL) &&
@@ -279,9 +278,9 @@ j1939_ret_t j1939_diag_dm_parse(const uint8_t *data, uint16_t len, j1939_diag_la
 		uint16_t count = entries;
 
 		if (entries == 1U) {
-			j1939_diag_dtc_t first;
+			j1939_dtc_t first;
 
-			dtc_read(&data[J1939_DIAG_LAMPS_LEN], &first);
+			dtc_read(&data[J1939_DTC_LAMPS_LEN], &first);
 			if (dtc_is_none(&first)) {
 				count = 0U;
 			}
@@ -297,8 +296,7 @@ j1939_ret_t j1939_diag_dm_parse(const uint8_t *data, uint16_t len, j1939_diag_la
 
 			lamps_read(data, lamps);
 			for (i = 0U; i < count; i++) {
-				dtc_read(&data[J1939_DIAG_LAMPS_LEN +
-				               ((uint32_t)i * J1939_DIAG_DTC_LEN)],
+				dtc_read(&data[J1939_DTC_LAMPS_LEN + ((uint32_t)i * J1939_DTC_LEN)],
 				         &dtcs[i]);
 			}
 			*dtc_count = count;

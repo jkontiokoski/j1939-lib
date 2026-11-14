@@ -2,12 +2,12 @@
 /* Copyright (c) 2026 jkontiokoski */
 
 /**
- * @file j1939_names_priv.h
+ * @file j1939_nametab_priv.h
  * @brief NAME table entry points used by the stack and address claiming.
  */
 
-#ifndef J1939_NAMES_PRIV_H
-#define J1939_NAMES_PRIV_H
+#ifndef J1939_NAMETAB_PRIV_H
+#define J1939_NAMETAB_PRIV_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -18,7 +18,7 @@
  * @brief Removes the NAME table and clears its counter.
  * @param s  Stack.
  */
-void j1939_names_stack_init(j1939_t *s);
+void j1939_nametab_stack_init(j1939_t *s);
 
 /**
  * @brief Records an Address Claimed of another node.
@@ -30,14 +30,14 @@ void j1939_names_stack_init(j1939_t *s);
  * @param name     NAME from the message.
  * @param address  Claimed address, 0..253.
  */
-void j1939_names_claimed(j1939_t *s, uint64_t name, uint8_t address);
+void j1939_nametab_claimed(j1939_t *s, uint64_t name, uint8_t address);
 
 /**
  * @brief Records a Cannot Claim of another node: present, without an address.
  * @param s     Stack.
  * @param name  NAME from the message.
  */
-void j1939_names_cannot_claim(j1939_t *s, uint64_t name);
+void j1939_nametab_cannot_claim(j1939_t *s, uint64_t name);
 
 /**
  * @brief Notes that the stack sent a global Request for Address Claimed.
@@ -48,23 +48,23 @@ void j1939_names_cannot_claim(j1939_t *s, uint64_t name);
  *
  * @param s  Stack.
  */
-void j1939_names_global_request(j1939_t *s);
+void j1939_nametab_global_request(j1939_t *s);
 
 /**
  * @brief Looks up the NAME at an address without sending a Request.
- * @param s        Stack with a table (s->names.buf not NULL).
+ * @param s        Stack with a table (s->nametab.buf not NULL).
  * @param address  Source address, 0..253.
  * @param name     NAME. Written only if found.
  * @return true if another node of the table holds @p address and no CA of
  *         the stack does.
  */
-bool j1939_names_lookup(const j1939_t *s, uint8_t address, uint64_t *name);
+bool j1939_nametab_lookup(const j1939_t *s, uint8_t address, uint64_t *name);
 
 /**
  * @brief Sends the pending Requests for Address Claimed and advances the hold timer.
  * @param s           Stack.
  * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
  */
-void j1939_names_process(j1939_t *s, uint32_t elapsed_us);
+void j1939_nametab_process(j1939_t *s, uint32_t elapsed_us);
 
-#endif /* J1939_NAMES_PRIV_H */
+#endif /* J1939_NAMETAB_PRIV_H */

@@ -9,7 +9,7 @@ This page lists them and walks through four scenarios with the traffic they put 
 | ----------------- | -------------------------------------------------------------------------------------------------- |
 | `addr_claim_demo` | Address claiming: the CA's state changes and the claims on the bus. Several instances show arbitration |
 | `pgn_listener`    | Receiving the PGNs given on the command line, single frame and reassembled from BAM or RTS/CTS; DM1 decoding; answering a Request for an identification text (PGN 0xFF22, an invented Proprietary B PGN) through `req_pgns` |
-| `bam_sender`      | A DM1 with four DTCs built with `j1939_diag_dm_build()`, sent with BAM; a 100 byte Proprietary A message (PGN 0xEF00) sent with RTS/CTS to the address given with `-d` |
+| `bam_sender`      | A DM1 with four DTCs built with `j1939_dtc_dm_build()`, sent with BAM; a 100 byte Proprietary A message (PGN 0xEF00) sent with RTS/CTS to the address given with `-d` |
 
 ## Running them
 

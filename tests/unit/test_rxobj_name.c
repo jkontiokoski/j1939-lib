@@ -33,7 +33,7 @@ enum { OBJ_NAME = 0, OBJ_SA, OBJ_TP, OBJ_COUNT };
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_tp_buf_t tp_rx[1];
-static j1939_names_entry_t names[NAMES_LEN];
+static j1939_nametab_entry_t names[NAMES_LEN];
 static uint8_t buf_name[8];
 static uint8_t buf_sa[8];
 static uint8_t buf_tp[20];
@@ -100,7 +100,7 @@ static void stack_init(bool with_names) {
 	        J1939_RET_OK,
 	        j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN, .name = OWN_NAME}, &ca));
 	if (with_names) {
-		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_init(&s, names, NAMES_LEN));
+		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, names, NAMES_LEN));
 	}
 }
 
@@ -263,7 +263,7 @@ static void test_two_names_same_pgn(void) {
 
 static void test_table_removed_stops_matching(void) {
 	rx_claim(PEER, PEER_NAME);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_init(&s, NULL, 0U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, NULL, 0U));
 	rx_msg(PGN_A, J1939_ADDR_GLOBAL, PEER, pay1, 8U);
 	TEST_ASSERT_EQUAL(J1939_RXOBJ_NO_DATA, status_of(OBJ_NAME).state);
 	TEST_ASSERT_EQUAL(J1939_RXOBJ_VALID, status_of(OBJ_SA).state);

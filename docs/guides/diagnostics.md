@@ -17,7 +17,7 @@ It is for integrators; the transmission rules are in the API reference, topic *D
 The application supplies the storage, sized for the most DTCs it reports at once:
 
 ```c
-static j1939_diag_dtc_t active[8], prev[8];
+static j1939_dtc_t active[8], prev[8];
 static j1939_dm_hold_t hold[4];
 static uint8_t dm_buf[J1939_DM_BUF_LEN(8)];
 static j1939_dm_t dm;
@@ -40,16 +40,16 @@ j1939_dm_init(&stack, ca, &dm, &dm_cfg);
 Whenever the fault set changes, hand the complete lists to the stack:
 
 ```c
-const j1939_diag_dtc_t now[] = {
+const j1939_dtc_t now[] = {
 	{.spn = 520202U, .fmi = 1U, .oc = 3U}, /* invented proprietary SPN, below normal */
 };
 (void)j1939_dm_active_set(&stack, ca, now, 1U);
 (void)j1939_dm_prev_set(&stack, ca, previously_active, n_prev);
 
-const j1939_diag_lamps_t lamps = {
-	.amber_warning = J1939_DIAG_LAMP_ON,
-	.mil_flash = J1939_DIAG_FLASH_OFF, .red_stop_flash = J1939_DIAG_FLASH_OFF,
-	.amber_warning_flash = J1939_DIAG_FLASH_OFF, .protect_flash = J1939_DIAG_FLASH_OFF,
+const j1939_dtc_lamps_t lamps = {
+	.amber_warning = J1939_DTC_LAMP_ON,
+	.mil_flash = J1939_DTC_FLASH_OFF, .red_stop_flash = J1939_DTC_FLASH_OFF,
+	.amber_warning_flash = J1939_DTC_FLASH_OFF, .protect_flash = J1939_DTC_FLASH_OFF,
 };
 (void)j1939_dm_lamps_set(&stack, ca, &lamps);
 ```
@@ -84,11 +84,11 @@ if (j1939_dm_clear_get(&stack, ca, &pgn) == J1939_RET_OK) {
 List `J1939_PGN_DM1` in `rx_pgns` and parse the received payload into your own storage:
 
 ```c
-j1939_diag_lamps_t lamps;
-j1939_diag_dtc_t dtcs[16];
+j1939_dtc_lamps_t lamps;
+j1939_dtc_t dtcs[16];
 uint16_t count;
 
-if (j1939_diag_dm_parse(msg->data, msg->len, &lamps, dtcs, 16U, &count) == J1939_RET_OK) {
+if (j1939_dtc_dm_parse(msg->data, msg->len, &lamps, dtcs, 16U, &count) == J1939_RET_OK) {
 	/* count DTCs from msg->sa */
 }
 ```
@@ -98,4 +98,4 @@ A DM1 with more DTCs than `dtcs` holds returns `J1939_RET_ERR_FULL` and still re
 ## Reference
 
 API reference, topic *Diagnostics*: `j1939_dm_init()`, `j1939_dm_active_set()`, `j1939_dm_prev_set()`, `j1939_dm_lamps_set()`, `j1939_dm_clear_get()`, `j1939_dm_clear_confirm()`.
-Topic *Diagnostic message codec*: `j1939_diag_dm_parse()`, `j1939_diag_dm_build()`, `j1939_diag_dtc_t`, `j1939_diag_lamps_t`.
+Topic *Diagnostic message codec*: `j1939_dtc_dm_parse()`, `j1939_dtc_dm_build()`, `j1939_dtc_t`, `j1939_dtc_lamps_t`.

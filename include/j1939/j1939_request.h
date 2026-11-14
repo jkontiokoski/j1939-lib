@@ -23,7 +23,7 @@
  * 1. A Request for Address Claimed is answered by address claiming for every
  *    CA it concerns, see @ref grp_addr.
  * 2. A Request for DM1, DM2, DM3 or DM11 to a CA with diagnostics enabled is
- *    handled by the diagnostics, see @ref grp_diag.
+ *    handled by the diagnostics, see @ref grp_dm.
  * 3. A Request for the PGN of a transmit object of a CA it addresses is
  *    answered by the stack, see @ref grp_txobj.
  * 4. A Request for a PGN in the stack's req_pgns list is delivered to the

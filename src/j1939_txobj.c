@@ -13,7 +13,7 @@
 #include <string.h>
 
 #include "j1939/j1939_addr.h"
-#include "j1939/j1939_diag.h"
+#include "j1939/j1939_dtc.h"
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_tp.h"

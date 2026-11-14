@@ -80,7 +80,7 @@
  *    while the tx queue is full.
  * 2. The CA waits J1939_ADDR_PRECLAIM_WAIT_US. The claims that answer the
  *    Request update the self-configurable address record and the NAME table
- *    (j1939_names.h), and the CA notes whether another node claims its
+ *    (j1939_nametab.h), and the CA notes whether another node claims its
  *    preferred address, in any address range.
  * 3. The CA then claims as described above: the preferred address if no other
  *    node claimed it; otherwise a free self-configurable address if its NAME

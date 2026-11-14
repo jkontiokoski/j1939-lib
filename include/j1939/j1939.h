@@ -18,7 +18,7 @@
  */
 
 /**
- * @defgroup grp_names NAME table
+ * @defgroup grp_nametab NAME table
  * @brief The NAMEs of the other nodes on the bus and their current addresses.
  */
 
@@ -65,14 +65,14 @@
  */
 
 /**
- * @defgroup grp_diag Diagnostics
+ * @defgroup grp_dm Diagnostics
  * @brief J1939/73 diagnostics of a Controller Application: DM1, DM2, DM3 and
  * DM11.
  */
 
 /**
- * @defgroup grp_diag_codec Diagnostic message codec
- * @ingroup grp_diag
+ * @defgroup grp_dtc Diagnostic message codec
+ * @ingroup grp_dm
  * @brief DTCs, lamp status and the DM1/DM2 payload.
  */
 
@@ -120,12 +120,12 @@
 
 #include "j1939/j1939_addr.h"
 #include "j1939/j1939_config.h"
-#include "j1939/j1939_diag.h"
 #include "j1939/j1939_dm.h"
+#include "j1939/j1939_dtc.h"
 #include "j1939/j1939_id.h"
 #include "j1939/j1939_msg.h"
 #include "j1939/j1939_name.h"
-#include "j1939/j1939_names.h"
+#include "j1939/j1939_nametab.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_ret.h"
 #include "j1939/j1939_rxobj.h"

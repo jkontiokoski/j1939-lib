@@ -28,7 +28,7 @@
 #define NA  0xFFU
 
 static const uint32_t rx_pgns[] = {PGN_A, PGN_B};
-static const j1939_diag_dtc_t dtc_a = {520210U, 3U, 1U, J1939_DIAG_CM_V4};
+static const j1939_dtc_t dtc_a = {520210U, 3U, 1U, J1939_DTC_CM_V4};
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_cfg_t cfg;
@@ -200,8 +200,8 @@ static void test_rxobj_takes_single_frames_only(void) {
 }
 
 static void test_dm_takes_single_frame_configurations_only(void) {
-	static j1939_diag_dtc_t active[2];
-	static j1939_diag_dtc_t prev[2];
+	static j1939_dtc_t active[2];
+	static j1939_dtc_t prev[2];
 	static j1939_dm_hold_t hold[1];
 	static uint8_t dm_buf[J1939_DM_BUF_LEN(2U)];
 	j1939_dm_cfg_t dm_cfg = {.active = active,

@@ -20,23 +20,23 @@
 #include "j1939_dm_priv.h"
 #include "j1939_tp_priv.h"
 
-#define CLEAR_DM3    0U                      /**< Index of the DM3 request in j1939_dm_t::clear. */
-#define CLEAR_DM11   1U                      /**< Index of the DM11 request. */
-#define CLEAR_KINDS  2U                      /**< Number of clear request kinds. */
-#define ANSWER_DM1   0U                      /**< Index of the DM1 answer in j1939_dm_t::answer. */
-#define ANSWER_DM2   1U                      /**< Index of the DM2 answer. */
-#define ANSWER_KINDS 2U                      /**< Number of answer kinds. */
-#define DM_PRIO      J1939_DIAG_PRIO_DEFAULT /**< Priority of DM1 and DM2. */
-#define ACK_PRIO     6U                      /**< Priority of Acknowledgements. */
-#define ACK_PAD      0xFFU                   /**< Reserved bytes of an Acknowledgement. */
-#define BYTE_MASK    0xFFU                   /**< Mask of one byte. */
-#define BYTE_SHIFT   8U                      /**< Bits per byte. */
-#define FRAME_LEN    8U                      /**< Largest single frame payload. */
+#define CLEAR_DM3    0U                     /**< Index of the DM3 request in j1939_dm_t::clear. */
+#define CLEAR_DM11   1U                     /**< Index of the DM11 request. */
+#define CLEAR_KINDS  2U                     /**< Number of clear request kinds. */
+#define ANSWER_DM1   0U                     /**< Index of the DM1 answer in j1939_dm_t::answer. */
+#define ANSWER_DM2   1U                     /**< Index of the DM2 answer. */
+#define ANSWER_KINDS 2U                     /**< Number of answer kinds. */
+#define DM_PRIO      J1939_DTC_PRIO_DEFAULT /**< Priority of DM1 and DM2. */
+#define ACK_PRIO     6U                     /**< Priority of Acknowledgements. */
+#define ACK_PAD      0xFFU                  /**< Reserved bytes of an Acknowledgement. */
+#define BYTE_MASK    0xFFU                  /**< Mask of one byte. */
+#define BYTE_SHIFT   8U                     /**< Bits per byte. */
+#define FRAME_LEN    8U                     /**< Largest single frame payload. */
 #define MSG_LEN_MAX  ((uint32_t)J1939_MAX_MSG_LEN) /**< Largest DM payload. */
 #define NO_EXPIRY    0U /**< Age of a send that is retried until it succeeds. */
 /** PGN of the clear request kind @p k. */
 #define CLEAR_PGN(k) (((k) == CLEAR_DM3) ? J1939_PGN_DM3 : J1939_PGN_DM11)
-#define DM_DTC_MAX   ((uint16_t)J1939_DIAG_DM_DTC_MAX) /**< Largest DTC list. */
+#define DM_DTC_MAX   ((uint16_t)J1939_DTC_DM_DTC_MAX) /**< Largest DTC list. */
 #define HOLD_TIME_US J1939_DM1_PERIOD_US /**< Time a DTC change holds further triggers. */
 /** Payload buffer size needed for @p n DTCs. */
 #define DM_BUF_NEED(n) ((uint32_t)J1939_DM_BUF_LEN((uint32_t)(n)))
@@ -100,7 +100,7 @@ static void timer_advance(uint32_t *timer_us, bool *fresh, uint32_t elapsed_us) 
  * @param b  DTC.
  * @return true for equal SPN and FMI.
  */
-static bool dtc_same(const j1939_diag_dtc_t *a, const j1939_diag_dtc_t *b) {
+static bool dtc_same(const j1939_dtc_t *a, const j1939_dtc_t *b) {
 	return (a->spn == b->spn) && (a->fmi == b->fmi);
 }
 
@@ -111,7 +111,7 @@ static bool dtc_same(const j1939_diag_dtc_t *a, const j1939_diag_dtc_t *b) {
  * @param dtc    DTC.
  * @return true if a DTC with the same SPN and FMI is listed.
  */
-static bool dtc_listed(const j1939_diag_dtc_t *list, uint16_t count, const j1939_diag_dtc_t *dtc) {
+static bool dtc_listed(const j1939_dtc_t *list, uint16_t count, const j1939_dtc_t *dtc) {
 	bool found = false;
 	uint16_t i;
 
@@ -122,14 +122,14 @@ static bool dtc_listed(const j1939_diag_dtc_t *list, uint16_t count, const j1939
 }
 
 /**
- * @brief Tells whether j1939_diag_dm_build() accepts a DTC.
+ * @brief Tells whether j1939_dtc_dm_build() accepts a DTC.
  * @param dtc  DTC.
  * @return true if it encodes and is not the no-DTC marker (SPN 0, FMI 0).
  */
-static bool dm_dtc_valid(const j1939_diag_dtc_t *dtc) {
-	uint8_t tmp[J1939_DIAG_DTC_LEN];
+static bool dm_dtc_valid(const j1939_dtc_t *dtc) {
+	uint8_t tmp[J1939_DTC_LEN];
 
-	return (j1939_diag_dtc_encode(dtc, tmp) == J1939_RET_OK) &&
+	return (j1939_dtc_encode(dtc, tmp) == J1939_RET_OK) &&
 	       ((dtc->spn != 0U) || (dtc->fmi != 0U));
 }
 
@@ -141,7 +141,7 @@ static bool dm_dtc_valid(const j1939_diag_dtc_t *dtc) {
  * @return J1939_RET_OK, J1939_RET_ERR_FULL if @p count exceeds @p cap, or
  *         J1939_RET_ERR_ARG on a NULL list, an invalid DTC or a duplicate.
  */
-static j1939_ret_t dtc_list_check(const j1939_diag_dtc_t *dtcs, uint16_t count, uint16_t cap) {
+static j1939_ret_t dtc_list_check(const j1939_dtc_t *dtcs, uint16_t count, uint16_t cap) {
 	j1939_ret_t ret = J1939_RET_OK;
 	uint16_t i;
 
@@ -187,7 +187,7 @@ static void dm_hold_tick(j1939_dm_t *dm, uint32_t elapsed_us) {
  * @return true if the change triggers a DM1: the DTC has no running hold and
  *         a free record takes it.
  */
-static bool dtc_changed(j1939_dm_t *dm, const j1939_diag_dtc_t *dtc) {
+static bool dtc_changed(j1939_dm_t *dm, const j1939_dtc_t *dtc) {
 	j1939_dm_hold_t *free_rec = NULL;
 	bool held = false;
 	uint16_t i;
@@ -222,7 +222,7 @@ static bool dtc_changed(j1939_dm_t *dm, const j1939_diag_dtc_t *dtc) {
  * @param dtcs   Checked DTC list.
  * @param count  Number of DTCs.
  */
-static void active_update(j1939_dm_t *dm, const j1939_diag_dtc_t *dtcs, uint16_t count) {
+static void active_update(j1939_dm_t *dm, const j1939_dtc_t *dtcs, uint16_t count) {
 	bool trigger = false;
 	uint16_t i;
 
@@ -287,13 +287,13 @@ static bool send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
  * @param dtcs   DTCs to report.
  * @param count  Number of DTCs.
  * @param da     Destination of a multi-packet message: J1939_ADDR_GLOBAL for BAM.
- * @return As j1939_diag_dm_build() and j1939_send().
+ * @return As j1939_dtc_dm_build() and j1939_send().
  */
-static j1939_ret_t dm_send(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, const j1939_diag_dtc_t *dtcs,
+static j1939_ret_t dm_send(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, const j1939_dtc_t *dtcs,
                            uint16_t count, uint8_t da) {
 	j1939_dm_t *dm = s->dm[ca];
 	uint16_t len = 0U;
-	j1939_ret_t ret = j1939_diag_dm_build(&dm->lamps, dtcs, count, dm->buf, dm->buf_len, &len);
+	j1939_ret_t ret = j1939_dtc_dm_build(&dm->lamps, dtcs, count, dm->buf, dm->buf_len, &len);
 
 	if (ret == J1939_RET_OK) {
 		const j1939_msg_t msg = {
@@ -505,7 +505,7 @@ static void dm1_tick(j1939_t *s, j1939_dm_t *dm, uint32_t elapsed_us) {
  * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
  */
 static void answer_tick(j1939_t *s, j1939_ca_id_t ca, j1939_dm_answer_t *a, uint32_t pgn,
-                        const j1939_diag_dtc_t *dtcs, uint16_t count, uint32_t elapsed_us) {
+                        const j1939_dtc_t *dtcs, uint16_t count, uint32_t elapsed_us) {
 	if (a->due) {
 		timer_advance(&a->timer_us, &a->fresh, elapsed_us);
 		if (send_done(s, dm_send(s, ca, pgn, dtcs, count, a->da), a->timer_us)) {
@@ -646,7 +646,7 @@ static void request_accept(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_
  * @brief Checks a diagnostics configuration.
  * @param s    Stack.
  * @param cfg  Configuration.
- * @return true if the capacities are within J1939_DIAG_DM_DTC_MAX, the
+ * @return true if the capacities are within J1939_DTC_DM_DTC_MAX, the
  *         storage is present, the buffer holds the larger list, the payload
  *         is at most J1939_MAX_MSG_LEN and a multi-packet payload has a TP transmit
  *         buffer.
@@ -728,8 +728,8 @@ j1939_ret_t j1939_dm_init(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, const j1
 	if ((s != NULL) && (dm != NULL) && (cfg != NULL) && (ca < s->ca_count) &&
 	    dm_cfg_valid(s, cfg) && !dm_used(s, ca, dm)) {
 		/* Locals keep cppcheck's MISRA 11.8 check from treating the storage as const. */
-		j1939_diag_dtc_t *active = cfg->active;
-		j1939_diag_dtc_t *prev = cfg->prev;
+		j1939_dtc_t *active = cfg->active;
+		j1939_dtc_t *prev = cfg->prev;
 		j1939_dm_hold_t *hold = cfg->hold;
 		uint8_t *buf = cfg->buf;
 		uint16_t i;
@@ -744,10 +744,10 @@ j1939_ret_t j1939_dm_init(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, const j1
 		dm->hold_len = cfg->hold_len;
 		dm->buf = buf;
 		dm->buf_len = cfg->buf_len;
-		dm->lamps.mil_flash = J1939_DIAG_FLASH_OFF;
-		dm->lamps.red_stop_flash = J1939_DIAG_FLASH_OFF;
-		dm->lamps.amber_warning_flash = J1939_DIAG_FLASH_OFF;
-		dm->lamps.protect_flash = J1939_DIAG_FLASH_OFF;
+		dm->lamps.mil_flash = J1939_DTC_FLASH_OFF;
+		dm->lamps.red_stop_flash = J1939_DTC_FLASH_OFF;
+		dm->lamps.amber_warning_flash = J1939_DTC_FLASH_OFF;
+		dm->lamps.protect_flash = J1939_DTC_FLASH_OFF;
 		for (i = 0U; i < cfg->hold_len; i++) {
 			hold[i].left_us = 0U;
 			hold[i].fresh = false;
@@ -764,7 +764,7 @@ j1939_ret_t j1939_dm_init(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, const j1
 	return ret;
 }
 
-j1939_ret_t j1939_dm_lamps_set(j1939_t *s, j1939_ca_id_t ca, const j1939_diag_lamps_t *lamps) {
+j1939_ret_t j1939_dm_lamps_set(j1939_t *s, j1939_ca_id_t ca, const j1939_dtc_lamps_t *lamps) {
 	j1939_dm_t *dm = NULL;
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
@@ -772,9 +772,9 @@ j1939_ret_t j1939_dm_lamps_set(j1939_t *s, j1939_ca_id_t ca, const j1939_diag_la
 		ret = dm_lookup_mut(s, ca, &dm);
 	}
 	if (ret == J1939_RET_OK) {
-		uint8_t tmp[J1939_DIAG_LAMPS_LEN];
+		uint8_t tmp[J1939_DTC_LAMPS_LEN];
 
-		ret = j1939_diag_lamps_encode(lamps, tmp);
+		ret = j1939_dtc_lamps_encode(lamps, tmp);
 		if (ret == J1939_RET_OK) {
 			dm->lamps = *lamps;
 		}
@@ -782,7 +782,7 @@ j1939_ret_t j1939_dm_lamps_set(j1939_t *s, j1939_ca_id_t ca, const j1939_diag_la
 	return ret;
 }
 
-j1939_ret_t j1939_dm_active_set(j1939_t *s, j1939_ca_id_t ca, const j1939_diag_dtc_t *dtcs,
+j1939_ret_t j1939_dm_active_set(j1939_t *s, j1939_ca_id_t ca, const j1939_dtc_t *dtcs,
                                 uint16_t count) {
 	j1939_dm_t *dm = NULL;
 	j1939_ret_t ret = dm_lookup_mut(s, ca, &dm);
@@ -796,7 +796,7 @@ j1939_ret_t j1939_dm_active_set(j1939_t *s, j1939_ca_id_t ca, const j1939_diag_d
 	return ret;
 }
 
-j1939_ret_t j1939_dm_prev_set(j1939_t *s, j1939_ca_id_t ca, const j1939_diag_dtc_t *dtcs,
+j1939_ret_t j1939_dm_prev_set(j1939_t *s, j1939_ca_id_t ca, const j1939_dtc_t *dtcs,
                               uint16_t count) {
 	j1939_dm_t *dm = NULL;
 	j1939_ret_t ret = dm_lookup_mut(s, ca, &dm);

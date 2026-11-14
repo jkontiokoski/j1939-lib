@@ -28,16 +28,16 @@
 
 #define BAM 0x20U
 
-static const j1939_diag_dtc_t dtc_a = {520210U, 3U, 1U, J1939_DIAG_CM_V4};
-static const j1939_diag_dtc_t dtc_b = {0x7FFFFU, 31U, 126U, J1939_DIAG_CM_V4};
-static const j1939_diag_dtc_t dtc_c = {520211U, 1U, 127U, J1939_DIAG_CM_V4};
-static const j1939_diag_dtc_t dtc_d = {520212U, 2U, 2U, J1939_DIAG_CM_V4};
+static const j1939_dtc_t dtc_a = {520210U, 3U, 1U, J1939_DTC_CM_V4};
+static const j1939_dtc_t dtc_b = {0x7FFFFU, 31U, 126U, J1939_DTC_CM_V4};
+static const j1939_dtc_t dtc_c = {520211U, 1U, 127U, J1939_DTC_CM_V4};
+static const j1939_dtc_t dtc_d = {520212U, 2U, 2U, J1939_DTC_CM_V4};
 
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_tp_buf_t tp_tx[1];
-static j1939_diag_dtc_t active[DTC_LEN];
-static j1939_diag_dtc_t prev[DTC_LEN];
+static j1939_dtc_t active[DTC_LEN];
+static j1939_dtc_t prev[DTC_LEN];
 static j1939_dm_hold_t hold[HOLD_LEN];
 static uint8_t dm_buf[J1939_DM_BUF_LEN(DTC_LEN)];
 static j1939_dm_t dm;
@@ -45,7 +45,7 @@ static j1939_dm_cfg_t dm_cfg;
 static j1939_cfg_t cfg;
 static j1939_t s;
 static j1939_ca_id_t ca;
-static j1939_diag_lamps_t lamps;
+static j1939_dtc_lamps_t lamps;
 static uint8_t own = OWN;
 
 static uint32_t make_id(uint8_t prio, uint32_t pgn, uint8_t da, uint8_t sa) {
@@ -104,12 +104,12 @@ static void expect_ack(uint8_t ctrl, uint8_t requester, uint32_t pgn) {
  * than 8 bytes must come as BAM: its packets are collected with further
  * j1939_process() calls of GAP each.
  */
-static void expect_dm(uint32_t pgn, const j1939_diag_dtc_t *dtcs, uint16_t n) {
+static void expect_dm(uint32_t pgn, const j1939_dtc_t *dtcs, uint16_t n) {
 	uint8_t ref[J1939_DM_BUF_LEN(DTC_LEN)];
 	uint16_t len = 0U;
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_diag_dm_build(&lamps, dtcs, n, ref, sizeof(ref), &len));
+	                  j1939_dtc_dm_build(&lamps, dtcs, n, ref, sizeof(ref), &len));
 	if (len <= 8U) {
 		expect_frame(make_id(6U, pgn, J1939_ADDR_GLOBAL, own), ref, (uint8_t)len);
 	} else {
@@ -143,7 +143,7 @@ static void expect_dm(uint32_t pgn, const j1939_diag_dtc_t *dtcs, uint16_t n) {
 }
 
 /* Expects a multi-packet DM to da with RTS/CTS; the peer asks for all packets at once. */
-static void expect_dm_rts(uint32_t pgn, const j1939_diag_dtc_t *dtcs, uint16_t n, uint8_t da) {
+static void expect_dm_rts(uint32_t pgn, const j1939_dtc_t *dtcs, uint16_t n, uint8_t da) {
 	uint8_t ref[J1939_DM_BUF_LEN(DTC_LEN)];
 	uint8_t got[J1939_DM_BUF_LEN(DTC_LEN) + 7U];
 	uint16_t len = 0U;
@@ -151,7 +151,7 @@ static void expect_dm_rts(uint32_t pgn, const j1939_diag_dtc_t *dtcs, uint16_t n
 	uint8_t i;
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_diag_dm_build(&lamps, dtcs, n, ref, sizeof(ref), &len));
+	                  j1939_dtc_dm_build(&lamps, dtcs, n, ref, sizeof(ref), &len));
 	TEST_ASSERT_GREATER_THAN_UINT16(8U, len);
 	packets = (uint8_t)((len + 6U) / 7U);
 	{
@@ -191,15 +191,15 @@ static void expect_dm_rts(uint32_t pgn, const j1939_diag_dtc_t *dtcs, uint16_t n
 	}
 }
 
-static void expect_dm1(const j1939_diag_dtc_t *dtcs, uint16_t n) {
+static void expect_dm1(const j1939_dtc_t *dtcs, uint16_t n) {
 	expect_dm(J1939_PGN_DM1, dtcs, n);
 }
 
-static void set_active(const j1939_diag_dtc_t *dtcs, uint16_t n) {
+static void set_active(const j1939_dtc_t *dtcs, uint16_t n) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_active_set(&s, ca, dtcs, n));
 }
 
-static void set_prev(const j1939_diag_dtc_t *dtcs, uint16_t n) {
+static void set_prev(const j1939_dtc_t *dtcs, uint16_t n) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_prev_set(&s, ca, dtcs, n));
 }
 
@@ -249,7 +249,7 @@ static void stack_setup(uint8_t address, bool dm3, bool dm11) {
 	        J1939_RET_OK,
 	        j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = address, .name = NAME}, &ca));
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_init(&s, ca, &dm, &dm_cfg));
-	lamps = (j1939_diag_lamps_t){0U, 0U, 0U, 0U, 3U, 3U, 3U, 3U};
+	lamps = (j1939_dtc_lamps_t){0U, 0U, 0U, 0U, 3U, 3U, 3U, 3U};
 }
 
 /* Claims OWN: Address Claimed, then the first DM1 in the same call. */
@@ -313,8 +313,8 @@ static void test_dm1_with_one_dtc_and_lamps(void) {
 	const uint8_t expected[8] = {0x04U, 0xF3U, 0x12U, 0xF0U, 0xE3U, 1U, 0xFFU, 0xFFU};
 
 	start();
-	lamps.amber_warning = J1939_DIAG_LAMP_ON;
-	lamps.amber_warning_flash = J1939_DIAG_FLASH_SLOW;
+	lamps.amber_warning = J1939_DTC_LAMP_ON;
+	lamps.amber_warning_flash = J1939_DTC_FLASH_SLOW;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_lamps_set(&s, ca, &lamps));
 	set_active(&dtc_a, 1U);
 	process(0U);
@@ -323,7 +323,7 @@ static void test_dm1_with_one_dtc_and_lamps(void) {
 }
 
 static void test_dm1_with_many_dtcs_uses_bam(void) {
-	const j1939_diag_dtc_t list[3] = {dtc_c, dtc_a, dtc_b};
+	const j1939_dtc_t list[3] = {dtc_c, dtc_a, dtc_b};
 
 	start();
 	set_active(list, 3U);
@@ -333,7 +333,7 @@ static void test_dm1_with_many_dtcs_uses_bam(void) {
 }
 
 static void test_change_triggers_dm1_once_per_dtc_per_second(void) {
-	const j1939_diag_dtc_t ab[2] = {dtc_a, dtc_b};
+	const j1939_dtc_t ab[2] = {dtc_a, dtc_b};
 
 	start();
 	process(100000U); /* t = 0.1 s */
@@ -396,7 +396,7 @@ static void test_change_without_free_hold_record_waits_for_period(void) {
 }
 
 static void test_occurrence_count_and_lamps_trigger_nothing(void) {
-	j1939_diag_dtc_t a2 = dtc_a;
+	j1939_dtc_t a2 = dtc_a;
 
 	start();
 	set_active(&dtc_a, 1U);
@@ -406,7 +406,7 @@ static void test_occurrence_count_and_lamps_trigger_nothing(void) {
 	expect_none();
 	a2.oc = 9U;
 	set_active(&a2, 1U);
-	lamps.red_stop = J1939_DIAG_LAMP_ON;
+	lamps.red_stop = J1939_DTC_LAMP_ON;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_lamps_set(&s, ca, &lamps));
 	process(0U);
 	expect_none();
@@ -436,7 +436,7 @@ static void test_request_for_dm1_is_answered_globally(void) {
 }
 
 static void test_request_for_dm2_is_answered_globally(void) {
-	const j1939_diag_dtc_t list[2] = {dtc_b, dtc_d};
+	const j1939_dtc_t list[2] = {dtc_b, dtc_d};
 
 	start();
 	rx_request(OTHER, OWN, J1939_PGN_DM2);
@@ -457,7 +457,7 @@ static void test_request_for_dm2_is_answered_globally(void) {
 }
 
 static void test_multi_packet_answer_goes_to_the_requester(void) {
-	const j1939_diag_dtc_t list[2] = {dtc_b, dtc_d};
+	const j1939_dtc_t list[2] = {dtc_b, dtc_d};
 
 	start();
 	set_prev(list, 2U);
@@ -713,7 +713,7 @@ static void test_long_call_periods_saturate_timers(void) {
 }
 
 static void test_busy_broadcast_is_retried(void) {
-	const j1939_diag_dtc_t list[2] = {dtc_a, dtc_b};
+	const j1939_dtc_t list[2] = {dtc_a, dtc_b};
 
 	start();
 	set_prev(list, 2U);
@@ -775,10 +775,10 @@ static void test_init_rejects_invalid_configuration(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, NULL, &dm_cfg));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, NULL));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, 1U, &dm2, &dm_cfg));
-	c.active_len = J1939_DIAG_DM_DTC_MAX + 1U;
+	c.active_len = J1939_DTC_DM_DTC_MAX + 1U;
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, &c));
 	c = dm_cfg;
-	c.prev_len = J1939_DIAG_DM_DTC_MAX + 1U;
+	c.prev_len = J1939_DTC_DM_DTC_MAX + 1U;
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, &c));
 	c = dm_cfg;
 	c.active = NULL;
@@ -819,10 +819,10 @@ static void test_init_rejects_invalid_configuration(void) {
 }
 
 static void test_setters_reject_invalid_input(void) {
-	j1939_diag_dtc_t bad = dtc_a;
-	j1939_diag_dtc_t dup[2] = {dtc_a, dtc_a};
-	const j1939_diag_dtc_t five[5] = {dtc_a, dtc_b, dtc_c, dtc_d, {7000U, 4U, 0U, 0U}};
-	j1939_diag_lamps_t l = lamps;
+	j1939_dtc_t bad = dtc_a;
+	j1939_dtc_t dup[2] = {dtc_a, dtc_a};
+	const j1939_dtc_t five[5] = {dtc_a, dtc_b, dtc_c, dtc_d, {7000U, 4U, 0U, 0U}};
+	j1939_dtc_lamps_t l = lamps;
 	uint32_t pgn = 0U;
 
 	dup[1].oc = 5U; /* same SPN and FMI */
@@ -831,9 +831,9 @@ static void test_setters_reject_invalid_input(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_active_set(&s, ca, NULL, 1U));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_FULL, j1939_dm_active_set(&s, ca, five, 5U));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_active_set(&s, ca, dup, 2U));
-	bad.cm = J1939_DIAG_CM_LEGACY;
+	bad.cm = J1939_DTC_CM_LEGACY;
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_active_set(&s, ca, &bad, 1U));
-	bad = (j1939_diag_dtc_t){0U, 0U, 1U, J1939_DIAG_CM_V4};
+	bad = (j1939_dtc_t){0U, 0U, 1U, J1939_DTC_CM_V4};
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_prev_set(&s, ca, &bad, 1U));
 	bad.fmi = 32U;
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_prev_set(&s, ca, &bad, 1U));
@@ -862,9 +862,9 @@ static void test_setters_reject_invalid_input(void) {
 }
 
 static void test_dtcs_differing_only_in_fmi_are_distinct(void) {
-	const j1939_diag_dtc_t a_fmi4 = {dtc_a.spn, 4U, 1U, J1939_DIAG_CM_V4};
-	const j1939_diag_dtc_t both[2] = {dtc_a, a_fmi4};
-	const j1939_diag_dtc_t spn0 = {0U, 5U, 1U, J1939_DIAG_CM_V4};
+	const j1939_dtc_t a_fmi4 = {dtc_a.spn, 4U, 1U, J1939_DTC_CM_V4};
+	const j1939_dtc_t both[2] = {dtc_a, a_fmi4};
+	const j1939_dtc_t spn0 = {0U, 5U, 1U, J1939_DTC_CM_V4};
 
 	start();
 	set_active(&dtc_a, 1U);
@@ -890,7 +890,7 @@ static void test_dtcs_differing_only_in_fmi_are_distinct(void) {
 }
 
 static void test_repeated_request_of_one_requester_is_answered_to_it(void) {
-	const j1939_diag_dtc_t list[2] = {dtc_b, dtc_d};
+	const j1939_dtc_t list[2] = {dtc_b, dtc_d};
 
 	start();
 	set_prev(list, 2U);

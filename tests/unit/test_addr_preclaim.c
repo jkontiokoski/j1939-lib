@@ -38,7 +38,7 @@ static const uint32_t rx_pgns[] = {J1939_PGN_COMMANDED_ADDRESS};
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_tp_buf_t tp_rx[BUF_LEN];
-static j1939_names_entry_t entries[TABLE_LEN];
+static j1939_nametab_entry_t entries[TABLE_LEN];
 static j1939_t s;
 
 static void init(void) {
@@ -340,7 +340,7 @@ static void test_command_during_wait_is_claimed_when_wait_ends(void) {
 static void test_startup_request_skipped_after_preclaim(void) {
 	j1939_ca_id_t ca;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_init(&s, entries, TABLE_LEN));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, entries, TABLE_LEN));
 	ca = ca_add(OWN, NAME_OWN, true, false);
 	process(0U);
 	tx_expect_request(J1939_ADDR_NULL);
@@ -351,11 +351,11 @@ static void test_startup_request_skipped_after_preclaim(void) {
 	process(0U);
 	process(WAIT);
 	tx_expect_empty();
-	TEST_ASSERT_EQUAL_UINT16(1U, j1939_names_count(&s));
+	TEST_ASSERT_EQUAL_UINT16(1U, j1939_nametab_count(&s));
 }
 
 static void test_startup_request_skipped_with_preclaim_of_another_ca(void) {
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_init(&s, entries, TABLE_LEN));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, entries, TABLE_LEN));
 	(void)ca_add(OWN, NAME_OWN, false, false);
 	(void)ca_add(OWN_B, NAME_OWN_B, true, false);
 	process(0U);
@@ -370,7 +370,7 @@ static void test_startup_request_skipped_with_preclaim_of_another_ca(void) {
 }
 
 static void test_startup_request_sent_for_normal_ca(void) {
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_init(&s, entries, TABLE_LEN));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, entries, TABLE_LEN));
 	(void)ca_add(OWN, NAME_OWN, false, false);
 	process(0U);
 	tx_expect_claim(OWN, NAME_OWN);
@@ -383,7 +383,7 @@ static void test_startup_request_sent_for_normal_ca(void) {
 static void test_startup_request_skipped_after_application_request(void) {
 	j1939_ca_id_t ca;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_init(&s, entries, TABLE_LEN));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, entries, TABLE_LEN));
 	ca = ca_add(OWN, NAME_OWN, false, false);
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL));
