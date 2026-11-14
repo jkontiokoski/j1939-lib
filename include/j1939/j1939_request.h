@@ -37,8 +37,10 @@
  *    NACK.
  * 6. A global Request for any other PGN is ignored.
  *
- * A Request shorter than J1939_REQUEST_LEN bytes is ignored. Requests handled
- * in steps 1 to 3 are not delivered to the application.
+ * A Request shorter than J1939_REQUEST_LEN bytes is ignored, and so is a
+ * Request from J1939_ADDR_NULL or J1939_ADDR_GLOBAL for anything but Address
+ * Claimed: a node without an address cannot be answered. Requests handled in
+ * steps 1 to 3 are not delivered to the application.
  *
  * @{
  */
