@@ -60,8 +60,9 @@
 
 #define BAM_GAP_US   ((uint32_t)J1939_CFG_TP_BAM_GAP_US) /**< Gap between sent BAM packets. */
 #define BAM_STALL_US (BAM_GAP_US + J1939_TP_TR_US) /**< Longest wait for room for a BAM packet. */
-#define SESSIONS     ((uint8_t)J1939_CFG_TP_SESSIONS)  /**< Sessions in the pool. */
-#define BUF_SIZE     ((uint16_t)J1939_CFG_TP_BUF_SIZE) /**< Largest message a buffer holds. */
+#define SESSIONS     ((uint8_t)J1939_CFG_TP_SESSIONS)     /**< Sessions in the pool. */
+#define CTS_PACKETS  ((uint16_t)J1939_CFG_TP_CTS_PACKETS) /**< Most packets asked for per CTS. */
+#define BUF_SIZE     ((uint16_t)J1939_CFG_TP_BUF_SIZE)    /**< Largest message a buffer holds. */
 
 /**
  * @brief Reads the PGN of a TP.CM frame.
@@ -558,8 +559,11 @@ static void rts_handle(j1939_t *s, uint32_t id, const uint8_t *d) {
 		}
 		reason = rx_open(s, id, d, own, &se);
 		if (se != NULL) {
-			/* A limit of 0 is invalid; one packet per CTS suits every originator. */
-			se->limit = (d[CM_LIMIT] == 0U) ? 1U : d[CM_LIMIT];
+			/* A limit of 0 is invalid; one packet per CTS suits every originator. No
+			 * more than the receive path is sized for either. */
+			uint16_t limit = (d[CM_LIMIT] == 0U) ? 1U : d[CM_LIMIT];
+
+			se->limit = (uint8_t)((limit > CTS_PACKETS) ? CTS_PACKETS : limit);
 			window_request(s, se, true);
 		}
 	}

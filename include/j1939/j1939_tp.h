@@ -64,7 +64,8 @@
  *   0 packets (hold, J1939_TP_T4_US) and retransmission requests. An
  *   EndOfMsgAck ends the transfer once the last packet has been sent; one
  *   that comes earlier aborts it (J1939_TP_ABORT_OTHER).
- * - The responder asks for all remaining packets in one CTS, limited by the
+ * - The responder asks for the remaining packets with as few CTS as possible:
+ *   each asks for at most J1939_CFG_TP_CTS_PACKETS packets and at most the
  *   RTS's packets-per-CTS value. While all message slots are in use it holds
  *   the connection before requesting the packets that complete the message:
  *   CTS with 0 packets every J1939_TP_TH_US, at most J1939_TP_HOLD_MAX times,
@@ -165,7 +166,7 @@ typedef struct j1939_tp_session {
 	uint16_t packets;       /**< Number of packets. */
 	uint16_t next;          /**< Next packet to send or receive, 1-based. */
 	uint16_t last;          /**< Last packet of the current CTS window. */
-	uint8_t limit;          /**< Responder: packets per CTS the originator allows. */
+	uint8_t limit;          /**< Responder: most packets to ask for with one CTS. */
 	uint8_t holds;          /**< Responder: hold CTSs sent. */
 	uint8_t prio;   /**< Priority of the message and of the frames the originator sends. */
 	uint8_t local;  /**< Own address; J1939_ADDR_GLOBAL for a received broadcast. */
