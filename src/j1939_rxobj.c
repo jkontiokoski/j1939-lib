@@ -13,13 +13,13 @@
 #include <string.h>
 
 #include "j1939/j1939_addr.h"
+#include "j1939/j1939_id.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_tp.h"
 #include "j1939_nametab_priv.h"
 #include "j1939_rxobj_priv.h"
 #include "j1939_stack_priv.h"
 
-#define SA_MAX      0xFDU                         /**< Highest source address a node can claim. */
 #define BUF_LEN_MAX ((uint16_t)J1939_MAX_MSG_LEN) /**< Largest payload an object can hold. */
 
 /**
@@ -37,11 +37,10 @@ static bool pgn_owned(uint32_t pgn) {
  * NAME with a NAME table set up.
  */
 static bool rx_entry_valid(const j1939_t *s, const j1939_rxobj_cfg_t *c) {
-	bool sender_valid = (c->name == 0U) ? (c->sa <= SA_MAX) : (s->nametab.buf != NULL);
+	bool sender_valid = (c->name == 0U) ? (c->sa <= J1939_ADDR_MAX) : (s->nametab.buf != NULL);
 
-	return (c->buf != NULL) && j1939_stack_pgn_valid(c->pgn) && !pgn_owned(c->pgn) &&
-	       sender_valid && (c->min_len >= 1U) && (c->min_len <= c->buf_len) &&
-	       (c->buf_len <= BUF_LEN_MAX);
+	return (c->buf != NULL) && j1939_pgn_valid(c->pgn) && !pgn_owned(c->pgn) && sender_valid &&
+	       (c->min_len >= 1U) && (c->min_len <= c->buf_len) && (c->buf_len <= BUF_LEN_MAX);
 }
 
 /**
@@ -100,7 +99,7 @@ static bool rx_matches(const j1939_t *s, const j1939_rxobj_cfg_t *c, uint32_t pg
 	} else {
 		if (!sender->known) {
 			sender->known = true;
-			if ((s->nametab.buf == NULL) || (sender->sa > SA_MAX) ||
+			if ((s->nametab.buf == NULL) || (sender->sa > J1939_ADDR_MAX) ||
 			    !j1939_nametab_lookup(s, sender->sa, &sender->name)) {
 				sender->name = 0U;
 			}

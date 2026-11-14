@@ -56,16 +56,13 @@
  * Sends that find the tx queue full or the CA's transport protocol session
  * busy are retried with every j1939_process() and counted in
  * j1939_stats_t::txobj_tx_retry. A periodic send still unsent when the next
- * one is due, an answer not sent within J1939_TXOBJ_RESPONSE_US, and answers
+ * one is due, an answer not sent within J1939_TR_US, and answers
  * pending when the CA loses its address are counted in
  * j1939_stats_t::txobj_tx_dropped. After losing its address a CA's objects
  * start again as above with its next claim.
  *
  * @{
  */
-
-/** Response time Tr of J1939/21: answers to Requests not sent within it are given up. */
-#define J1939_TXOBJ_RESPONSE_US 200000U
 
 /** Transmit object configuration. Usually `const` data; the buffer must outlive the stack. */
 typedef struct j1939_txobj_cfg {

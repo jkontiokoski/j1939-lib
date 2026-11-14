@@ -23,7 +23,7 @@
 #define NAME   0x1000U
 
 #define PERIOD J1939_DM1_PERIOD_US
-#define TR     J1939_DM_RESPONSE_US
+#define TR     J1939_TR_US
 #define GAP    J1939_CFG_TP_BAM_GAP_US
 
 #define BAM 0x20U

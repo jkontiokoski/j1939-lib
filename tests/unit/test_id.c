@@ -62,6 +62,17 @@ static void test_pdu_format_boundary(void) {
 	TEST_ASSERT_EQUAL_HEX8(J1939_ADDR_GLOBAL, j1939_id_da_get(0x18F01234U));
 }
 
+static void test_pgn_valid(void) {
+	TEST_ASSERT_TRUE(j1939_pgn_valid(0U));
+	TEST_ASSERT_TRUE(j1939_pgn_valid(0xEF00U));  /* PDU1, destination byte 0 */
+	TEST_ASSERT_FALSE(j1939_pgn_valid(0xEF01U)); /* PDU1 with a destination byte */
+	TEST_ASSERT_TRUE(j1939_pgn_valid(0xF000U));  /* first PDU2 */
+	TEST_ASSERT_TRUE(j1939_pgn_valid(0xFFFFU));  /* PDU2: the low byte is part of it */
+	TEST_ASSERT_TRUE(j1939_pgn_valid(0x1EF00U)); /* data page 1 */
+	TEST_ASSERT_TRUE(j1939_pgn_valid(J1939_PGN_MAX));
+	TEST_ASSERT_FALSE(j1939_pgn_valid(J1939_PGN_MAX + 1U));
+}
+
 static void test_build_known_ids(void) {
 	uint32_t id = 0U;
 
@@ -125,6 +136,7 @@ int main(void) {
 	RUN_TEST(test_decode_data_pages);
 	RUN_TEST(test_decode_ignores_bits_above_28);
 	RUN_TEST(test_pdu_format_boundary);
+	RUN_TEST(test_pgn_valid);
 	RUN_TEST(test_build_known_ids);
 	RUN_TEST(test_build_rejects_invalid_arguments);
 	RUN_TEST(test_round_trip_all_pgns);

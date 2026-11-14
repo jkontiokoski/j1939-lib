@@ -48,6 +48,12 @@
 #define J1939_PGN_REQUEST 0xEA00U /**< Request, PGN 59904. */
 #define J1939_PGN_ACK     0xE800U /**< Acknowledgement, PGN 59392. */
 
+/**
+ * Response time Tr of J1939/21: the time within which a Request is answered. The stack gives up
+ * answers, acknowledgements and transport protocol packets it could not send within it.
+ */
+#define J1939_TR_US 200000U
+
 #define J1939_REQUEST_LEN 3U /**< Payload length of a Request. */
 #define J1939_ACK_LEN     8U /**< Payload length of an Acknowledgement. */
 

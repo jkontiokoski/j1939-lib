@@ -215,7 +215,7 @@ static void active_update(j1939_dm_t *dm, const j1939_dtc_t *dtcs, uint16_t coun
  * Returns true when the send is over, sent or given up.
  *
  * Retries are counted in dm_tx_retry; a send given up, at the latest when age_us reaches
- * J1939_DM_RESPONSE_US, in dm_tx_dropped. With NO_EXPIRY as its age a send is retried until it
+ * J1939_TR_US, in dm_tx_dropped. With NO_EXPIRY as its age a send is retried until it
  * succeeds.
  */
 static bool send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
@@ -224,7 +224,7 @@ static bool send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
 	if (ret == J1939_RET_OK) {
 		/* Sent. */
 	} else if ((ret == J1939_RET_ERR_FULL) || (ret == J1939_RET_ERR_BUSY)) {
-		if (age_us >= J1939_DM_RESPONSE_US) {
+		if (age_us >= J1939_TR_US) {
 			s->stats.dm_tx_dropped++;
 		} else {
 			s->stats.dm_tx_retry++;
@@ -296,7 +296,7 @@ static void clear_decide(j1939_dm_clear_t *c, bool accept, bool fresh) {
 
 /**
  * Sends the decided ACK or NACK of a clear request in ACK or NACK state, retried at most
- * J1939_DM_RESPONSE_US.
+ * J1939_TR_US.
  */
 static void ack_try(j1939_t *s, j1939_ca_id_t ca, j1939_dm_clear_t *c, uint32_t pgn) {
 	uint8_t ctrl = (uint8_t)((c->state == J1939_DM_CLEAR_ACK) ? J1939_ACK_CTRL_ACK
@@ -315,7 +315,7 @@ static void clear_tick(j1939_t *s, j1939_ca_id_t ca, j1939_dm_clear_t *c, uint32
 	case J1939_DM_CLEAR_IDLE:
 		break;
 	case J1939_DM_CLEAR_REQUESTED:
-		if (c->timer_us >= J1939_DM_RESPONSE_US) {
+		if (c->timer_us >= J1939_TR_US) {
 			/* No decision in time: nothing is cleared. */
 			clear_decide(c, false, false);
 			if (c->state == J1939_DM_CLEAR_NACK) {
@@ -417,7 +417,7 @@ static void dm1_tick(j1939_t *s, j1939_dm_t *dm, uint32_t elapsed_us) {
 	}
 }
 
-/** Sends a pending answer to a Request for DM1 or DM2, retried at most J1939_DM_RESPONSE_US. */
+/** Sends a pending answer to a Request for DM1 or DM2, retried at most J1939_TR_US. */
 static void answer_tick(j1939_t *s, j1939_ca_id_t ca, j1939_dm_answer_t *a, uint32_t pgn,
                         const j1939_dtc_t *dtcs, uint16_t count, uint32_t elapsed_us) {
 	if (a->due) {

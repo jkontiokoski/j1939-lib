@@ -60,7 +60,7 @@
  *   J1939_CFG_TP_BAM_GAP_US apart. Call j1939_process() often enough to keep
  *   the gap below 200 ms.
  * - The originator sends the packets a CTS requests as far as the tx queue
- *   has room, and waits for room at most J1939_TP_TR_US. It honours CTS with
+ *   has room, and waits for room at most J1939_TR_US. It honours CTS with
  *   0 packets (hold, J1939_TP_T4_US) and retransmission requests. An
  *   EndOfMsgAck ends the transfer once the last packet has been sent; one
  *   that comes earlier aborts it (J1939_TP_ABORT_OTHER).
@@ -114,7 +114,7 @@
 #define J1939_TP_ABORT_OTHER         250U /**< Any reason not listed above. */
 /** @} */
 
-/** @name Protocol timers (J1939/21), in microseconds
+/** @name Protocol timers (J1939/21), in microseconds; the response time Tr is J1939_TR_US
  * @{ */
 #define J1939_TP_T1_US 750000U  /**< Responder: time between data packets. */
 #define J1939_TP_T2_US 1250000U /**< Responder: time from CTS to the first data packet. */
@@ -122,7 +122,6 @@
 	1250000U                /**< Originator: time from the last data packet (or RTS) to CTS. \
 	                         */
 #define J1939_TP_T4_US 1050000U /**< Originator: time from a hold CTS to the next CTS. */
-#define J1939_TP_TR_US 200000U  /**< Time to respond, and to send a due data packet. */
 #define J1939_TP_TH_US                                                            \
 	500000U /**< Responder: interval of the hold CTSs that keep a connection. \
 	         */

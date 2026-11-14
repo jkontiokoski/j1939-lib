@@ -24,13 +24,6 @@
 #include "j1939_tp_priv.h"
 #include "j1939_txobj_priv.h"
 
-#define PDU1_DA_MASK   0xFFU /**< Destination byte of a PDU1 PGN, 0 in a valid PGN. */
-#define CA_ADDRESS_MAX 0xFDU /**< Highest address a CA can hold (253). */
-
-bool j1939_stack_pgn_valid(uint32_t pgn) {
-	return (pgn <= J1939_PGN_MAX) && (!j1939_pgn_is_pdu1(pgn) || ((pgn & PDU1_DA_MASK) == 0U));
-}
-
 /**
  * Checks a PGN list of the configuration: every entry is a valid PGN. The list may be NULL if len
  * is 0.
@@ -40,7 +33,7 @@ static bool pgn_list_valid(const uint32_t *list, uint16_t len) {
 	uint16_t i;
 
 	for (i = 0U; valid && (i < len); i++) {
-		valid = j1939_stack_pgn_valid(list[i]);
+		valid = j1939_pgn_valid(list[i]);
 	}
 	return valid;
 }
@@ -188,7 +181,7 @@ j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg) {
 j1939_ret_t j1939_ca_add(j1939_t *s, const j1939_ca_cfg_t *cfg, j1939_ca_id_t *id) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((s != NULL) && (cfg != NULL) && (id != NULL) && (cfg->address <= CA_ADDRESS_MAX) &&
+	if ((s != NULL) && (cfg != NULL) && (id != NULL) && (cfg->address <= J1939_ADDR_MAX) &&
 	    !ca_find(s, cfg->address)) {
 		if (s->ca_count < (uint8_t)J1939_CFG_CA_MAX) {
 			j1939_addr_ca_init(&s->ca[s->ca_count], cfg);

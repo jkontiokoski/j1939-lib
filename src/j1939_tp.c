@@ -13,6 +13,7 @@
 
 #include "j1939/j1939_addr.h"
 #include "j1939/j1939_id.h"
+#include "j1939/j1939_request.h"
 #include "j1939_addr_priv.h"
 #include "j1939_ring_priv.h"
 #include "j1939_rxobj_priv.h"
@@ -59,7 +60,7 @@
 /** @} */
 
 #define BAM_GAP_US   ((uint32_t)J1939_CFG_TP_BAM_GAP_US) /**< Gap between sent BAM packets. */
-#define BAM_STALL_US (BAM_GAP_US + J1939_TP_TR_US) /**< Longest wait for room for a BAM packet. */
+#define BAM_STALL_US (BAM_GAP_US + J1939_TR_US) /**< Longest wait for room for a BAM packet. */
 #define SESSIONS     ((uint8_t)J1939_CFG_TP_SESSIONS)     /**< Sessions in the pool. */
 #define CTS_PACKETS  ((uint16_t)J1939_CFG_TP_CTS_PACKETS) /**< Most packets asked for per CTS. */
 #define BUF_SIZE     ((uint16_t)J1939_CFG_TP_BUF_SIZE)    /**< Largest message a buffer holds. */
@@ -488,7 +489,7 @@ static void cts_handle(j1939_t *s, j1939_tp_session_t *se, const uint8_t *d) {
 			se->state = J1939_TP_TX_DATA;
 			se->next = next;
 			se->last = (uint16_t)((next + n) - 1U);
-			tp_timer_start(se, J1939_TP_TR_US, true);
+			tp_timer_start(se, J1939_TR_US, true);
 		}
 		break;
 	case J1939_TP_TX_DATA:
@@ -703,7 +704,7 @@ static void data_tick(j1939_t *s, j1939_tp_session_t *se) {
 		se->state = J1939_TP_TX_WAIT;
 		tp_timer_start(se, J1939_TP_T3_US, false);
 	} else if (progress) {
-		tp_timer_start(se, J1939_TP_TR_US, false);
+		tp_timer_start(se, J1939_TR_US, false);
 	} else if (tp_timer_expired(se)) {
 		session_abort(s, se, J1939_TP_ABORT_TIMEOUT);
 	} else {

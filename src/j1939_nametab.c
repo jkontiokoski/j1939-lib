@@ -18,11 +18,10 @@
 #include "j1939_nametab_priv.h"
 #include "j1939_stack_priv.h"
 
-#define NAMETAB_ADDRESS_MAX 0xFDU        /**< Highest address a node can claim (253). */
-#define NAMETAB_WORD_BITS   32U          /**< Bits in each NAME half of an entry. */
-#define NAMETAB_WORD_MASK   0xFFFFFFFFUL /**< Low half of a NAME. */
-#define NAMETAB_BYTE_MASK   0xFFU        /**< One byte of the requested PGN. */
-#define NAMETAB_BYTE_SHIFT  8U           /**< Bits per byte of the requested PGN. */
+#define NAMETAB_WORD_BITS  32U          /**< Bits in each NAME half of an entry. */
+#define NAMETAB_WORD_MASK  0xFFFFFFFFUL /**< Low half of a NAME. */
+#define NAMETAB_BYTE_MASK  0xFFU        /**< One byte of the requested PGN. */
+#define NAMETAB_BYTE_SHIFT 8U           /**< Bits per byte of the requested PGN. */
 
 /** Reads the NAME of an entry. */
 static uint64_t nametab_entry_name(const j1939_nametab_entry_t *e) {
@@ -227,7 +226,7 @@ void j1939_nametab_process(j1939_t *s, uint32_t elapsed_us) {
 j1939_ret_t j1939_nametab_name_get(j1939_t *s, uint8_t address, uint64_t *name) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((s != NULL) && (name != NULL) && (address <= NAMETAB_ADDRESS_MAX)) {
+	if ((s != NULL) && (name != NULL) && (address <= J1939_ADDR_MAX)) {
 		if (s->nametab.buf == NULL) {
 			ret = J1939_RET_ERR_STATE;
 		} else if (j1939_nametab_lookup(s, address, name)) {

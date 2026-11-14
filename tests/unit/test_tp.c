@@ -693,9 +693,9 @@ static void test_bam_send_waits_for_tx_queue_then_gives_up(void) {
 	run(GAP);
 	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
 	(void)j1939_tx_pop(&s); /* room for one packet */
-	run(J1939_TP_TR_US);
+	run(J1939_TR_US);
 	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
-	run(GAP + J1939_TP_TR_US - 1U);
+	run(GAP + J1939_TR_US - 1U);
 	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open());
 	run(1U);
 	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());
@@ -890,9 +890,9 @@ static void test_data_waits_for_tx_queue_then_aborts(void) {
 	run(0U);
 	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
 	(void)j1939_tx_pop(&s);
-	run(J1939_TP_TR_US - 1U); /* one packet goes out and restarts Tr */
+	run(J1939_TR_US - 1U); /* one packet goes out and restarts Tr */
 	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
-	run(J1939_TP_TR_US - 1U);
+	run(J1939_TR_US - 1U);
 	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open());
 	run(1U);
 	TEST_ASSERT_EQUAL_UINT8(0U, sessions_open());

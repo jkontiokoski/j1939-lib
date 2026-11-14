@@ -15,13 +15,6 @@
 #include "j1939/j1939_stack.h"
 
 /**
- * @brief Tells whether a PGN is valid.
- * @param pgn  PGN.
- * @return true if @p pgn is at most J1939_PGN_MAX and, for PDU1, its lowest byte is 0.
- */
-bool j1939_stack_pgn_valid(uint32_t pgn);
-
-/**
  * @brief Tells whether a PGN is in a list.
  * @param list  PGN list; may be NULL if @p len is 0.
  * @param len   Entries in @p list.

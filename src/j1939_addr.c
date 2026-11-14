@@ -21,7 +21,6 @@
 #include "j1939_tp_priv.h"
 
 #define CLAIM_PRIO     6U    /**< Priority of Address Claimed and Cannot Claim. */
-#define CA_ADDRESS_MAX 0xFDU /**< Highest address a CA can hold (253). */
 #define BITS_PER_BYTE  8U    /**< Bits per byte of the taken-address bitmap. */
 #define REQ_BYTE_MASK  0xFFU /**< Byte of a PGN in a Request payload. */
 #define REQ_BYTE_SHIFT 8U    /**< Bits per byte of a PGN in a Request payload. */
@@ -224,7 +223,7 @@ static bool command_apply(j1939_t *s, j1939_ca_t *ca) {
 	bool moved = false;
 
 	ca->commanded = J1939_ADDR_NULL;
-	if (next > CA_ADDRESS_MAX) {
+	if (next > J1939_ADDR_MAX) {
 		/* No command pending. */
 	} else if (ca->address == next) {
 		/* Already there: announce it again; an unclaimed CA claims it anyway. */
@@ -409,7 +408,7 @@ void j1939_addr_claim_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8
 		/* Cannot Claim takes no address; the NAME table records the node. */
 		(void)j1939_name_from_bytes(data, &name);
 		j1939_nametab_cannot_claim(s, name);
-	} else if ((len >= J1939_NAME_LEN) && (sa <= CA_ADDRESS_MAX)) {
+	} else if ((len >= J1939_NAME_LEN) && (sa <= J1939_ADDR_MAX)) {
 		uint64_t name = 0U;
 		uint8_t i;
 
@@ -466,7 +465,7 @@ void j1939_addr_command_handle(j1939_t *s, const uint8_t *data, uint16_t len) {
 
 			/* 254 and 255 are not addresses a CA can claim. */
 			if (ca->accept_commanded && (ca->name == name) &&
-			    (next <= CA_ADDRESS_MAX)) {
+			    (next <= J1939_ADDR_MAX)) {
 				ca->commanded = next;
 			}
 		}
@@ -542,7 +541,7 @@ j1939_ret_t j1939_addr_command_send(j1939_t *s, j1939_ca_id_t ca, uint64_t name,
                                     uint8_t da) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((address <= CA_ADDRESS_MAX) && (da != J1939_ADDR_NULL)) {
+	if ((address <= J1939_ADDR_MAX) && (da != J1939_ADDR_NULL)) {
 		uint8_t data[J1939_ADDR_COMMAND_LEN];
 		j1939_msg_t msg;
 

@@ -75,7 +75,7 @@ static bool pgn_stack_owned(uint32_t pgn) {
 static bool tx_entry_valid(const j1939_t *s, const j1939_txobj_cfg_t *c) {
 	bool single = c->len <= FRAME_LEN;
 
-	return (c->buf != NULL) && (c->ca < s->ca_count) && j1939_stack_pgn_valid(c->pgn) &&
+	return (c->buf != NULL) && (c->ca < s->ca_count) && j1939_pgn_valid(c->pgn) &&
 	       (c->prio <= J1939_PRIO_MAX) && (c->len > 0U) && ((uint32_t)c->len <= MSG_LEN_MAX) &&
 	       (single || j1939_tp_tx_buf_allocated(s)) && (c->da != J1939_ADDR_NULL) &&
 	       (j1939_pgn_is_pdu1(c->pgn) || !single || (c->da == J1939_ADDR_GLOBAL)) &&
@@ -123,7 +123,7 @@ static uint8_t answer_da(const j1939_txobj_cfg_t *c, uint8_t requester) {
  * busy. Returns true when the send is over, sent or given up.
  *
  * Retries are counted in txobj_tx_retry; a send given up, at the latest when age_us reaches
- * J1939_TXOBJ_RESPONSE_US, in txobj_tx_dropped. With NO_EXPIRY as its age a send is retried until
+ * J1939_TR_US, in txobj_tx_dropped. With NO_EXPIRY as its age a send is retried until
  * it succeeds.
  */
 static bool obj_send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
@@ -132,7 +132,7 @@ static bool obj_send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
 	if (ret == J1939_RET_OK) {
 		/* Sent. */
 	} else if ((ret == J1939_RET_ERR_FULL) || (ret == J1939_RET_ERR_BUSY)) {
-		if (age_us >= J1939_TXOBJ_RESPONSE_US) {
+		if (age_us >= J1939_TR_US) {
 			s->stats.txobj_tx_dropped++;
 		} else {
 			s->stats.txobj_tx_retry++;
@@ -216,7 +216,7 @@ static void schedule_send(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_t 
 	}
 }
 
-/** Sends a pending answer to a Request, retried at most J1939_TXOBJ_RESPONSE_US. */
+/** Sends a pending answer to a Request, retried at most J1939_TR_US. */
 static void obj_answer_tick(j1939_t *s, const j1939_txobj_cfg_t *c, j1939_txobj_t *o,
                             uint32_t elapsed_us) {
 	if (flag_get(o, (uint8_t)FLAG_ANSWER)) {

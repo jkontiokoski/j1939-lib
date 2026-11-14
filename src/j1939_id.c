@@ -51,25 +51,20 @@ bool j1939_pgn_is_pdu1(uint32_t pgn) {
 	return pgn_pf(pgn) < J1939_PF_PDU2_MIN;
 }
 
+bool j1939_pgn_valid(uint32_t pgn) {
+	return (pgn <= J1939_PGN_MAX) && (!j1939_pgn_is_pdu1(pgn) || ((pgn & BYTE_MASK) == 0U));
+}
+
 j1939_ret_t j1939_id_build(uint8_t prio, uint32_t pgn, uint8_t da, uint8_t sa, uint32_t *id) {
-	j1939_ret_t ret = J1939_RET_OK;
+	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((id == NULL) || (prio > J1939_PRIO_MAX) || (pgn > J1939_PGN_MAX)) {
-		ret = J1939_RET_ERR_ARG;
-	} else if (j1939_pgn_is_pdu1(pgn)) {
-		if ((pgn & BYTE_MASK) != 0U) {
-			ret = J1939_RET_ERR_ARG;
-		}
-	} else if (da != J1939_ADDR_GLOBAL) {
-		ret = J1939_RET_ERR_ARG;
-	} else {
-		/* PDU2 with global destination: nothing further to check. */
-	}
-
-	if (ret == J1939_RET_OK) {
+	/* A PDU2 message always goes to all nodes. */
+	if ((id != NULL) && (prio <= J1939_PRIO_MAX) && j1939_pgn_valid(pgn) &&
+	    (j1939_pgn_is_pdu1(pgn) || (da == J1939_ADDR_GLOBAL))) {
 		uint32_t ps = j1939_pgn_is_pdu1(pgn) ? (uint32_t)da : 0U;
 
 		*id = ((uint32_t)prio << PRIO_SHIFT) | ((pgn | ps) << PGN_SHIFT) | (uint32_t)sa;
+		ret = J1939_RET_OK;
 	}
 	return ret;
 }
