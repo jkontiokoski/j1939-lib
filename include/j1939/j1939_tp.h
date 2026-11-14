@@ -128,6 +128,7 @@
 /** Hold CTSs a responder sends before it aborts the connection (J1939_TP_ABORT_RESOURCES). */
 #define J1939_TP_HOLD_MAX 4U
 
+#if J1939_TP_ENABLE
 /**
  * Buffer for one transport protocol message. Allocated by the integrator,
  * members are private.
@@ -179,6 +180,7 @@ typedef struct j1939_tp {
 	uint16_t tx_buf_len;                                /**< Entries in tx_buf. */
 	uint16_t rx_buf_len;                                /**< Entries in rx_buf. */
 } j1939_tp_t;
+#endif
 
 /** @} */
 

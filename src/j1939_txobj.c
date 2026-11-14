@@ -19,6 +19,7 @@
 #include "j1939/j1939_tp.h"
 #include "j1939_addr_priv.h"
 #include "j1939_stack_priv.h"
+#include "j1939_tp_priv.h"
 #include "j1939_txobj_priv.h"
 
 #define FLAG_STARTED 0x01U /**< The CA has claimed its address; the schedule runs. */
@@ -28,7 +29,7 @@
 #define FLAG_FRESH   0x10U /**< Answer recorded since the last j1939_process(). */
 #define PAD          0xFFU /**< Initial payload byte: "not available". */
 #define FRAME_LEN    8U    /**< Largest single frame payload. */
-#define TP_BUF_SIZE  ((uint32_t)J1939_CFG_TP_BUF_SIZE) /**< Largest object payload. */
+#define MSG_LEN_MAX  ((uint32_t)J1939_MAX_MSG_LEN) /**< Largest object payload. */
 #define NO_EXPIRY    0U /**< Age of a send that is retried until it succeeds. */
 
 /**
@@ -87,7 +88,7 @@ static bool pgn_stack_owned(uint32_t pgn) {
  * @param c  Entry.
  * @return true if it has a buffer, a known CA, a valid PGN and priority not
  *         owned by the stack nor in req_pgns, a length of 1 to
- *         J1939_CFG_TP_BUF_SIZE (above 8 only with a TP transmit buffer) and a
+ *         J1939_MAX_MSG_LEN (above 8 only with a TP transmit buffer) and a
  *         destination other than J1939_ADDR_NULL, global for a single frame
  *         PDU2 PGN.
  */
@@ -95,8 +96,8 @@ static bool tx_entry_valid(const j1939_t *s, const j1939_txobj_cfg_t *c) {
 	bool single = c->len <= FRAME_LEN;
 
 	return (c->buf != NULL) && (c->ca < s->ca_count) && j1939_stack_pgn_valid(c->pgn) &&
-	       (c->prio <= J1939_PRIO_MAX) && (c->len > 0U) && ((uint32_t)c->len <= TP_BUF_SIZE) &&
-	       (single || (s->tp.tx_buf_len > 0U)) && (c->da != J1939_ADDR_NULL) &&
+	       (c->prio <= J1939_PRIO_MAX) && (c->len > 0U) && ((uint32_t)c->len <= MSG_LEN_MAX) &&
+	       (single || j1939_tp_tx_buf_allocated(s)) && (c->da != J1939_ADDR_NULL) &&
 	       (j1939_pgn_is_pdu1(c->pgn) || !single || (c->da == J1939_ADDR_GLOBAL)) &&
 	       !pgn_stack_owned(c->pgn) &&
 	       !j1939_stack_pgn_listed(s->req_pgns, s->req_pgns_len, c->pgn);

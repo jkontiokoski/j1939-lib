@@ -74,7 +74,7 @@ typedef struct j1939_txobj_cfg {
 	uint32_t period_us;  /**< Transmission period; 0: not periodic. */
 	uint32_t inhibit_us; /**< 0: no change trigger; else least time from a send to a change
 	                        send. */
-	uint16_t len;        /**< Payload length, 1..J1939_CFG_TP_BUF_SIZE. */
+	uint16_t len;        /**< Payload length, 1..J1939_MAX_MSG_LEN. */
 	uint8_t prio;        /**< Priority, 0..7. */
 	/** J1939_ADDR_GLOBAL, or a node address. A single frame PDU2 PGN needs the global address.
 	 */
@@ -105,7 +105,7 @@ typedef struct j1939_txobj {
  * @param len  Number of objects.
  * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer, an unknown
  *         CA, an invalid PGN, priority or destination, a NULL buffer, a
- *         length of 0, above J1939_CFG_TP_BUF_SIZE or above 8 while the stack
+ *         length of 0, above J1939_MAX_MSG_LEN or above 8 while the stack
  *         has no transport protocol transmit buffer, a PGN the stack handles
  *         itself (Request, Acknowledgement, transport protocol, Address
  *         Claimed, Commanded Address, DM1, DM2, DM3, DM11) or answered by the

@@ -67,6 +67,7 @@ coverage:
 	$(if $(REPORT_DIR),mkdir -p $(REPORT_ABS)/coverage)
 	$(CTEST) --preset coverage $(if $(REPORT_DIR),--output-junit $(REPORT_ABS)/coverage-junit.xml)
 	gcovr --root . --object-directory $(COV_DIR) --filter src/ --filter include/ \
+		--merge-mode-functions separate \
 		--txt $(if $(REPORT_DIR),$(REPORT_ABS)/coverage.txt) --txt-summary \
 		$(if $(REPORT_DIR),--html-details $(REPORT_ABS)/coverage/index.html) \
 		--fail-under-line $(COVERAGE_MIN)

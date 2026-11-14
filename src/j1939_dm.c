@@ -10,6 +10,7 @@
 #include "j1939/j1939_dm.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "j1939/j1939_addr.h"
@@ -17,6 +18,7 @@
 #include "j1939/j1939_request.h"
 #include "j1939_addr_priv.h"
 #include "j1939_dm_priv.h"
+#include "j1939_tp_priv.h"
 
 #define CLEAR_DM3    0U                      /**< Index of the DM3 request in j1939_dm_t::clear. */
 #define CLEAR_DM11   1U                      /**< Index of the DM11 request. */
@@ -30,7 +32,7 @@
 #define BYTE_MASK    0xFFU                   /**< Mask of one byte. */
 #define BYTE_SHIFT   8U                      /**< Bits per byte. */
 #define FRAME_LEN    8U                      /**< Largest single frame payload. */
-#define TP_BUF_SIZE  ((uint32_t)J1939_CFG_TP_BUF_SIZE) /**< Largest DM payload. */
+#define MSG_LEN_MAX  ((uint32_t)J1939_MAX_MSG_LEN) /**< Largest DM payload. */
 #define NO_EXPIRY    0U /**< Age of a send that is retried until it succeeds. */
 /** PGN of the clear request kind @p k. */
 #define CLEAR_PGN(k) (((k) == CLEAR_DM3) ? J1939_PGN_DM3 : J1939_PGN_DM11)
@@ -646,7 +648,8 @@ static void request_accept(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_
  * @param cfg  Configuration.
  * @return true if the capacities are within J1939_DIAG_DM_DTC_MAX, the
  *         storage is present, the buffer holds the larger list, the payload
- *         fits a TP buffer and a multi-packet payload has a TP transmit buffer.
+ *         is at most J1939_MAX_MSG_LEN and a multi-packet payload has a TP transmit
+ *         buffer.
  */
 static bool dm_cfg_valid(const j1939_t *s, const j1939_dm_cfg_t *cfg) {
 	uint16_t max = (cfg->active_len > cfg->prev_len) ? cfg->active_len : cfg->prev_len;
@@ -656,8 +659,8 @@ static bool dm_cfg_valid(const j1939_t *s, const j1939_dm_cfg_t *cfg) {
 	       ((cfg->active != NULL) || (cfg->active_len == 0U)) &&
 	       ((cfg->prev != NULL) || (cfg->prev_len == 0U)) &&
 	       ((cfg->hold != NULL) || (cfg->hold_len == 0U)) && (cfg->buf != NULL) &&
-	       ((uint32_t)cfg->buf_len >= need) && (need <= TP_BUF_SIZE) &&
-	       ((need <= FRAME_LEN) || (s->tp.tx_buf_len > 0U));
+	       ((uint32_t)cfg->buf_len >= need) && (need <= MSG_LEN_MAX) &&
+	       ((need <= FRAME_LEN) || (j1939_tp_tx_buf_allocated(s)));
 }
 
 /**

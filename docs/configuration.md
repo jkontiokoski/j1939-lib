@@ -10,12 +10,14 @@ These settings change the layout of public types, so the library and the applica
 
 | Macro | Default | Range | Meaning |
 | --- | --- | --- | --- |
+| `J1939_TP_ENABLE` | 1 | 0, 1 | Builds the transport protocol; 0 limits messages to one frame and removes the TP buffers |
 | `J1939_CFG_CA_MAX` | 1 | 1–253 | Controller Applications per stack |
 | `J1939_CFG_TP_SESSIONS` | 2 | 1–32 | Concurrent transport protocol sessions per stack, both directions together |
 | `J1939_CFG_TP_BUF_SIZE` | 1785 | 9–1785 | Largest multi-packet message: the size of each transport protocol (TP) buffer |
 | `J1939_CFG_TP_BAM_GAP_US` | 50000 | 50000–200000 | Gap between the packets of a sent broadcast (BAM), in microseconds |
 
 A value outside its range stops the build with an `#error`.
+The `J1939_CFG_TP_*` settings apply only while `J1939_TP_ENABLE` is 1.
 
 ## Runtime buffers
 
@@ -27,8 +29,8 @@ All buffers are passed to `j1939_init()` in `j1939_cfg_t` and must outlive the s
 | Message slots | `msg_buf`, `msg_len` (≥ 1) | Received messages for the application, until `j1939_msg_pop()` |
 | Receive list | `rx_pgns`, `rx_pgns_len` | PGNs delivered to the application |
 | Request list | `req_pgns`, `req_pgns_len` | PGNs whose Requests the application answers |
-| TP transmit buffers | `tp_tx_buf`, `tp_tx_buf_len` | Multi-packet messages being sent; without one, a multi-packet send returns `J1939_RET_ERR_FULL` |
-| TP reassembly buffers | `tp_rx_buf`, `tp_rx_buf_len` | Multi-packet messages being received; without one, RTS is refused (Connection Abort reason 2) and BAM ignored |
+| TP transmit buffers (with `J1939_TP_ENABLE`) | `tp_tx_buf`, `tp_tx_buf_len` | Multi-packet messages being sent; without one, a multi-packet send returns `J1939_RET_ERR_FULL` |
+| TP reassembly buffers (with `J1939_TP_ENABLE`) | `tp_rx_buf`, `tp_rx_buf_len` | Multi-packet messages being received; without one, RTS is refused (Connection Abort reason 2) and BAM ignored |
 
 Sizing:
 

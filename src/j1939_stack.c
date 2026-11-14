@@ -69,8 +69,9 @@ static bool ca_find(const j1939_t *s, uint8_t address) {
  * Standard, remote and non-J1939 frames are dropped. Address Claimed goes to
  * address claiming whatever its destination; other frames pass only when
  * global or addressed to a held address: Requests to the Request module,
- * TP.CM and TP.DT to the transport protocol, the rest to the receive objects
- * and, if listed in rx_pgns, to the message slots.
+ * TP.CM and TP.DT to the transport protocol (dropped in a build without it),
+ * the rest to the receive objects and, if listed in rx_pgns, to the message
+ * slots.
  *
  * @param s  Stack.
  * @param f  Received frame.
@@ -91,7 +92,11 @@ static void frame_handle(j1939_t *s, const j1939_port_frame_t *f) {
 			if (pgn == J1939_PGN_REQUEST) {
 				j1939_request_handle(s, id, data, len);
 			} else if ((pgn == J1939_PGN_TP_CM) || (pgn == J1939_PGN_TP_DT)) {
+#if J1939_TP_ENABLE
 				j1939_tp_handle(s, id, data, len);
+#else
+				/* Built without the transport protocol: dropped. */
+#endif
 			} else {
 				j1939_rxobj_handle(s, pgn, j1939_id_sa_get(id), data, len);
 				if (j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, pgn)) {
@@ -129,7 +134,6 @@ void j1939_stack_deliver(j1939_t *s, uint32_t id, const uint8_t *data, uint8_t l
 			(void)memcpy(slot->data, data, len);
 		}
 		slot->msg.data = slot->data;
-		slot->tp_buf = NULL;
 		(void)j1939_ring_push(&s->msgs.ring);
 	} else {
 		s->stats.rx_msg_overflow++;
@@ -285,7 +289,11 @@ j1939_ret_t j1939_send(j1939_t *s, j1939_ca_id_t ca, const j1939_msg_t *msg) {
 		} else if (msg->len <= J1939_MSG_SINGLE_FRAME_MAX) {
 			ret = j1939_stack_send(s, msg, s->ca[ca].address);
 		} else {
+#if J1939_TP_ENABLE
 			ret = j1939_tp_send(s, s->ca[ca].address, msg);
+#else
+			/* Built without the transport protocol: one frame at most (ERR_ARG). */
+#endif
 		}
 	}
 	return ret;
