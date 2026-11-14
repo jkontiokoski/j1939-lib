@@ -21,6 +21,7 @@ The Makefile is a set of shortcuts over them.
 | `make format`       | Formats all project sources                                              |
 | `make format-check` | Fails if any project source is not formatted                             |
 | `make check`        | Runs every gate in turn: `format-check`, `lint`, `test`, `coverage`, `cross`, `docs`, `docs-internal`; stops at the first failure |
+| `make interop`      | Runs a library node against the J1939 stack of the Linux kernel on `vcan0`, see Tests below; not part of `make check` |
 | `make dist`         | Builds the release archives, see `RELEASING.md`                          |
 | `make clean`        | Removes `build/`                                                         |
 
@@ -57,10 +58,10 @@ port/<name>/     one directory per port: j1939_target.h, optional port.cmake and
 port/mock/       test port with a deliberately unusual frame layout
 port/socketcan/  Linux SocketCAN port and socket helpers
 examples/        SocketCAN example applications; examples/signals/ holds an illustrative signal table
-tests/           unit/, integration/, port/ (conformance), support/ (virtual bus), config/ (test builds), vendor/unity/
+tests/           unit/, integration/, port/ (conformance), interop/ (node of the interoperability check), support/ (virtual bus), config/ (test builds), vendor/unity/
 cmake/           library, warnings, instrumentation, toolchain and documentation helpers
 docs/            user documentation, Doxyfile.in, vendored stylesheet; the page order is in cmake/docs.cmake
-tools/           dist.sh (release archives), check-links.sh (Markdown link check)
+tools/           dist.sh (release archives), check-links.sh (Markdown link check), interop.sh (interoperability check)
 ```
 
 The version is defined once, in `j1939.h`; `CMakeLists.txt` reads it from there.
@@ -116,6 +117,7 @@ A new deviation goes into `cppcheck-suppressions.txt` or `cppcheck-misra-suppres
 - A static inline function with one definition per feature setting appears in several variants at different lines; `make coverage` passes `--merge-mode-functions separate` so that gcovr keeps them apart.
 - `test_queue` links the frame queue built for the mock port; the mock lock records nesting depth and call count.
 - Timers are tested by passing the elapsed time to `j1939_process()`, for example one call 1 µs before and one at a deadline.
+- `make interop` checks the library against an independent implementation: `tools/interop.sh` runs `tests/interop/interop_node.c`, a library node on SocketCAN, against the J1939 stack of the Linux kernel (`can-j1939`) driven by `j1939cat` and `j1939acd`. The scenarios are RTS/CTS transfers of 9, 100 and 1785 bytes and a BAM in both directions, each verified by comparing the payload, and address claiming where the library keeps its address, moves to another one and ends in Cannot Claim. The bus traffic of each scenario is kept in `build/interop/`. It uses `vcan0`, or the interface in `J1939_TEST_CANIF`, which nothing else may use during the run, and reports "skipped" without the tools, the interface or kernel support. Run it before a pull request that changes protocol behaviour, address claiming or the transport protocol.
 - Coverage with gcov and gcovr: at least 90 % line coverage of the library core, branch coverage reported.
 
 ## Tooling
@@ -128,7 +130,7 @@ A new deviation goes into `cppcheck-suppressions.txt` or `cppcheck-misra-suppres
 | cppcheck (+ misra)   | Static analysis                                      |
 | clang-format         | Formatting                                           |
 | gcovr                | Coverage reports                                     |
-| can-utils            | Manual testing on `vcan0` (`candump`, `cansend`)     |
+| can-utils            | Manual testing on `vcan0` (`candump`, `cansend`); `j1939cat` and `j1939acd` for `make interop` |
 | arm-none-eabi-gcc    | Compile-only portability check                       |
 | Doxygen (≥ 1.9.8)    | API reference and documentation gate                 |
 | Graphviz (dot)       | Include, dependency and call graphs of the documentation |

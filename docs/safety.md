@@ -34,6 +34,7 @@ Each deviation is listed in `cppcheck-suppressions.txt` or `cppcheck-misra-suppr
 | Configuration variants | The library built with a test configuration (two CAs), with small TP buffers (100 bytes) and without the transport protocol, exercising the configuration override, the size limits and the single frame only build |
 | Reference models | Signal bit extraction and insertion compared bit by bit against a reference model for every offset and length |
 | SocketCAN loopback | Frames exchanged through the Linux SocketCAN stack on a virtual interface (`vcan0`) |
+| Interoperability | A library node against the J1939 stack of the Linux kernel, an independent implementation: RTS/CTS transfers of 9 to 1785 bytes and BAM in both directions, and address claiming with a won, a lost and an unresolvable contention. Run on request (`make interop`), not part of the release evidence |
 
 - Host test builds run with AddressSanitizer and UndefinedBehaviorSanitizer.
 - Line coverage of the library core must stay at or above 90 %; branch coverage is reported. Branches that guard against states the design rules out remain uncovered.

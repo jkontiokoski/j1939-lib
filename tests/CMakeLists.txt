@@ -107,6 +107,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	j1939_add_port_conformance(test_port_socketcan j1939_test_socketcan)
 	j1939_add_test(test_socketcan_vcan j1939_test_socketcan port/test_socketcan_vcan.c)
 	set_tests_properties(test_socketcan_vcan PROPERTIES SKIP_RETURN_CODE 77)
+
+	# Library node of the interoperability check, run by tools/interop.sh (make interop).
+	add_executable(interop_node interop/interop_node.c)
+	set_target_properties(interop_node PROPERTIES C_STANDARD 99 C_EXTENSIONS OFF)
+	target_link_libraries(interop_node PRIVATE j1939_test_socketcan)
+	j1939_set_warnings(interop_node)
 endif()
 
 if(NOT J1939_PORT_DIR STREQUAL MOCK_PORT_DIR AND NOT J1939_PORT_DIR STREQUAL SOCKETCAN_PORT_DIR)

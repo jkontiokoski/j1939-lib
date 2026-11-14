@@ -46,8 +46,8 @@ define cppcheck_run
 		if [ $$status -ne 0 ] || grep -Eq '$(LINT_FINDING)' $(LINT_DIR)/$(1).txt; then exit 1; fi
 endef
 
-.PHONY: all lib test coverage cross examples docs docs-internal check dist format format-check lint \
-	clean
+.PHONY: all lib test coverage cross examples docs docs-internal check interop dist format \
+	format-check lint clean
 
 all: lib
 
@@ -97,6 +97,15 @@ check:
 	$(MAKE) cross
 	$(MAKE) docs
 	$(MAKE) docs-internal
+
+# A library node against the J1939 stack of the Linux kernel; results in build/interop/. Not part
+# of check: it needs can-utils, kernel J1939 support and a CAN interface of its own, and reports
+# "skipped" without them.
+interop:
+	$(CMAKE) --preset dev
+	$(CMAKE) --build --preset dev --target interop_node
+	sh tools/interop.sh $(BUILD_ROOT)/dev/tests/interop_node $(BUILD_ROOT)/interop; \
+		status=$$?; [ $$status -eq 0 ] || [ $$status -eq 77 ]
 
 # Release artifacts of the current commit in build/dist/; see RELEASING.md.
 dist:
