@@ -33,23 +33,23 @@ typedef struct node {
 
 static const uint32_t tool_pgns[] = {J1939_PGN_DM1, J1939_PGN_DM2, J1939_PGN_ACK};
 
-static const j1939_diag_dtc_t dtc_a = {520213U, 0U, 1U, J1939_DIAG_CM_V4};
-static const j1939_diag_dtc_t dtc_b = {520214U, 2U, 4U, J1939_DIAG_CM_V4};
-static const j1939_diag_dtc_t dtc_c = {0x7FFF0U, 31U, 126U, J1939_DIAG_CM_V4};
+static const j1939_dtc_t dtc_a = {520213U, 0U, 1U, J1939_DTC_CM_V4};
+static const j1939_dtc_t dtc_b = {520214U, 2U, 4U, J1939_DTC_CM_V4};
+static const j1939_dtc_t dtc_c = {0x7FFF0U, 31U, 126U, J1939_DTC_CM_V4};
 
 static node_t ecu;
 static node_t tool;
 static test_bus_t bus;
-static j1939_diag_dtc_t active[DTC_LEN];
-static j1939_diag_dtc_t prev[DTC_LEN];
+static j1939_dtc_t active[DTC_LEN];
+static j1939_dtc_t prev[DTC_LEN];
 static j1939_dm_hold_t hold[DTC_LEN];
 static uint8_t dm_buf[J1939_DM_BUF_LEN(DTC_LEN)];
 static j1939_dm_t dm;
 
 /* What the tool has received. */
-static j1939_diag_dtc_t got[DTC_LEN];
+static j1939_dtc_t got[DTC_LEN];
 static uint16_t got_count;
-static j1939_diag_lamps_t got_lamps;
+static j1939_dtc_lamps_t got_lamps;
 static uint32_t dm1_count;
 static uint32_t dm2_count;
 static uint32_t ack_count;
@@ -93,8 +93,8 @@ static void tool_poll(void) {
 			          ((uint32_t)msg->data[7] << 16);
 		} else {
 			TEST_ASSERT_EQUAL(J1939_RET_OK,
-			                  j1939_diag_dm_parse(msg->data, msg->len, &got_lamps, got,
-			                                      DTC_LEN, &got_count));
+			                  j1939_dtc_dm_parse(msg->data, msg->len, &got_lamps, got,
+			                                     DTC_LEN, &got_count));
 			if (msg->pgn == J1939_PGN_DM1) {
 				dm1_count++;
 			} else {
@@ -117,7 +117,7 @@ static void steps(uint32_t count) {
 	}
 }
 
-static void expect_got(const j1939_diag_dtc_t *dtcs, uint16_t n) {
+static void expect_got(const j1939_dtc_t *dtcs, uint16_t n) {
 	uint16_t i;
 
 	TEST_ASSERT_EQUAL_UINT16(n, got_count);
@@ -125,7 +125,7 @@ static void expect_got(const j1939_diag_dtc_t *dtcs, uint16_t n) {
 		TEST_ASSERT_EQUAL_UINT32(dtcs[i].spn, got[i].spn);
 		TEST_ASSERT_EQUAL_UINT8(dtcs[i].fmi, got[i].fmi);
 		TEST_ASSERT_EQUAL_UINT8(dtcs[i].oc, got[i].oc);
-		TEST_ASSERT_EQUAL_UINT8(J1939_DIAG_CM_V4, got[i].cm);
+		TEST_ASSERT_EQUAL_UINT8(J1939_DTC_CM_V4, got[i].cm);
 	}
 }
 
@@ -157,8 +157,8 @@ void tearDown(void) {
 }
 
 static void test_tool_receives_dm1_single_frame_and_bam(void) {
-	const j1939_diag_dtc_t three[3] = {dtc_a, dtc_b, dtc_c};
-	const j1939_diag_lamps_t lamps = {1U, 0U, 1U, 0U, 3U, 3U, 0U, 3U};
+	const j1939_dtc_t three[3] = {dtc_a, dtc_b, dtc_c};
+	const j1939_dtc_lamps_t lamps = {1U, 0U, 1U, 0U, 3U, 3U, 0U, 3U};
 
 	/* Claims, then the first DM1: no DTCs. */
 	steps(2U);
@@ -173,7 +173,7 @@ static void test_tool_receives_dm1_single_frame_and_bam(void) {
 	expect_got(&dtc_a, 1U);
 	TEST_ASSERT_EQUAL_UINT8(1U, got_lamps.mil);
 	TEST_ASSERT_EQUAL_UINT8(1U, got_lamps.amber_warning);
-	TEST_ASSERT_EQUAL_UINT8(J1939_DIAG_FLASH_SLOW, got_lamps.amber_warning_flash);
+	TEST_ASSERT_EQUAL_UINT8(J1939_DTC_FLASH_SLOW, got_lamps.amber_warning_flash);
 
 	/* Three DTCs: BAM, reassembled by the tool. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_active_set(&ecu.s, ecu.ca, three, 3U));
@@ -190,7 +190,7 @@ static void test_tool_receives_dm1_single_frame_and_bam(void) {
 }
 
 static void test_tool_requests_dm2_and_clears_with_dm11(void) {
-	const j1939_diag_dtc_t two[2] = {dtc_b, dtc_c};
+	const j1939_dtc_t two[2] = {dtc_b, dtc_c};
 	uint32_t pgn = 0U;
 
 	steps(2U);

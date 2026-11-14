@@ -47,7 +47,7 @@
  *   from that address. When a node loses its address, the node that claims
  *   it next reaches the same object.
  * - By NAME (j1939_rxobj_cfg_t::name not 0): the object takes the PGN from
- *   the address the NAME table (@ref grp_names) currently records for that
+ *   the address the NAME table (@ref grp_nametab) currently records for that
  *   NAME, and follows the node when its address changes. While the NAME has
  *   no address or is not in the table, nothing reaches the object and its
  *   timeout runs as usual. Without a NAME table, e.g. after it was removed,
@@ -101,7 +101,7 @@ typedef struct j1939_rxobj {
  * Every object starts in J1939_RXOBJ_NO_DATA. May be called again to replace
  * or reset the table; @p len 0 removes it, and so does j1939_init(). The
  * configuration and state arrays must outlive the stack. Objects matching by
- * NAME need the NAME table, so j1939_names_init() comes first.
+ * NAME need the NAME table, so j1939_nametab_init() comes first.
  *
  * @param s    Stack.
  * @param cfg  Configuration of each object. May be NULL if @p len is 0.

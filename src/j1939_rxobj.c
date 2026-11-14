@@ -15,7 +15,7 @@
 #include "j1939/j1939_addr.h"
 #include "j1939/j1939_request.h"
 #include "j1939/j1939_tp.h"
-#include "j1939_names_priv.h"
+#include "j1939_nametab_priv.h"
 #include "j1939_rxobj_priv.h"
 #include "j1939_stack_priv.h"
 
@@ -41,7 +41,7 @@ static bool pgn_owned(uint32_t pgn) {
  *         source address of at most 253 or a NAME with a NAME table set up.
  */
 static bool rx_entry_valid(const j1939_t *s, const j1939_rxobj_cfg_t *c) {
-	bool sender_valid = (c->name == 0U) ? (c->sa <= SA_MAX) : (s->names.buf != NULL);
+	bool sender_valid = (c->name == 0U) ? (c->sa <= SA_MAX) : (s->nametab.buf != NULL);
 
 	return (c->buf != NULL) && j1939_stack_pgn_valid(c->pgn) && !pgn_owned(c->pgn) &&
 	       sender_valid && (c->min_len >= 1U) && (c->min_len <= c->buf_len) &&
@@ -116,8 +116,8 @@ static bool rx_matches(const j1939_t *s, const j1939_rxobj_cfg_t *c, uint32_t pg
 	} else {
 		if (!sender->known) {
 			sender->known = true;
-			if ((s->names.buf == NULL) || (sender->sa > SA_MAX) ||
-			    !j1939_names_lookup(s, sender->sa, &sender->name)) {
+			if ((s->nametab.buf == NULL) || (sender->sa > SA_MAX) ||
+			    !j1939_nametab_lookup(s, sender->sa, &sender->name)) {
 				sender->name = 0U;
 			}
 		}

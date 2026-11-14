@@ -39,7 +39,7 @@ static node_t pump;
 static node_t monitor;
 static node_t rival;
 static test_bus_t bus;
-static j1939_names_entry_t names[NAMES_LEN];
+static j1939_nametab_entry_t names[NAMES_LEN];
 static uint8_t status_buf[8];
 static const j1939_rxobj_cfg_t obj_cfg = {status_buf, PGN_STATUS, TIMEOUT_US, 8U,
                                           8U,         0U,         NAME_PUMP};
@@ -109,7 +109,7 @@ void setUp(void) {
 	test_bus_init(&bus);
 	node_init(&pump, ADDR_PUMP, NAME_PUMP);
 	node_init(&monitor, ADDR_MONITOR, NAME_MONITOR);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_init(&monitor.s, names, NAMES_LEN));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&monitor.s, names, NAMES_LEN));
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&monitor.s, &obj_cfg, &obj, 1U));
 	elapsed = 0U;
 	counter = 0U;
@@ -132,7 +132,7 @@ static void test_follows_sender_across_move(void) {
 	node_init(&rival, ADDR_PUMP, NAME_RIVAL);
 	steps(40U);
 	TEST_ASSERT_NOT_EQUAL(ADDR_PUMP, pump_address());
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_name_get(&monitor.s, pump_address(), &name));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_name_get(&monitor.s, pump_address(), &name));
 	TEST_ASSERT_EQUAL_HEX64(NAME_PUMP, name);
 
 	/* The object keeps receiving the pump at its new address and never times out. */

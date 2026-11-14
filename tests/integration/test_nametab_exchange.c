@@ -42,7 +42,7 @@ static node_t b;
 static node_t c;
 static node_t joiner;
 static test_bus_t bus;
-static j1939_names_entry_t entries[TABLE_LEN];
+static j1939_nametab_entry_t entries[TABLE_LEN];
 
 static void node_init(node_t *n, uint8_t address, uint64_t name, bool accept_commanded) {
 	const j1939_cfg_t cfg = {
@@ -80,7 +80,7 @@ static void steps(uint32_t count) {
 static uint8_t joiner_address_of(uint64_t name) {
 	uint8_t address = 0xA5U;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_address_get(&joiner.s, name, &address));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_address_get(&joiner.s, name, &address));
 	return address;
 }
 
@@ -98,7 +98,7 @@ static void running_nodes(void) {
 
 static void joiner_online(uint8_t address) {
 	node_init(&joiner, address, NAME_JOINER, false);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_init(&joiner.s, entries, TABLE_LEN));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&joiner.s, entries, TABLE_LEN));
 	test_bus_attach(&bus, &joiner.s);
 }
 
@@ -113,15 +113,15 @@ static void test_late_joiner_learns_the_running_nodes(void) {
 	uint64_t name = 0U;
 
 	joiner_online(ADDR_JOINER);
-	TEST_ASSERT_EQUAL(0U, j1939_names_count(&joiner.s));
+	TEST_ASSERT_EQUAL(0U, j1939_nametab_count(&joiner.s));
 	steps(2U);
-	TEST_ASSERT_EQUAL(3U, j1939_names_count(&joiner.s));
+	TEST_ASSERT_EQUAL(3U, j1939_nametab_count(&joiner.s));
 	TEST_ASSERT_EQUAL_HEX8(ADDR_A, joiner_address_of(NAME_A));
 	TEST_ASSERT_EQUAL_HEX8(ADDR_B, joiner_address_of(NAME_B));
 	TEST_ASSERT_EQUAL_HEX8(ADDR_C, joiner_address_of(NAME_C));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_name_get(&joiner.s, ADDR_B, &name));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_name_get(&joiner.s, ADDR_B, &name));
 	TEST_ASSERT_EQUAL_UINT64(NAME_B, name);
-	TEST_ASSERT_EQUAL(0U, j1939_stats_get(&joiner.s)->names_dropped);
+	TEST_ASSERT_EQUAL(0U, j1939_stats_get(&joiner.s)->nametab_dropped);
 }
 
 static void test_joiner_follows_a_node_moved_by_commanded_address(void) {
@@ -130,16 +130,16 @@ static void test_joiner_follows_a_node_moved_by_commanded_address(void) {
 
 	joiner_online(ADDR_JOINER);
 	steps(2U);
-	changes = j1939_names_changes(&joiner.s);
+	changes = j1939_nametab_changes(&joiner.s);
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_addr_command_send(&joiner.s, joiner.ca, NAME_B,
 	                                                        ADDR_B_NEW, J1939_ADDR_GLOBAL));
 	steps(30U); /* BAM: two packets at least 50 ms apart, then the move */
 	TEST_ASSERT_EQUAL_HEX8(ADDR_B_NEW, joiner_address_of(NAME_B));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_EMPTY, j1939_names_name_get(&joiner.s, ADDR_B, &name));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_name_get(&joiner.s, ADDR_B_NEW, &name));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_EMPTY, j1939_nametab_name_get(&joiner.s, ADDR_B, &name));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_name_get(&joiner.s, ADDR_B_NEW, &name));
 	TEST_ASSERT_EQUAL_UINT64(NAME_B, name);
-	TEST_ASSERT_EQUAL(3U, j1939_names_count(&joiner.s));
-	TEST_ASSERT_NOT_EQUAL(changes, j1939_names_changes(&joiner.s));
+	TEST_ASSERT_EQUAL(3U, j1939_nametab_count(&joiner.s));
+	TEST_ASSERT_NOT_EQUAL(changes, j1939_nametab_changes(&joiner.s));
 }
 
 static void test_unknown_address_is_answered_before_the_joiner_claims(void) {
@@ -147,11 +147,11 @@ static void test_unknown_address_is_answered_before_the_joiner_claims(void) {
 
 	joiner_online(ADDR_SELF);
 	steps(1U); /* the joiner claims ADDR_SELF and waits 250 ms before transmitting */
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_EMPTY, j1939_names_name_get(&joiner.s, ADDR_C, &name));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_EMPTY, j1939_nametab_name_get(&joiner.s, ADDR_C, &name));
 	steps(2U); /* Request from the NULL address, answer from C */
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_name_get(&joiner.s, ADDR_C, &name));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_name_get(&joiner.s, ADDR_C, &name));
 	TEST_ASSERT_EQUAL_UINT64(NAME_C, name);
-	TEST_ASSERT_EQUAL(1U, j1939_names_count(&joiner.s));
+	TEST_ASSERT_EQUAL(1U, j1939_nametab_count(&joiner.s));
 }
 
 int main(void) {

@@ -22,8 +22,8 @@ Each layer uses only the layers below it.
 
 | Layer | Modules | Role |
 | --- | --- | --- |
-| Optional modules | `j1939_diag`, `j1939_signal` | DTC and DM1/DM2 payload codec; signal descriptors and scaling |
-| Protocol core | `j1939_dm`, `j1939_rxobj`, `j1939_txobj`, `j1939_addr`, `j1939_names`, `j1939_tp`, `j1939_stack`, `j1939_request` | Diagnostics, message objects, address claiming, NAME table, transport protocol, frame handling and message slots, Requests |
+| Optional modules | `j1939_dtc`, `j1939_signal` | DTC and DM1/DM2 payload codec; signal descriptors and scaling |
+| Protocol core | `j1939_dm`, `j1939_rxobj`, `j1939_txobj`, `j1939_addr`, `j1939_nametab`, `j1939_tp`, `j1939_stack`, `j1939_request` | Diagnostics, message objects, address claiming, NAME table, transport protocol, frame handling and message slots, Requests |
 | Codecs | `j1939_id`, `j1939_name`, `j1939_ring` | Identifier, NAME and FIFO index helpers without state or I/O |
 | Port | `j1939_target.h` | The driver's frame type and accessors, bound at compile time |
 
@@ -73,12 +73,12 @@ The API reference groups the headers into one topic per module; the guides show 
 | `j1939_stack.h` | Stack instance, configuration, frame rx, tx queue, sending, message slots, event counters | `j1939_t`, `j1939_cfg_t`, `j1939_ca_cfg_t`, `j1939_msg_slot_t`, `j1939_stats_t` |
 | `j1939_msg.h` | Logical message of 0–1785 bytes | `j1939_msg_t` |
 | `j1939_addr.h` | Address claiming and Commanded Address (J1939/81) | |
-| `j1939_names.h` | NAME table: the NAMEs and addresses of the other nodes | `j1939_names_entry_t` |
+| `j1939_nametab.h` | NAME table: the NAMEs and addresses of the other nodes | `j1939_nametab_entry_t` |
 | `j1939_request.h` | Request and Acknowledgement | |
 | `j1939_tp.h` | Transport protocol: abort reasons, timers | `j1939_tp_buf_t` |
 | `j1939_rxobj.h`, `j1939_txobj.h` | Receive and transmit objects | `j1939_rxobj_cfg_t`, `j1939_txobj_cfg_t` |
 | `j1939_signal.h` | Signal descriptors, bit fields, scaling, value ranges | `j1939_signal_t` |
-| `j1939_diag.h` | DTC, lamp status and DM1/DM2 payload codec | `j1939_diag_dtc_t`, `j1939_diag_lamps_t` |
+| `j1939_dtc.h` | DTC, lamp status and DM1/DM2 payload codec | `j1939_dtc_t`, `j1939_dtc_lamps_t` |
 | `j1939_dm.h` | Diagnostics of a CA: DM1, DM2, DM3, DM11 | `j1939_dm_cfg_t`, `j1939_dm_t` |
 | `j1939_id.h`, `j1939_name.h` | Identifier, PGN and NAME codecs | `j1939_name_fields_t` |
 | `j1939_config.h` | Compile-time configuration | |

@@ -69,8 +69,8 @@ static uint8_t pump_by_name_buf[8];
 	                     .pgn = 0xFF20U, .name = PUMP_NAME,  /* NAME of the pump controller */
 	                     .timeout_us = 500000U},
 
-static j1939_names_entry_t names[16];
-j1939_names_init(&stack, names, 16U);                    /* before j1939_rxobj_init() */
+static j1939_nametab_entry_t names[16];
+j1939_nametab_init(&stack, names, 16U);                  /* before j1939_rxobj_init() */
 ```
 
 - While the NAME has no address, or before the table has learned it, nothing reaches the object and its timeout runs as usual.

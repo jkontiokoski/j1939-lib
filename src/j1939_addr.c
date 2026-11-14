@@ -16,7 +16,7 @@
 #include "j1939/j1939_name.h"
 #include "j1939/j1939_request.h"
 #include "j1939_addr_priv.h"
-#include "j1939_names_priv.h"
+#include "j1939_nametab_priv.h"
 #include "j1939_stack_priv.h"
 #include "j1939_tp_priv.h"
 
@@ -478,7 +478,7 @@ void j1939_addr_claim_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8
 
 		/* Cannot Claim takes no address; the NAME table records the node. */
 		(void)j1939_name_from_bytes(data, &name);
-		j1939_names_cannot_claim(s, name);
+		j1939_nametab_cannot_claim(s, name);
 	} else if ((len >= J1939_NAME_LEN) && (sa <= CA_ADDRESS_MAX)) {
 		uint64_t name = 0U;
 		uint8_t i;
@@ -504,7 +504,7 @@ void j1939_addr_claim_handle(j1939_t *s, uint32_t id, const uint8_t *data, uint8
 		}
 		if (!j1939_addr_held(s, sa)) {
 			taken_set(s, sa);
-			j1939_names_claimed(s, name, sa);
+			j1939_nametab_claimed(s, name, sa);
 		}
 	} else {
 		/* Too short, or from the global address: no claim. */
@@ -587,7 +587,7 @@ j1939_ret_t j1939_addr_request_send(j1939_t *s, j1939_ca_id_t ca, const j1939_ms
 			/* The requester answers its own Request, as every other node does. */
 			j1939_addr_request_handle(s, msg->da);
 			if (msg->da == J1939_ADDR_GLOBAL) {
-				j1939_names_global_request(s);
+				j1939_nametab_global_request(s);
 			}
 		}
 	}

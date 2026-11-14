@@ -92,13 +92,13 @@ A source address says where a message came from, not who sent it: addresses are 
 Give the stack a NAME table, and it tells you the NAME behind an address:
 
 ```c
-static j1939_names_entry_t names[16];   /* one entry per other node expected on the bus */
+static j1939_nametab_entry_t names[16];   /* one entry per other node expected on the bus */
 
-j1939_names_init(&stack, names, 16U);   /* after j1939_init() */
+j1939_nametab_init(&stack, names, 16U);   /* after j1939_init() */
 
 uint64_t sender;
 
-if (j1939_names_name_get(&stack, msg->sa, &sender) == J1939_RET_OK) {
+if (j1939_nametab_name_get(&stack, msg->sa, &sender) == J1939_RET_OK) {
 	/* sender is the NAME of the node that sent msg */
 }
 ```
@@ -107,7 +107,7 @@ if (j1939_names_name_get(&stack, msg->sa, &sender) == J1939_RET_OK) {
 - A lookup of an address not yet known returns `J1939_RET_ERR_EMPTY` and makes the stack ask that address; a later lookup finds the answer.
 - Each entry takes 12 bytes. A new NAME that finds the table full is not listed and is counted in `j1939_stats_t`.
 - The answers to the startup Request arrive back to back, one frame per node: size the driver's receive FIFO for them.
-- Poll `j1939_names_changes()` to notice changes; list the nodes with `j1939_names_count()` and `j1939_names_at()`.
+- Poll `j1939_nametab_changes()` to notice changes; list the nodes with `j1939_nametab_count()` and `j1939_nametab_at()`.
 - Entries do not expire: a node that left the bus stays listed until another node claims its address.
 - A receive object can follow a node by its NAME instead of its address, see [Message objects](message-objects.md).
 
@@ -132,5 +132,5 @@ j1939_addr_command_send(&tool_stack, tool_ca, target_name, 0x85U, J1939_ADDR_GLO
 ## Reference
 
 API reference, topic *Address claiming*: `j1939_addr_get()`, `j1939_addr_command_send()`, `j1939_addr_state_t`, `j1939_ca_cfg_t`.
-The NAME table is the topic *NAME table*: `j1939_names_init()`, `j1939_names_name_get()`, `j1939_names_address_get()`.
+The NAME table is the topic *NAME table*: `j1939_nametab_init()`, `j1939_nametab_name_get()`, `j1939_nametab_address_get()`.
 The NAME fields are in the topic *NAME*: `j1939_name_encode()`, `j1939_name_fields_t`.

@@ -78,10 +78,10 @@ static void usage(const char *prog) {
 
 /* Decodes a DM1 in place from its message slot. */
 static void dm1_print(const j1939_msg_t *msg) {
-	j1939_diag_lamps_t lamps;
-	j1939_diag_dtc_t dtcs[DTCS_MAX];
+	j1939_dtc_lamps_t lamps;
+	j1939_dtc_t dtcs[DTCS_MAX];
 	uint16_t count = 0U;
-	j1939_ret_t ret = j1939_diag_dm_parse(msg->data, msg->len, &lamps, dtcs, DTCS_MAX, &count);
+	j1939_ret_t ret = j1939_dtc_dm_parse(msg->data, msg->len, &lamps, dtcs, DTCS_MAX, &count);
 
 	if ((ret == J1939_RET_OK) || (ret == J1939_RET_ERR_FULL)) {
 		(void)printf("           DM1: MIL %u red %u amber %u protect %u, %u DTC(s)\n",

@@ -34,7 +34,7 @@ static node_t fixed;
 static node_t self;
 static node_t joiner;
 static test_bus_t bus;
-static j1939_names_entry_t entries[TABLE_LEN];
+static j1939_nametab_entry_t entries[TABLE_LEN];
 
 static void node_init(node_t *n, uint8_t address, uint64_t name, bool preclaim) {
 	const j1939_cfg_t cfg = {
@@ -92,15 +92,15 @@ static void test_joiner_with_preclaim_avoids_the_taken_address(void) {
 	uint8_t address = 0U;
 
 	node_init(&joiner, ADDR_SELF, NAME_JOINER, true);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_init(&joiner.s, entries, TABLE_LEN));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&joiner.s, entries, TABLE_LEN));
 	test_bus_attach(&bus, &joiner.s);
 	steps(60U);
 	/* The joiner claimed the next free address; the running node kept its own. */
 	expect_state(&joiner, J1939_ADDR_STATE_CLAIMED, ADDR_SELF + 1U);
 	expect_state(&self, J1939_ADDR_STATE_CLAIMED, ADDR_SELF);
 	expect_state(&fixed, J1939_ADDR_STATE_CLAIMED, ADDR_FIXED);
-	TEST_ASSERT_EQUAL(2U, j1939_names_count(&joiner.s));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_names_address_get(&joiner.s, NAME_SELF, &address));
+	TEST_ASSERT_EQUAL(2U, j1939_nametab_count(&joiner.s));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_address_get(&joiner.s, NAME_SELF, &address));
 	TEST_ASSERT_EQUAL_HEX8(ADDR_SELF, address);
 }
 

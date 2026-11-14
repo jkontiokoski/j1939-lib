@@ -55,7 +55,7 @@ j1939_add_queue(j1939_test_mock_queue j1939_test_mock)
 j1939_add_test(test_queue j1939_test_mock_queue unit/test_queue.c)
 j1939_add_test(test_stack test_support unit/test_stack.c)
 j1939_add_test(test_request test_support unit/test_request.c)
-j1939_add_test(test_diag test_support unit/test_diag.c)
+j1939_add_test(test_dtc test_support unit/test_dtc.c)
 j1939_add_test(test_dm test_support unit/test_dm.c)
 j1939_add_test(test_signal test_support unit/test_signal.c)
 j1939_add_test(test_signal_example test_support unit/test_signal_example.c
@@ -66,7 +66,7 @@ j1939_add_test(test_addr_command test_support unit/test_addr_command.c)
 j1939_add_test(test_tp test_support unit/test_tp.c)
 j1939_add_test(test_rxobj test_support unit/test_rxobj.c)
 j1939_add_test(test_rxobj_name test_support unit/test_rxobj_name.c)
-j1939_add_test(test_names test_support unit/test_names.c)
+j1939_add_test(test_nametab test_support unit/test_nametab.c)
 j1939_add_test(test_addr_preclaim test_support unit/test_addr_preclaim.c)
 j1939_add_test(test_txobj test_support unit/test_txobj.c)
 j1939_add_test(test_request_exchange test_support integration/test_request_exchange.c)
@@ -76,7 +76,7 @@ j1939_add_test(test_tp_exchange test_support integration/test_tp_exchange.c)
 j1939_add_test(test_dm_exchange test_support integration/test_dm_exchange.c)
 j1939_add_test(test_rxobj_exchange test_support integration/test_rxobj_exchange.c)
 j1939_add_test(test_rxobj_name_exchange test_support integration/test_rxobj_name_exchange.c)
-j1939_add_test(test_names_exchange test_support integration/test_names_exchange.c)
+j1939_add_test(test_nametab_exchange test_support integration/test_nametab_exchange.c)
 j1939_add_test(test_addr_preclaim_exchange test_support integration/test_addr_preclaim_exchange.c)
 j1939_add_test(test_txobj_exchange test_support integration/test_txobj_exchange.c)
 
@@ -92,7 +92,7 @@ j1939_add_test(test_tp_small_buf j1939_test_mock_small_tp unit/test_tp_small_buf
 j1939_add_test_mock(j1939_test_mock_no_tp test_support_no_tp j1939_test_no_tp_config.h)
 j1939_add_test(test_tp_disabled test_support_no_tp unit/test_tp_disabled.c)
 foreach(_test IN ITEMS
-		unit/test_addr unit/test_request unit/test_names
+		unit/test_addr unit/test_request unit/test_nametab
 		integration/test_addr_claim integration/test_addr_preclaim_exchange
 		integration/test_request_exchange integration/test_rxobj_name_exchange)
 	get_filename_component(_name ${_test} NAME)

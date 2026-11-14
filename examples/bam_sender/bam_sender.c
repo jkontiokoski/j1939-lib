@@ -5,7 +5,7 @@
  * bam_sender: sends multi-packet messages with the transport protocol.
  *
  * - A DM1 with four DTCs (18 bytes, 3 packets), built with
- *   j1939_diag_dm_build(), broadcast with BAM to the global address.
+ *   j1939_dtc_dm_build(), broadcast with BAM to the global address.
  * - With -d, a 100 byte Proprietary A message (PGN 0xEF00, 15 packets) sent
  *   with RTS/CTS to the given destination.
  *
@@ -61,7 +61,7 @@ static j1939_tp_buf_t tp_tx_buf[TP_TX_LEN];
 static j1939_t stack;
 
 /* Example DTCs: invented SPNs from the proprietary range (520192 up). */
-static const j1939_diag_dtc_t dtcs[] = {
+static const j1939_dtc_t dtcs[] = {
         {.spn = 520202U, .fmi = 1U, .oc = 3U},
         {.spn = 520203U, .fmi = 0U, .oc = 1U},
         {.spn = 520204U, .fmi = 2U, .oc = 7U},
@@ -105,28 +105,28 @@ static const char *ret_name(j1939_ret_t ret) {
 
 /* One round: the DM1 with BAM, the proprietary message with RTS/CTS. */
 static void round_send(j1939_ca_id_t ca, bool have_dest, uint8_t dest, uint32_t round) {
-	static const j1939_diag_lamps_t lamps = {
-	        .mil = J1939_DIAG_LAMP_OFF,
-	        .red_stop = J1939_DIAG_LAMP_OFF,
-	        .amber_warning = J1939_DIAG_LAMP_ON,
-	        .protect = J1939_DIAG_LAMP_OFF,
-	        .mil_flash = J1939_DIAG_FLASH_OFF,
-	        .red_stop_flash = J1939_DIAG_FLASH_OFF,
-	        .amber_warning_flash = J1939_DIAG_FLASH_OFF,
-	        .protect_flash = J1939_DIAG_FLASH_OFF,
+	static const j1939_dtc_lamps_t lamps = {
+	        .mil = J1939_DTC_LAMP_OFF,
+	        .red_stop = J1939_DTC_LAMP_OFF,
+	        .amber_warning = J1939_DTC_LAMP_ON,
+	        .protect = J1939_DTC_LAMP_OFF,
+	        .mil_flash = J1939_DTC_FLASH_OFF,
+	        .red_stop_flash = J1939_DTC_FLASH_OFF,
+	        .amber_warning_flash = J1939_DTC_FLASH_OFF,
+	        .protect_flash = J1939_DTC_FLASH_OFF,
 	};
-	uint8_t dm1[J1939_DIAG_LAMPS_LEN + (sizeof(dtcs) / sizeof(dtcs[0])) * J1939_DIAG_DTC_LEN];
+	uint8_t dm1[J1939_DTC_LAMPS_LEN + (sizeof(dtcs) / sizeof(dtcs[0])) * J1939_DTC_LEN];
 	uint16_t dm1_len = 0U;
 	j1939_ret_t ret;
 
 	/* DM1: lamp bytes and four DTCs, 2 + 4 * 4 = 18 bytes. Sent to the
 	 * global address, so j1939_send() announces it with BAM. */
-	ret = j1939_diag_dm_build(&lamps, dtcs, (uint16_t)(sizeof(dtcs) / sizeof(dtcs[0])), dm1,
-	                          (uint16_t)sizeof(dm1), &dm1_len);
+	ret = j1939_dtc_dm_build(&lamps, dtcs, (uint16_t)(sizeof(dtcs) / sizeof(dtcs[0])), dm1,
+	                         (uint16_t)sizeof(dm1), &dm1_len);
 	if (ret == J1939_RET_OK) {
 		const j1939_msg_t msg = {
 		        .pgn = J1939_PGN_DM1,
-		        .prio = J1939_DIAG_PRIO_DEFAULT,
+		        .prio = J1939_DTC_PRIO_DEFAULT,
 		        .da = J1939_ADDR_GLOBAL,
 		        .len = dm1_len,
 		        .data = dm1,

@@ -201,7 +201,7 @@ static void test_multi_packet_send_beyond_the_buffer_or_invalid_is_rejected(void
 
 static void test_dm_payload_beyond_the_buffer_is_rejected(void) {
 	/* 24 DTCs need 98 bytes, 25 need 102. */
-	static j1939_diag_dtc_t dtcs[25];
+	static j1939_dtc_t dtcs[25];
 	static uint8_t buf[J1939_DM_BUF_LEN(25U)];
 	static j1939_dm_t dm;
 	j1939_dm_cfg_t c = {.prev = dtcs, .prev_len = 25U, .buf = buf, .buf_len = sizeof(buf)};
