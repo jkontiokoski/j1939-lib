@@ -16,10 +16,8 @@
 #include "j1939/j1939_request.h"
 #include "j1939_internal.h"
 
-#define NAMETAB_WORD_BITS  32U          /**< Bits in each NAME half of an entry. */
-#define NAMETAB_WORD_MASK  0xFFFFFFFFUL /**< Low half of a NAME. */
-#define NAMETAB_BYTE_MASK  0xFFU        /**< One byte of the requested PGN. */
-#define NAMETAB_BYTE_SHIFT 8U           /**< Bits per byte of the requested PGN. */
+#define NAMETAB_WORD_BITS 32U          /**< Bits in each NAME half of an entry. */
+#define NAMETAB_WORD_MASK 0xFFFFFFFFUL /**< Low half of a NAME. */
 
 /** Reads the NAME of an entry. */
 static uint64_t nametab_entry_name(const j1939_nametab_entry_t *e) {
@@ -126,7 +124,7 @@ static bool nametab_startup_sender(const j1939_t *s, j1939_ca_id_t *ca) {
 	uint8_t i;
 
 	for (i = 0U; (!found) && (i < s->ca_count); i++) {
-		if (j1939_addr_tx_allowed(&s->ca[i])) {
+		if (j1939_addr_ca_claimed(&s->ca[i])) {
 			*ca = i;
 			found = true;
 		}
@@ -141,21 +139,14 @@ static bool nametab_startup_sender(const j1939_t *s, j1939_ca_id_t *ca) {
  * Sent from a CA that has claimed its address if there is one, otherwise from J1939_ADDR_NULL.
  */
 static j1939_ret_t nametab_request_send(j1939_t *s, uint8_t da) {
-	const uint32_t pgn = J1939_PGN_ADDRESS_CLAIMED;
-	const uint8_t data[J1939_REQUEST_LEN] = {
-	        (uint8_t)(pgn & NAMETAB_BYTE_MASK),
-	        (uint8_t)((pgn >> NAMETAB_BYTE_SHIFT) & NAMETAB_BYTE_MASK),
-	        (uint8_t)((pgn >> (2U * NAMETAB_BYTE_SHIFT)) & NAMETAB_BYTE_MASK)};
-	const j1939_msg_t msg = {
-	        J1939_PGN_REQUEST, J1939_PRIO_DEFAULT, 0U, da, (uint16_t)J1939_REQUEST_LEN, data};
 	j1939_ca_id_t ca = 0U;
 	j1939_ret_t ret;
 
 	if (nametab_startup_sender(s, &ca) || (s->ca_count > 0U)) {
 		/* Uses J1939_ADDR_NULL for a CA without an address. */
-		ret = j1939_addr_request_send(s, ca, &msg);
+		ret = j1939_addr_request_send(s, ca, da);
 	} else {
-		ret = j1939_stack_send(s, &msg, J1939_ADDR_NULL);
+		ret = j1939_request_tx(s, J1939_ADDR_NULL, da, J1939_PGN_ADDRESS_CLAIMED);
 	}
 	return ret;
 }

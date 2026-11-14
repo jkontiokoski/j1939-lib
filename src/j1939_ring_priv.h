@@ -63,12 +63,4 @@ bool j1939_ring_pop(j1939_ring_t *r);
  */
 uint16_t j1939_ring_count(const j1939_ring_t *r);
 
-/**
- * @brief Tells whether a slot is written and not yet released.
- * @param r      Ring.
- * @param index  Slot index, below the ring length.
- * @return true if the slot lies between tail and head.
- */
-bool j1939_ring_holds(const j1939_ring_t *r, uint16_t index);
-
 #endif /* J1939_RING_PRIV_H */

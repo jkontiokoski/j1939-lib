@@ -137,8 +137,7 @@
  */
 typedef struct j1939_tp_buf {
 	uint8_t data[J1939_CFG_TP_BUF_SIZE]; /**< Message payload. */
-	uint16_t slot;                       /**< Message slot the message was delivered to. */
-	uint8_t state;                       /**< Free, in a session, or delivered. */
+	bool used; /**< Owned by a session, or by a delivered message until j1939_msg_pop(). */
 } j1939_tp_buf_t;
 
 /** Session states. Private to the library. */
