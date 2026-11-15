@@ -13,8 +13,7 @@
 #include <stdint.h>
 
 #include "j1939/j1939_dtc.h"
-#include "j1939/j1939_ret.h"
-#include "j1939/j1939_stack.h"
+#include "j1939/j1939_types.h"
 
 /**
  * @addtogroup grp_dm

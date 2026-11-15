@@ -66,13 +66,15 @@ Frames exist only at these two edges; everything in between works on payloads.
 ## Where to find what
 
 The API reference groups the headers into one topic per module; the guides show how to use them.
+Each module header holds everything of its module, its configuration and state types included, and needs only `j1939_types.h`; `j1939_stack.h` includes them all and defines the stack instance.
+An application includes `j1939.h`.
 
 | Header | Content | Main types |
 | --- | --- | --- |
 | `j1939.h` | Umbrella header, version | |
-| `j1939_stack.h` | Stack instance, configuration, frame rx, tx queue, sending, message slots, event counters | `j1939_t`, `j1939_cfg_t`, `j1939_ca_cfg_t`, `j1939_msg_slot_t`, `j1939_stats_t` |
-| `j1939_msg.h` | Logical message of 0–1785 bytes | `j1939_msg_t` |
-| `j1939_addr.h` | Address claiming and Commanded Address (J1939/81) | |
+| `j1939_types.h` | Types every module shares: return codes, the logical message of 0–1785 bytes, the stack handle | `j1939_ret_t`, `j1939_msg_t`, `j1939_t`, `j1939_ca_id_t` |
+| `j1939_stack.h` | Stack instance, configuration, frame rx, tx queue, sending, message slots, event counters | `j1939_cfg_t`, `j1939_msg_slot_t`, `j1939_stats_t` |
+| `j1939_addr.h` | Controller Applications, address claiming and Commanded Address (J1939/81) | `j1939_ca_cfg_t` |
 | `j1939_nametab.h` | NAME table: the NAMEs and addresses of the other nodes | `j1939_nametab_entry_t` |
 | `j1939_request.h` | Request and Acknowledgement | |
 | `j1939_tp.h` | Transport protocol: abort reasons, timers | `j1939_tp_buf_t` |
@@ -82,6 +84,5 @@ The API reference groups the headers into one topic per module; the guides show 
 | `j1939_dm.h` | Diagnostics of a CA: DM1, DM2, DM3, DM11 | `j1939_dm_cfg_t`, `j1939_dm_t` |
 | `j1939_id.h`, `j1939_name.h` | Identifier, PGN and NAME codecs | `j1939_name_fields_t` |
 | `j1939_config.h` | Compile-time configuration | |
-| `j1939_ret.h` | Return codes | |
 | `j1939_port_contract.h` | What a port's `j1939_target.h` provides | |
 | `j1939_queue.h` | Optional frame queue between two contexts | `j1939_queue_t` |

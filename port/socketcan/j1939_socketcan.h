@@ -14,8 +14,8 @@
 
 #include <stdint.h>
 
-#include "j1939/j1939_ret.h"
 #include "j1939/j1939_stack.h"
+#include "j1939/j1939_types.h"
 
 /**
  * @brief Opens a non-blocking CAN_RAW socket bound to @p ifname.
