@@ -42,6 +42,7 @@ static j1939_dm_hold_t hold[HOLD_LEN];
 static uint8_t dm_buf[J1939_DM_BUF_LEN(DTC_LEN)];
 static j1939_dm_t dm;
 static j1939_dm_cfg_t dm_cfg;
+static j1939_ca_cfg_t ca_cfg[2];
 static j1939_cfg_t cfg;
 static j1939_t s;
 static j1939_ca_id_t ca;
@@ -73,7 +74,7 @@ static void process(uint32_t us) {
 }
 
 static void expect_none(void) {
-	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.count);
 }
 
 static void expect_frame(uint32_t id, const uint8_t *d, uint8_t len) {
@@ -212,7 +213,7 @@ static void tx_fill(void) {
 	                         .len = 0U,
 	                         .data = NULL};
 
-	while (s.tx.ring.count < TX_LEN) {
+	while (s.tx.count < TX_LEN) {
 		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_send(&s, ca, &msg));
 	}
 }
@@ -228,10 +229,13 @@ static void stack_setup(uint8_t address, bool dm3, bool dm11) {
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
 	        .msg_len = MSG_LEN,
+	        .ca = ca_cfg,
+	        .ca_len = 1U,
 	        .tp_tx_buf = tp_tx,
 	        .tp_tx_buf_len = 1U,
 	};
 	dm_cfg = (j1939_dm_cfg_t){
+	        .state = &dm,
 	        .active = active,
 	        .active_len = DTC_LEN,
 	        .prev = prev,
@@ -243,12 +247,10 @@ static void stack_setup(uint8_t address, bool dm3, bool dm11) {
 	        .dm3_enable = dm3,
 	        .dm11_enable = dm11,
 	};
+	ca_cfg[0] = (j1939_ca_cfg_t){.address = address, .name = NAME, .dm = &dm_cfg};
 	own = address;
+	ca = 0U;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	TEST_ASSERT_EQUAL(
-	        J1939_RET_OK,
-	        j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = address, .name = NAME}, &ca));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_init(&s, ca, &dm, &dm_cfg));
 	lamps = (j1939_dtc_lamps_t){0U, 0U, 0U, 0U, 3U, 3U, 3U, 3U};
 }
 
@@ -490,13 +492,15 @@ static void test_multi_packet_answer_goes_to_the_requester(void) {
 }
 
 static void test_requests_for_other_nodes_or_cas_without_diagnostics(void) {
-	j1939_ca_id_t ca2 = 0U;
-
-	start();
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = 0x11U, .name = 2U}, &ca2));
+	/* A second CA, without diagnostics. */
+	ca_cfg[1] = (j1939_ca_cfg_t){.address = 0x11U, .name = 2U};
+	cfg.ca_len = 2U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 	process(0U);
-	(void)j1939_tx_pop(&s);                  /* Address Claimed of ca2 */
+	(void)j1939_tx_pop(&s); /* Address Claimed of ca */
+	(void)j1939_tx_pop(&s); /* Address Claimed of the second CA */
+	expect_dm1(NULL, 0U);
+	expect_none();
 	rx_request(OTHER, 0x20U, J1939_PGN_DM1); /* another node */
 	process(0U);
 	expect_none();
@@ -506,7 +510,7 @@ static void test_requests_for_other_nodes_or_cas_without_diagnostics(void) {
 	own = 0x11U;
 	expect_ack(J1939_ACK_CTRL_NACK, OTHER, J1939_PGN_DM2);
 	expect_none();
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_STATE, j1939_dm_active_set(&s, ca2, NULL, 0U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_STATE, j1939_dm_active_set(&s, 1U, NULL, 0U));
 }
 
 static void test_dm3_accepted_clears_previously_active(void) {
@@ -746,7 +750,7 @@ static void test_lost_address_ends_diagnostics(void) {
 	process(10U * PERIOD);
 	process(PERIOD);
 	/* Only the Cannot Claim. */
-	TEST_ASSERT_EQUAL_UINT16(1U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(1U, s.tx.count);
 	TEST_ASSERT_EQUAL_HEX32(
 	        make_id(6U, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL, J1939_ADDR_NULL),
 	        j1939_port_frame_id_get(j1939_tx_peek(&s)));
@@ -766,56 +770,63 @@ static void test_corrupted_clear_state_fails_safe(void) {
 	expect_dm(J1939_PGN_DM2, &dtc_b, 1U);
 }
 
-static void test_init_rejects_invalid_configuration(void) {
-	j1939_dm_t dm2;
-	j1939_dm_cfg_t c = dm_cfg;
-	j1939_ca_id_t ca2 = 0U;
+/* Starts the stack again with another diagnostics configuration for the CA. */
+static j1939_ret_t dm_try(const j1939_dm_cfg_t *c) {
+	ca_cfg[0].dm = c;
+	return j1939_init(&s, &cfg);
+}
 
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(NULL, ca, &dm2, &dm_cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, NULL, &dm_cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, NULL));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, 1U, &dm2, &dm_cfg));
+static void test_init_rejects_invalid_configuration(void) {
+	static j1939_dm_t dm2;
+	static j1939_dm_cfg_t c;
+	static j1939_dm_cfg_t c2;
+
+	c = dm_cfg;
+	c.state = NULL;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, dm_try(&c));
+	c = dm_cfg;
 	c.active_len = J1939_DTC_DM_DTC_MAX + 1U;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, &c));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, dm_try(&c));
 	c = dm_cfg;
 	c.prev_len = J1939_DTC_DM_DTC_MAX + 1U;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, &c));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, dm_try(&c));
 	c = dm_cfg;
 	c.active = NULL;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, &c));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, dm_try(&c));
 	c = dm_cfg;
 	c.prev = NULL;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, &c));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, dm_try(&c));
 	c = dm_cfg;
 	c.hold = NULL;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, &c));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, dm_try(&c));
 	c = dm_cfg;
 	c.buf = NULL;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, &c));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, dm_try(&c));
 	c = dm_cfg;
 	c.buf_len = J1939_DM_BUF_LEN(DTC_LEN) - 1U;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, &c));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, dm_try(&c));
 	c.prev_len = 1U;
 	c.active_len = 1U;
 	c.buf_len = 8U;
 	/* A single frame DM needs no transport protocol. */
 	cfg.tp_tx_buf = NULL;
 	cfg.tp_tx_buf_len = 0U;
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN}, &ca));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_init(&s, ca, &dm2, &c));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, dm_try(&c));
 	/* Multi-packet DMs without a transport protocol transmit buffer. */
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm2, &dm_cfg));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, dm_try(&dm_cfg));
 	/* One state per CA. */
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = 0x11U}, &ca2));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca2, &dm2, &c));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_init(&s, ca, &dm2, &c)); /* again, same CA */
+	ca_cfg[1] = (j1939_ca_cfg_t){.address = 0x11U, .dm = &c};
+	cfg.ca_len = 2U;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, dm_try(&c));
+	c2 = c;
+	c2.state = &dm2;
+	ca_cfg[1].dm = &c2;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, dm_try(&c));
 	/* No storage at all: DMs without DTCs. */
-	c = (j1939_dm_cfg_t){.buf = dm_buf, .buf_len = 8U};
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_init(&s, ca2, &dm, &c));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_FULL, j1939_dm_active_set(&s, ca2, &dtc_a, 1U));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_active_set(&s, ca2, NULL, 0U));
+	c2 = (j1939_dm_cfg_t){.state = &dm2, .buf = dm_buf, .buf_len = 8U};
+	TEST_ASSERT_EQUAL(J1939_RET_OK, dm_try(&c));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_FULL, j1939_dm_active_set(&s, 1U, &dtc_a, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_active_set(&s, 1U, NULL, 0U));
 }
 
 static void test_setters_reject_invalid_input(void) {
@@ -848,8 +859,9 @@ static void test_setters_reject_invalid_input(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_clear_confirm(&s, ca, J1939_PGN_DM1, true));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_clear_confirm(NULL, ca, J1939_PGN_DM3, true));
 	/* A second CA without diagnostics. */
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = 0x11U},
-	                                             &(j1939_ca_id_t){0U}));
+	ca_cfg[1] = (j1939_ca_cfg_t){.address = 0x11U};
+	cfg.ca_len = 2U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_STATE, j1939_dm_lamps_set(&s, 1U, &lamps));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_STATE, j1939_dm_prev_set(&s, 1U, NULL, 0U));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_STATE, j1939_dm_clear_get(&s, 1U, &pgn));

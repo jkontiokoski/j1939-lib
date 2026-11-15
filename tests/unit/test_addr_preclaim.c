@@ -39,34 +39,46 @@ static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_tp_buf_t tp_rx[BUF_LEN];
 static j1939_nametab_entry_t entries[TABLE_LEN];
+static j1939_ca_cfg_t ca_cfg[J1939_CFG_CA_MAX];
+static j1939_cfg_t cfg;
 static j1939_t s;
 
+/* Starts a stack without CAs and without a NAME table; ca_add() and nametab_add() give it
+ * what a test needs. */
 static void init(void) {
-	const j1939_cfg_t cfg = {
+	cfg = (j1939_cfg_t){
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
 	        .msg_len = MSG_LEN,
 	        .rx_pgns = rx_pgns,
 	        .rx_pgns_len = 0U,
+	        .ca = ca_cfg,
 	        .tp_rx_buf = tp_rx,
 	        .tp_rx_buf_len = BUF_LEN,
 	};
-
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 }
 
+/* Adds a CA to the configuration and starts the stack again with it: for the beginning of a
+ * test, before anything has happened on the stack. */
 static j1939_ca_id_t ca_add(uint8_t address, uint64_t name, bool preclaim, bool accept) {
-	j1939_ca_id_t id = 0xFFU;
+	j1939_ca_id_t id = cfg.ca_len;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&s,
-	                               &(j1939_ca_cfg_t){.address = address,
-	                                                 .name = name,
-	                                                 .accept_commanded = accept,
-	                                                 .request_before_claim = preclaim},
-	                               &id));
+	ca_cfg[id] = (j1939_ca_cfg_t){.address = address,
+	                              .name = name,
+	                              .accept_commanded = accept,
+	                              .request_before_claim = preclaim};
+	cfg.ca_len++;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 	return id;
+}
+
+/* Adds the NAME table to the configuration and starts the stack again with it. */
+static void nametab_add(void) {
+	cfg.nametab = entries;
+	cfg.nametab_len = TABLE_LEN;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 }
 
 static uint32_t make_id(uint8_t prio, uint32_t pgn, uint8_t da, uint8_t sa) {
@@ -340,7 +352,7 @@ static void test_command_during_wait_is_claimed_when_wait_ends(void) {
 static void test_startup_request_skipped_after_preclaim(void) {
 	j1939_ca_id_t ca;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, entries, TABLE_LEN));
+	nametab_add();
 	ca = ca_add(OWN, NAME_OWN, true, false);
 	process(0U);
 	tx_expect_request(J1939_ADDR_NULL);
@@ -355,7 +367,7 @@ static void test_startup_request_skipped_after_preclaim(void) {
 }
 
 static void test_startup_request_skipped_with_preclaim_of_another_ca(void) {
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, entries, TABLE_LEN));
+	nametab_add();
 	(void)ca_add(OWN, NAME_OWN, false, false);
 	(void)ca_add(OWN_B, NAME_OWN_B, true, false);
 	process(0U);
@@ -370,7 +382,7 @@ static void test_startup_request_skipped_with_preclaim_of_another_ca(void) {
 }
 
 static void test_startup_request_sent_for_normal_ca(void) {
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, entries, TABLE_LEN));
+	nametab_add();
 	(void)ca_add(OWN, NAME_OWN, false, false);
 	process(0U);
 	tx_expect_claim(OWN, NAME_OWN);
@@ -383,7 +395,7 @@ static void test_startup_request_sent_for_normal_ca(void) {
 static void test_startup_request_skipped_after_application_request(void) {
 	j1939_ca_id_t ca;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, entries, TABLE_LEN));
+	nametab_add();
 	ca = ca_add(OWN, NAME_OWN, false, false);
 	TEST_ASSERT_EQUAL(J1939_RET_OK,
 	                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, J1939_ADDR_GLOBAL));

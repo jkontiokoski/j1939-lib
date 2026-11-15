@@ -29,7 +29,7 @@ static bool nametab_own(const j1939_t *s, uint64_t name) {
 	bool own = false;
 	uint8_t i;
 
-	for (i = 0U; (!own) && (i < s->ca_count); i++) {
+	for (i = 0U; (!own) && (i < s->cfg->ca_len); i++) {
 		own = s->ca[i].name == name;
 	}
 	return own;
@@ -45,7 +45,7 @@ static uint16_t nametab_find(const j1939_t *s, uint64_t name) {
 	uint16_t i;
 
 	for (i = 0U; (found == t->count) && (i < t->count); i++) {
-		if (nametab_entry_name(&t->buf[i]) == name) {
+		if (nametab_entry_name(&s->cfg->nametab[i]) == name) {
 			found = i;
 		}
 	}
@@ -68,23 +68,23 @@ static void nametab_record(j1939_t *s, uint64_t name, uint8_t address) {
 		uint16_t i;
 
 		for (i = 0U; i < t->count; i++) {
-			if ((t->buf[i].address == address) &&
-			    (nametab_entry_name(&t->buf[i]) != name)) {
-				t->buf[i].address = J1939_ADDR_NULL;
+			if ((s->cfg->nametab[i].address == address) &&
+			    (nametab_entry_name(&s->cfg->nametab[i]) != name)) {
+				s->cfg->nametab[i].address = J1939_ADDR_NULL;
 				changed = true;
 			}
 		}
 	}
 	index = nametab_find(s, name);
 	if (index < t->count) {
-		if (t->buf[index].address != address) {
-			t->buf[index].address = address;
+		if (s->cfg->nametab[index].address != address) {
+			s->cfg->nametab[index].address = address;
 			changed = true;
 		}
-	} else if (t->count < t->len) {
-		t->buf[t->count].name_lo = (uint32_t)(name & NAMETAB_WORD_MASK);
-		t->buf[t->count].name_hi = (uint32_t)(name >> NAMETAB_WORD_BITS);
-		t->buf[t->count].address = address;
+	} else if (t->count < s->cfg->nametab_len) {
+		s->cfg->nametab[t->count].name_lo = (uint32_t)(name & NAMETAB_WORD_MASK);
+		s->cfg->nametab[t->count].name_hi = (uint32_t)(name >> NAMETAB_WORD_BITS);
+		s->cfg->nametab[t->count].address = address;
 		t->count++;
 		changed = true;
 	} else {
@@ -103,8 +103,8 @@ bool j1939_nametab_lookup(const j1939_t *s, uint8_t address, uint64_t *name) {
 		uint16_t i;
 
 		for (i = 0U; (!found) && (i < t->count); i++) {
-			if (t->buf[i].address == address) {
-				*name = nametab_entry_name(&t->buf[i]);
+			if (s->cfg->nametab[i].address == address) {
+				*name = nametab_entry_name(&s->cfg->nametab[i]);
 				found = true;
 			}
 		}
@@ -113,7 +113,7 @@ bool j1939_nametab_lookup(const j1939_t *s, uint8_t address, uint64_t *name) {
 }
 
 /**
- * Chooses the CA that sends the global Request after j1939_nametab_init(). Returns true once a CA
+ * Chooses the CA that sends the global Request after j1939_init(). Returns true once a CA
  * of the stack has claimed its address; ca is written only then.
  *
  * The startup Request is due from the first CA that has claimed, unless a global Request for
@@ -123,7 +123,7 @@ static bool nametab_startup_sender(const j1939_t *s, j1939_ca_id_t *ca) {
 	bool found = false;
 	uint8_t i;
 
-	for (i = 0U; (!found) && (i < s->ca_count); i++) {
+	for (i = 0U; (!found) && (i < s->cfg->ca_len); i++) {
 		if (j1939_addr_ca_claimed(&s->ca[i])) {
 			*ca = i;
 			found = true;
@@ -142,7 +142,7 @@ static j1939_ret_t nametab_request_send(j1939_t *s, uint8_t da) {
 	j1939_ca_id_t ca = 0U;
 	j1939_ret_t ret;
 
-	if (nametab_startup_sender(s, &ca) || (s->ca_count > 0U)) {
+	if (nametab_startup_sender(s, &ca) || (s->cfg->ca_len > 0U)) {
 		/* Uses J1939_ADDR_NULL for a CA without an address. */
 		ret = j1939_addr_request_send(s, ca, da);
 	} else {
@@ -151,41 +151,20 @@ static j1939_ret_t nametab_request_send(j1939_t *s, uint8_t da) {
 	return ret;
 }
 
-void j1939_nametab_stack_init(j1939_t *s) {
-	s->nametab.buf = NULL;
-	s->nametab.hold_us = 0U;
-	s->nametab.len = 0U;
-	s->nametab.count = 0U;
-	s->nametab.changes = 0U;
+void j1939_nametab_init(j1939_t *s) {
 	s->nametab.request = J1939_ADDR_NULL;
-	s->nametab.startup_due = false;
-	s->stats.nametab_dropped = 0U;
-}
-
-j1939_ret_t j1939_nametab_init(j1939_t *s, j1939_nametab_entry_t *buf, uint16_t len) {
-	j1939_ret_t ret = J1939_RET_ERR_ARG;
-
-	if ((s != NULL) && ((buf != NULL) || (len == 0U))) {
-		s->nametab.buf = (len > 0U) ? buf : NULL;
-		s->nametab.hold_us = 0U;
-		s->nametab.len = len;
-		s->nametab.count = 0U;
-		s->nametab.changes++;
-		s->nametab.request = J1939_ADDR_NULL;
-		s->nametab.startup_due = len > 0U;
-		ret = J1939_RET_OK;
-	}
-	return ret;
+	/* With a table, the first CA that has claimed asks every node for its claim. */
+	s->nametab.startup_due = s->cfg->nametab_len > 0U;
 }
 
 void j1939_nametab_claimed(j1939_t *s, uint64_t name, uint8_t address) {
-	if ((s->nametab.buf != NULL) && !nametab_own(s, name)) {
+	if ((s->cfg->nametab_len > 0U) && !nametab_own(s, name)) {
 		nametab_record(s, name, address);
 	}
 }
 
 void j1939_nametab_cannot_claim(j1939_t *s, uint64_t name) {
-	if ((s->nametab.buf != NULL) && !nametab_own(s, name)) {
+	if ((s->cfg->nametab_len > 0U) && !nametab_own(s, name)) {
 		nametab_record(s, name, J1939_ADDR_NULL);
 	}
 }
@@ -198,7 +177,7 @@ void j1939_nametab_process(j1939_t *s, uint32_t elapsed_us) {
 	j1939_nametab_t *t = &s->nametab;
 	j1939_ca_id_t ca = 0U;
 
-	if (t->buf != NULL) {
+	if (s->cfg->nametab != NULL) {
 		t->hold_us = (t->hold_us > elapsed_us) ? (t->hold_us - elapsed_us) : 0U;
 		if (t->startup_due && nametab_startup_sender(s, &ca) &&
 		    (nametab_request_send(s, J1939_ADDR_GLOBAL) == J1939_RET_OK)) {
@@ -216,7 +195,7 @@ j1939_ret_t j1939_nametab_name_get(j1939_t *s, uint8_t address, uint64_t *name) 
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((s != NULL) && (name != NULL) && (address <= J1939_ADDR_MAX)) {
-		if (s->nametab.buf == NULL) {
+		if (s->cfg->nametab_len == 0U) {
 			ret = J1939_RET_ERR_STATE;
 		} else if (j1939_nametab_lookup(s, address, name)) {
 			ret = J1939_RET_OK;
@@ -235,13 +214,13 @@ j1939_ret_t j1939_nametab_address_get(const j1939_t *s, uint64_t name, uint8_t *
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((s != NULL) && (address != NULL)) {
-		if (s->nametab.buf == NULL) {
+		if (s->cfg->nametab_len == 0U) {
 			ret = J1939_RET_ERR_STATE;
 		} else {
 			uint16_t index = nametab_find(s, name);
 
 			if (index < s->nametab.count) {
-				*address = s->nametab.buf[index].address;
+				*address = s->cfg->nametab[index].address;
 				ret = J1939_RET_OK;
 			} else {
 				ret = J1939_RET_ERR_EMPTY;
@@ -259,8 +238,8 @@ j1939_ret_t j1939_nametab_at(const j1939_t *s, uint16_t index, uint64_t *name, u
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if ((s != NULL) && (name != NULL) && (address != NULL) && (index < s->nametab.count)) {
-		*name = nametab_entry_name(&s->nametab.buf[index]);
-		*address = s->nametab.buf[index].address;
+		*name = nametab_entry_name(&s->cfg->nametab[index]);
+		*address = s->cfg->nametab[index].address;
 		ret = J1939_RET_OK;
 	}
 	return ret;

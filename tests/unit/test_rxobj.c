@@ -47,8 +47,9 @@ static const j1939_rxobj_cfg_t objs_cfg[OBJ_COUNT] = {
         {buf_lst, PGN_LST, TIMEOUT, 8U, 1U, PEER, 0U},
 };
 static j1939_rxobj_t objs[OBJ_COUNT];
+static const j1939_ca_cfg_t ca_cfg = {.address = OWN, .name = NAME};
+static j1939_cfg_t cfg;
 static j1939_t s;
-static j1939_ca_id_t ca;
 
 static const uint8_t pay[20] = {1U,  2U,  3U,  4U,  5U,  6U,  7U,  8U,  9U,  10U,
                                 11U, 12U, 13U, 14U, 15U, 16U, 17U, 18U, 19U, 20U};
@@ -119,14 +120,24 @@ static uint8_t pop_ctrl(void) {
 	return ctrl;
 }
 
+/* Starts the stack again with another receive object table. */
+static j1939_ret_t objs_init(const j1939_rxobj_cfg_t *table, j1939_rxobj_t *state, uint16_t len) {
+	cfg.rxobj_cfg = table;
+	cfg.rxobj = state;
+	cfg.rxobj_len = len;
+	return j1939_init(&s, &cfg);
+}
+
 void setUp(void) {
-	const j1939_cfg_t cfg = {
+	cfg = (j1939_cfg_t){
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
 	        .msg_len = MSG_LEN,
 	        .rx_pgns = rx_pgns,
 	        .rx_pgns_len = 1U,
+	        .ca = &ca_cfg,
+	        .ca_len = 1U,
 	        .tp_rx_buf = tp_rx,
 	        .tp_rx_buf_len = 1U,
 	};
@@ -135,10 +146,7 @@ void setUp(void) {
 	(void)memset(buf_b, 0, sizeof(buf_b));
 	(void)memset(buf_tp, 0, sizeof(buf_tp));
 	(void)memset(buf_lst, 0, sizeof(buf_lst));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN, .name = NAME}, &ca));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&s, objs_cfg, objs, OBJ_COUNT));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_init(objs_cfg, objs, OBJ_COUNT));
 	process(0U); /* claims OWN */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
 }
@@ -174,28 +182,25 @@ static void test_init_rejects_invalid(void) {
 	                                  {b, PGN_A, 0U, 8U, 8U, OTHER, 0U}};
 	uint32_t i;
 
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_init(NULL, objs_cfg, objs, OBJ_COUNT));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_init(&s, NULL, objs, OBJ_COUNT));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_init(&s, objs_cfg, NULL, OBJ_COUNT));
+	j1939_rxobj_status_t st;
+
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_init(NULL, objs, OBJ_COUNT));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_init(objs_cfg, NULL, OBJ_COUNT));
 	for (i = 0U; i < (sizeof(bad) / sizeof(bad[0])); i++) {
-		TEST_ASSERT_EQUAL_MESSAGE(J1939_RET_ERR_ARG, j1939_rxobj_init(&s, &bad[i], o, 1U),
+		TEST_ASSERT_EQUAL_MESSAGE(J1939_RET_ERR_ARG, objs_init(&bad[i], o, 1U),
 		                          "entry rejected");
 	}
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_init(&s, dup, o, 2U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_init(dup, o, 2U));
 
-	/* Nothing changed: the original table still works. */
+	/* An invalid table leaves a stack without objects. */
 	rx_msg(PGN_A, J1939_ADDR_GLOBAL, PEER, pay, 8U);
-	expect_state(OBJ_A, J1939_RXOBJ_VALID);
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_get(&s, OBJ_A, &st));
 
 	/* The same PGN from two senders is two objects. */
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&s, two, o, 2U));
-	/* An empty table removes the objects. */
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&s, NULL, NULL, 0U));
-	{
-		j1939_rxobj_status_t st;
-
-		TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_get(&s, 0U, &st));
-	}
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_init(two, o, 2U));
+	/* A stack may have no objects. */
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_init(NULL, NULL, 0U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_get(&s, 0U, &st));
 }
 
 static void test_get_args(void) {
@@ -360,7 +365,7 @@ static void test_bam_other_sender_ignored(void) {
 	rx_announce(TP_BAM, J1939_ADDR_GLOBAL, OTHER, PGN_TP, 20U);
 	rx_packets(J1939_ADDR_GLOBAL, OTHER, pay, 20U);
 	expect_state(OBJ_TP, J1939_RXOBJ_NO_DATA);
-	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.count);
 }
 
 static void test_bam_too_long_rejected(void) {
@@ -389,18 +394,16 @@ static void test_rts_unwanted_aborted(void) {
 
 static void test_reinit_resets(void) {
 	rx_msg(PGN_A, J1939_ADDR_GLOBAL, PEER, pay, 8U);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&s, objs_cfg, objs, OBJ_COUNT));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_init(objs_cfg, objs, OBJ_COUNT));
 	expect_state(OBJ_A, J1939_RXOBJ_NO_DATA);
 	TEST_ASSERT_FALSE(status_of(OBJ_A).updated);
 }
 
-static void test_stack_init_removes(void) {
-	const j1939_cfg_t cfg = {
-	        .tx_buf = tx_buf, .tx_len = TX_LEN, .msg_buf = msg_buf, .msg_len = MSG_LEN};
+static void test_init_without_objects_removes(void) {
 	j1939_rxobj_status_t st;
 
 	rx_msg(PGN_A, J1939_ADDR_GLOBAL, PEER, pay, 7U);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_init(NULL, NULL, 0U));
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_get(&s, OBJ_A, &st));
 	TEST_ASSERT_EQUAL_UINT32(0U, j1939_stats_get(&s)->rxobj_rejected);
 }
@@ -425,6 +428,6 @@ int main(void) {
 	RUN_TEST(test_rts_cts_into_object);
 	RUN_TEST(test_rts_unwanted_aborted);
 	RUN_TEST(test_reinit_resets);
-	RUN_TEST(test_stack_init_removes);
+	RUN_TEST(test_init_without_objects_removes);
 	return UNITY_END();
 }

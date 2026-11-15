@@ -24,6 +24,8 @@
 
 typedef struct node {
 	j1939_t s;
+	j1939_cfg_t cfg;
+	j1939_ca_cfg_t ca_cfg;
 	j1939_ca_id_t ca;
 	j1939_port_frame_t tx[TX_LEN];
 	j1939_msg_slot_t msgs[MSG_LEN];
@@ -59,23 +61,23 @@ static uint32_t ack_pgn;
 
 static void node_init(node_t *n, uint8_t address, uint64_t name, const uint32_t *pgns,
                       uint16_t pgns_len) {
-	const j1939_cfg_t cfg = {
+	n->ca_cfg = (j1939_ca_cfg_t){.address = address, .name = name};
+	n->cfg = (j1939_cfg_t){
 	        .tx_buf = n->tx,
 	        .tx_len = TX_LEN,
 	        .msg_buf = n->msgs,
 	        .msg_len = MSG_LEN,
 	        .rx_pgns = pgns,
 	        .rx_pgns_len = pgns_len,
+	        .ca = &n->ca_cfg,
+	        .ca_len = 1U,
 	        .tp_tx_buf = n->tp_tx,
 	        .tp_tx_buf_len = 1U,
 	        .tp_rx_buf = n->tp_rx,
 	        .tp_rx_buf_len = 1U,
 	};
-
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &cfg));
-	TEST_ASSERT_EQUAL(
-	        J1939_RET_OK,
-	        j1939_ca_add(&n->s, &(j1939_ca_cfg_t){.address = address, .name = name}, &n->ca));
+	n->ca = 0U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &n->cfg));
 	test_bus_attach(&bus, &n->s);
 }
 
@@ -130,7 +132,9 @@ static void expect_got(const j1939_dtc_t *dtcs, uint16_t n) {
 }
 
 void setUp(void) {
-	const j1939_dm_cfg_t dm_cfg = {
+	/* The stack keeps a pointer to the configuration: it must outlive the stack. */
+	static const j1939_dm_cfg_t dm_cfg = {
+	        .state = &dm,
 	        .active = active,
 	        .active_len = DTC_LEN,
 	        .prev = prev,
@@ -146,7 +150,8 @@ void setUp(void) {
 	test_bus_init(&bus);
 	node_init(&ecu, ADDR_ECU, NAME_ECU, NULL, 0U);
 	node_init(&tool, ADDR_TOOL, NAME_TOOL, tool_pgns, 3U);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_init(&ecu.s, ecu.ca, &dm, &dm_cfg));
+	ecu.ca_cfg.dm = &dm_cfg;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&ecu.s, &ecu.cfg));
 	dm1_count = 0U;
 	dm2_count = 0U;
 	ack_count = 0U;

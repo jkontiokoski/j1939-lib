@@ -18,7 +18,7 @@
 /**
  * @addtogroup grp_dm
  *
- * j1939_dm_init() enables diagnostics for a CA. The application owns its
+ * j1939_ca_cfg_t::dm enables diagnostics for a CA. The application owns its
  * fault memory (detection, occurrence counts, moving a DTC from active to
  * previously active) and copies the result into the stack; the stack
  * transmits it:
@@ -88,13 +88,25 @@ typedef struct j1939_dm_hold {
 	bool fresh;       /**< Started since the last j1939_process(). */
 } j1939_dm_hold_t;
 
-/** Diagnostics configuration of a CA. All storage must outlive the stack. */
+struct j1939_dm; /* Diagnostic state of a CA, defined below. */
+
+/**
+ * Diagnostics configuration of a CA, named in j1939_ca_cfg_t::dm. All storage must outlive the
+ * stack.
+ *
+ * j1939_init() rejects a capacity above J1939_DTC_DM_DTC_MAX, a missing state, list or buffer,
+ * a buffer below J1939_DM_BUF_LEN() of the larger capacity, a payload above J1939_MAX_MSG_LEN,
+ * a payload that needs the transport protocol while the stack has no transmit buffer, and a
+ * state that two CAs share. Diagnostics start with no DTCs and all lamps off (flash bits "do
+ * not flash").
+ */
 typedef struct j1939_dm_cfg {
-	j1939_dtc_t *active; /**< Active DTC storage. May be NULL if active_len is 0. */
-	uint16_t active_len; /**< Active DTCs the CA can report, 0..J1939_DTC_DM_DTC_MAX. */
-	j1939_dtc_t *prev;   /**< Previously active DTC storage. May be NULL if prev_len is 0. */
-	uint16_t prev_len;   /**< Previously active DTCs the CA can report, 0..J1939_DTC_DM_DTC_MAX.
-	                      */
+	struct j1939_dm *state; /**< State storage of the CA. */
+	j1939_dtc_t *active;    /**< Active DTC storage. May be NULL if active_len is 0. */
+	uint16_t active_len;    /**< Active DTCs the CA can report, 0..J1939_DTC_DM_DTC_MAX. */
+	j1939_dtc_t *prev;      /**< Previously active DTC storage. May be NULL if prev_len is 0. */
+	uint16_t prev_len; /**< Previously active DTCs the CA can report, 0..J1939_DTC_DM_DTC_MAX.
+	                    */
 	j1939_dm_hold_t *hold; /**< Change hold records. May be NULL if hold_len is 0. */
 	uint16_t hold_len; /**< Records: DTCs whose changes can trigger a DM1 within one second. */
 	uint8_t *buf;      /**< Payload buffer for building DM1 and DM2. */
@@ -116,7 +128,6 @@ typedef struct j1939_dm_clear {
 	j1939_dm_clear_state_t state; /**< Protocol state. */
 	uint32_t timer_us;            /**< Time spent in the state. */
 	uint8_t requester;            /**< Address to acknowledge; J1939_ADDR_GLOBAL for none. */
-	bool enabled;                 /**< Requests are accepted. */
 	bool fresh;                   /**< Timer started since the last j1939_process(). */
 } j1939_dm_clear_t;
 
@@ -130,16 +141,8 @@ typedef struct j1939_dm_answer {
 
 /** Diagnostic state of a CA. Allocated by the integrator, members are private. */
 typedef struct j1939_dm {
-	j1939_dtc_t *active;         /**< Active DTCs. */
-	j1939_dtc_t *prev;           /**< Previously active DTCs. */
-	j1939_dm_hold_t *hold;       /**< Change hold records. */
-	uint8_t *buf;                /**< Payload buffer. */
-	uint16_t active_len;         /**< Capacity of active. */
-	uint16_t active_count;       /**< DTCs in active. */
-	uint16_t prev_len;           /**< Capacity of prev. */
-	uint16_t prev_count;         /**< DTCs in prev. */
-	uint16_t hold_len;           /**< Entries in hold. */
-	uint16_t buf_len;            /**< Size of buf. */
+	uint16_t active_count;       /**< DTCs in j1939_dm_cfg_t::active. */
+	uint16_t prev_count;         /**< DTCs in j1939_dm_cfg_t::prev. */
 	j1939_dtc_lamps_t lamps;     /**< Lamp status sent with DM1 and DM2. */
 	uint32_t dm1_timer_us;       /**< Time since the periodic DM1 was last due. */
 	j1939_dm_answer_t answer[2]; /**< Answers to Requests for DM1 and DM2. */
@@ -147,24 +150,6 @@ typedef struct j1939_dm {
 	bool started;                /**< The CA has claimed its address and sent its first DM1. */
 	bool dm1_due;                /**< A DM1 is to be sent. */
 } j1939_dm_t;
-
-/**
- * @brief Enables diagnostics for a Controller Application.
- *
- * Starts with no DTCs and all lamps off (flash bits "do not flash"). May be
- * called again to reset the state; @p dm must not be used by another CA.
- *
- * @param s    Stack.
- * @param ca   Controller Application.
- * @param dm   State storage for the CA.
- * @param cfg  Configuration.
- * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer, an unknown
- *         CA, a capacity above J1939_DTC_DM_DTC_MAX, a missing or too small
- *         buffer, a payload larger than J1939_MAX_MSG_LEN, a payload that
- *         needs the transport protocol while the stack has no transmit
- *         buffer, or a @p dm already used by another CA.
- */
-j1939_ret_t j1939_dm_init(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, const j1939_dm_cfg_t *cfg);
 
 /**
  * @brief Sets the lamp status sent with DM1 and DM2.

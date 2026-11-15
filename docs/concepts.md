@@ -58,6 +58,7 @@ Frames exist only at these two edges; everything in between works on payloads.
 
 ## Execution model
 
+- A stack is set up by one `j1939_init()` with its whole configuration: buffers, CAs, NAME table, message objects and diagnostics. The configuration is checked as a whole and can be `const` data in flash; an invalid one leaves the stack inert. Calling `j1939_init()` again starts the stack anew.
 - Application logic in other tasks exchanges data with the stack's task through mailboxes of its own.
 - Timers advance only through `j1939_process()`. A timer started by a received frame or an API call counts from the next call, so a timeout expires between its nominal value and one call period later.
 - When a message slot or the tx queue is full, the stack drops what it generated and counts it in `j1939_stats_t`; application sends return `J1939_RET_ERR_FULL` instead.

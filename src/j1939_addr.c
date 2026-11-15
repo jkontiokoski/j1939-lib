@@ -278,29 +278,35 @@ static void preclaim_tick(j1939_t *s, j1939_ca_id_t id, uint32_t elapsed_us) {
 	}
 }
 
-void j1939_addr_init(j1939_t *s) {
-	(void)memset(s->addr_taken, 0, sizeof(s->addr_taken));
-}
+bool j1939_addr_init(j1939_t *s) {
+	const j1939_cfg_t *cfg = s->cfg;
+	bool valid = true;
+	uint8_t i;
+	uint8_t k;
 
-void j1939_addr_ca_init(j1939_ca_t *ca, const j1939_ca_cfg_t *cfg) {
-	ca->name = cfg->name;
-	ca->state = cfg->request_before_claim ? J1939_ADDR_STATE_REQUESTING
-	                                      : J1939_ADDR_STATE_UNCLAIMED;
-	ca->timer_us = 0U;
-	ca->timer_fresh = false;
-	ca->address = cfg->address;
-	ca->cannot_claim_pending = false;
-	ca->claim_pending = false;
-	ca->accept_commanded = cfg->accept_commanded;
-	ca->commanded = J1939_ADDR_NULL;
-	ca->preclaim_sent = false;
-	ca->preferred_taken = false;
+	for (i = 0U; valid && (i < cfg->ca_len); i++) {
+		const j1939_ca_cfg_t *c = &cfg->ca[i];
+		j1939_ca_t *ca = &s->ca[i];
+
+		valid = c->address <= J1939_ADDR_MAX;
+		for (k = 0U; valid && (k < i); k++) {
+			valid = cfg->ca[k].address != c->address;
+		}
+		/* The claim starts with the first j1939_addr_process(). */
+		ca->name = c->name;
+		ca->state = c->request_before_claim ? J1939_ADDR_STATE_REQUESTING
+		                                    : J1939_ADDR_STATE_UNCLAIMED;
+		ca->address = c->address;
+		ca->accept_commanded = c->accept_commanded;
+		ca->commanded = J1939_ADDR_NULL;
+	}
+	return valid;
 }
 
 void j1939_addr_process(j1939_t *s, uint32_t elapsed_us) {
 	uint8_t i;
 
-	for (i = 0U; i < s->ca_count; i++) {
+	for (i = 0U; i < s->cfg->ca_len; i++) {
 		j1939_ca_t *ca = &s->ca[i];
 
 		switch (ca->state) {
@@ -346,7 +352,7 @@ bool j1939_addr_in_use(const j1939_t *s, uint8_t address) {
 	bool found = false;
 	uint8_t i;
 
-	for (i = 0U; (!found) && (i < s->ca_count); i++) {
+	for (i = 0U; (!found) && (i < s->cfg->ca_len); i++) {
 		found = s->ca[i].address == address;
 	}
 	return found;
@@ -356,7 +362,7 @@ bool j1939_addr_held(const j1939_t *s, uint8_t address) {
 	bool found = false;
 	uint8_t i;
 
-	for (i = 0U; (!found) && (i < s->ca_count); i++) {
+	for (i = 0U; (!found) && (i < s->cfg->ca_len); i++) {
 		found = held(&s->ca[i]) && (s->ca[i].address == address);
 	}
 	return found;
@@ -366,7 +372,7 @@ bool j1939_addr_claimed(const j1939_t *s, uint8_t address) {
 	bool found = false;
 	uint8_t i;
 
-	for (i = 0U; (!found) && (i < s->ca_count); i++) {
+	for (i = 0U; (!found) && (i < s->cfg->ca_len); i++) {
 		found = j1939_addr_ca_claimed(&s->ca[i]) && (s->ca[i].address == address);
 	}
 	return found;
@@ -394,7 +400,7 @@ void j1939_addr_claim_handle(j1939_t *s, const j1939_msg_t *msg) {
 		uint8_t i;
 
 		(void)j1939_name_from_bytes(msg->data, &name);
-		for (i = 0U; i < s->ca_count; i++) {
+		for (i = 0U; i < s->cfg->ca_len; i++) {
 			j1939_ca_t *ca = &s->ca[i];
 
 			/* The CA's own NAME is its own claim, e.g. from a driver with loopback. */
@@ -419,7 +425,8 @@ void j1939_addr_claim_handle(j1939_t *s, const j1939_msg_t *msg) {
 	} else {
 		/* Too short, or from the global address: no claim. */
 	}
-	if (j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, J1939_PGN_ADDRESS_CLAIMED)) {
+	if (j1939_stack_pgn_listed(s->cfg->rx_pgns, s->cfg->rx_pgns_len,
+	                           J1939_PGN_ADDRESS_CLAIMED)) {
 		(void)j1939_stack_deliver(s, msg);
 	}
 }
@@ -428,7 +435,7 @@ bool j1939_addr_command_accepted(const j1939_t *s) {
 	bool found = false;
 	uint8_t i;
 
-	for (i = 0U; (!found) && (i < s->ca_count); i++) {
+	for (i = 0U; (!found) && (i < s->cfg->ca_len); i++) {
 		found = s->ca[i].accept_commanded;
 	}
 	return found;
@@ -441,7 +448,7 @@ void j1939_addr_command_handle(j1939_t *s, const j1939_msg_t *msg) {
 		uint8_t i;
 
 		(void)j1939_name_from_bytes(msg->data, &name);
-		for (i = 0U; i < s->ca_count; i++) {
+		for (i = 0U; i < s->cfg->ca_len; i++) {
 			j1939_ca_t *ca = &s->ca[i];
 
 			/* 254 and 255 are not addresses a CA can claim. */
@@ -456,7 +463,7 @@ void j1939_addr_command_handle(j1939_t *s, const j1939_msg_t *msg) {
 void j1939_addr_request_handle(j1939_t *s, uint8_t da) {
 	uint8_t i;
 
-	for (i = 0U; i < s->ca_count; i++) {
+	for (i = 0U; i < s->cfg->ca_len; i++) {
 		j1939_ca_t *ca = &s->ca[i];
 
 		if (j1939_addr_ca_addressed(ca, da)) {
@@ -488,7 +495,7 @@ void j1939_addr_request_handle(j1939_t *s, uint8_t da) {
 j1939_ret_t j1939_addr_request_send(j1939_t *s, j1939_ca_id_t ca, uint8_t da) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((s != NULL) && (ca < s->ca_count)) {
+	if ((s != NULL) && (ca < s->cfg->ca_len)) {
 		const j1939_ca_t *c = &s->ca[ca];
 		uint8_t sa = j1939_addr_ca_claimed(c) ? c->address : J1939_ADDR_NULL;
 
@@ -508,7 +515,7 @@ j1939_ret_t j1939_addr_get(const j1939_t *s, j1939_ca_id_t ca, uint8_t *address,
                            j1939_addr_state_t *state) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((s != NULL) && (address != NULL) && (state != NULL) && (ca < s->ca_count)) {
+	if ((s != NULL) && (address != NULL) && (state != NULL) && (ca < s->cfg->ca_len)) {
 		const j1939_ca_t *c = &s->ca[ca];
 
 		*address = held(c) ? c->address : J1939_ADDR_NULL;

@@ -60,12 +60,12 @@ static bool pgn_stack_owned(uint32_t pgn) {
 static bool tx_entry_valid(const j1939_t *s, const j1939_txobj_cfg_t *c) {
 	bool single = c->len <= J1939_MSG_SINGLE_FRAME_MAX;
 
-	return (c->buf != NULL) && (c->ca < s->ca_count) && j1939_pgn_valid(c->pgn) &&
+	return (c->buf != NULL) && (c->ca < s->cfg->ca_len) && j1939_pgn_valid(c->pgn) &&
 	       (c->prio <= J1939_PRIO_MAX) && (c->len > 0U) && ((uint32_t)c->len <= MSG_LEN_MAX) &&
 	       (single || j1939_tp_tx_buf_allocated(s)) && (c->da != J1939_ADDR_NULL) &&
 	       (j1939_pgn_is_pdu1(c->pgn) || !single || (c->da == J1939_ADDR_GLOBAL)) &&
 	       !pgn_stack_owned(c->pgn) &&
-	       !j1939_stack_pgn_listed(s->req_pgns, s->req_pgns_len, c->pgn);
+	       !j1939_stack_pgn_listed(s->cfg->req_pgns, s->cfg->req_pgns_len, c->pgn);
 }
 
 /**
@@ -226,30 +226,41 @@ static void obj_answer_request(j1939_txobj_t *o, uint8_t requester) {
  * later ones differ only in their destination.
  */
 static bool obj_first_of_pgn(const j1939_t *s, uint16_t index) {
-	const j1939_txobj_cfg_t *c = &s->txobj_cfg[index];
+	const j1939_txobj_cfg_t *c = &s->cfg->txobj_cfg[index];
 	bool first = true;
 	uint16_t i;
 
 	for (i = 0U; first && (i < index); i++) {
-		first = (s->txobj_cfg[i].ca != c->ca) || (s->txobj_cfg[i].pgn != c->pgn);
+		first = (s->cfg->txobj_cfg[i].ca != c->ca) || (s->cfg->txobj_cfg[i].pgn != c->pgn);
 	}
 	return first;
 }
 
-void j1939_txobj_stack_init(j1939_t *s) {
-	s->txobj_cfg = NULL;
-	s->txobj = NULL;
-	s->txobj_len = 0U;
-	s->stats.txobj_tx_retry = 0U;
-	s->stats.txobj_tx_dropped = 0U;
+bool j1939_txobj_init(j1939_t *s) {
+	const j1939_txobj_cfg_t *cfg = s->cfg->txobj_cfg;
+	uint16_t len = s->cfg->txobj_len;
+	bool valid = tx_table_valid(s, cfg, len);
+	uint16_t i;
+
+	for (i = 0U; valid && (i < len); i++) {
+		j1939_txobj_t *o = &s->cfg->txobj[i];
+		/* A local keeps cppcheck's MISRA 11.8 check from treating the storage as const. */
+		uint8_t *buf = cfg[i].buf;
+
+		/* "Not available" until the application sets a payload. */
+		(void)memset(buf, (int)PAD, (size_t)cfg[i].len);
+		(void)memset(o, 0, sizeof(*o));
+		o->requester = J1939_ADDR_GLOBAL;
+	}
+	return valid;
 }
 
 bool j1939_txobj_request_handle(j1939_t *s, const j1939_msg_t *req, uint32_t pgn) {
 	bool handled = false;
 	uint16_t i;
 
-	for (i = 0U; i < s->txobj_len; i++) {
-		const j1939_txobj_cfg_t *c = &s->txobj_cfg[i];
+	for (i = 0U; i < s->cfg->txobj_len; i++) {
+		const j1939_txobj_cfg_t *c = &s->cfg->txobj_cfg[i];
 		const j1939_ca_t *ca = &s->ca[c->ca];
 
 		if ((c->pgn == pgn) && j1939_addr_ca_addressed(ca, req->da) &&
@@ -257,7 +268,9 @@ bool j1939_txobj_request_handle(j1939_t *s, const j1939_msg_t *req, uint32_t pgn
 			handled = true;
 			/* Nothing is sent before the claim completes. */
 			if (j1939_addr_ca_claimed(ca)) {
-				obj_answer_request(&s->txobj[i], j1939_request_requester(req));
+				j1939_txobj_t *o = &s->cfg->txobj[i];
+
+				obj_answer_request(o, j1939_request_requester(req));
 			}
 		}
 	}
@@ -267,9 +280,9 @@ bool j1939_txobj_request_handle(j1939_t *s, const j1939_msg_t *req, uint32_t pgn
 void j1939_txobj_process(j1939_t *s, uint32_t elapsed_us) {
 	uint16_t i;
 
-	for (i = 0U; i < s->txobj_len; i++) {
-		const j1939_txobj_cfg_t *c = &s->txobj_cfg[i];
-		j1939_txobj_t *o = &s->txobj[i];
+	for (i = 0U; i < s->cfg->txobj_len; i++) {
+		const j1939_txobj_cfg_t *c = &s->cfg->txobj_cfg[i];
+		j1939_txobj_t *o = &s->cfg->txobj[i];
 
 		if (!j1939_addr_ca_claimed(&s->ca[c->ca])) {
 			obj_stop(s, o);
@@ -285,41 +298,18 @@ void j1939_txobj_process(j1939_t *s, uint32_t elapsed_us) {
 	}
 }
 
-j1939_ret_t j1939_txobj_init(j1939_t *s, const j1939_txobj_cfg_t *cfg, j1939_txobj_t *obj,
-                             uint16_t len) {
-	j1939_ret_t ret = J1939_RET_ERR_ARG;
-
-	if ((s != NULL) && (((cfg != NULL) && (obj != NULL)) || (len == 0U)) &&
-	    tx_table_valid(s, cfg, len)) {
-		uint16_t i;
-
-		for (i = 0U; i < len; i++) {
-			/* A local keeps cppcheck's MISRA 11.8 check from treating the storage as
-			 * const. */
-			uint8_t *buf = cfg[i].buf;
-
-			(void)memset(buf, (int)PAD, (size_t)cfg[i].len);
-			(void)memset(&obj[i], 0, sizeof(obj[i]));
-			obj[i].requester = J1939_ADDR_GLOBAL;
-		}
-		s->txobj_cfg = cfg;
-		s->txobj = obj;
-		s->txobj_len = len;
-		ret = J1939_RET_OK;
-	}
-	return ret;
-}
-
 j1939_ret_t j1939_txobj_set(j1939_t *s, uint16_t index, const uint8_t *data, uint16_t len) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((s != NULL) && (data != NULL) && (index < s->txobj_len) &&
-	    (len == s->txobj_cfg[index].len)) {
-		const j1939_txobj_cfg_t *c = &s->txobj_cfg[index];
+	if ((s != NULL) && (data != NULL) && (index < s->cfg->txobj_len) &&
+	    (len == s->cfg->txobj_cfg[index].len)) {
+		const j1939_txobj_cfg_t *c = &s->cfg->txobj_cfg[index];
 		uint8_t *buf = c->buf;
 
 		if ((c->inhibit_us > 0U) && (memcmp(buf, data, (size_t)len) != 0)) {
-			flag_put(&s->txobj[index], (uint8_t)FLAG_CHANGED, true);
+			j1939_txobj_t *o = &s->cfg->txobj[index];
+
+			flag_put(o, (uint8_t)FLAG_CHANGED, true);
 		}
 		(void)memcpy(buf, data, (size_t)len);
 		ret = J1939_RET_OK;

@@ -6,9 +6,9 @@
  * @brief What the stack modules offer each other: not part of the public API.
  *
  * Each module has a section with its entry points: handling of its received messages, its
- * share of j1939_process() and the queries the other modules need. A feature that is switched
- * off in j1939_config.h defines its entry points as empty inline functions here, so that the
- * callers are the same code in every build.
+ * share of j1939_init() and j1939_process() and the queries the other modules need. A feature that
+ * is switched off in j1939_config.h defines its entry points as empty inline functions here, so
+ * that the callers are the same code in every build.
  *
  * A received frame is decoded once, in j1939_rx(), into a j1939_msg_t whose data points into
  * the frame. The handlers below take that message; it is valid only during the call.
@@ -159,17 +159,11 @@ j1939_ret_t j1939_request_ack_tx(j1939_t *s, uint8_t sa, uint8_t ctrl, uint8_t r
 /* ---- Address claiming ---- */
 
 /**
- * @brief Forgets the addresses claimed by other nodes.
- * @param s  Stack.
+ * @brief Checks the CAs of the configuration and starts each one's claim.
+ * @param s  Stack with its configuration set.
+ * @return false for an address above 253 or two CAs with the same address.
  */
-void j1939_addr_init(j1939_t *s);
-
-/**
- * @brief Sets up a new CA: its claim starts with the next j1939_addr_process().
- * @param ca   CA state to initialise.
- * @param cfg  Its configuration, already validated by j1939_ca_add().
- */
-void j1939_addr_ca_init(j1939_ca_t *ca, const j1939_ca_cfg_t *cfg);
+bool j1939_addr_init(j1939_t *s);
 
 /**
  * @brief Sends pending claims and advances the claim timers.
@@ -272,10 +266,10 @@ j1939_ret_t j1939_addr_request_send(j1939_t *s, j1939_ca_id_t ca, uint8_t da);
 /* ---- NAME table ---- */
 
 /**
- * @brief Removes the NAME table and clears its counter.
- * @param s  Stack.
+ * @brief Starts with an empty NAME table.
+ * @param s  Stack with its configuration set.
  */
-void j1939_nametab_stack_init(j1939_t *s);
+void j1939_nametab_init(j1939_t *s);
 
 /**
  * @brief Records an Address Claimed of another node.
@@ -309,7 +303,7 @@ void j1939_nametab_global_request(j1939_t *s);
 
 /**
  * @brief Looks up the NAME at an address without sending a Request.
- * @param s        Stack with a table (s->nametab.buf not NULL).
+ * @param s        Stack with a table (j1939_cfg_t::nametab_len above 0).
  * @param address  Source address, 0..253.
  * @param name     NAME. Written only if found.
  * @return true if another node of the table holds @p address and no CA of
@@ -328,19 +322,10 @@ void j1939_nametab_process(j1939_t *s, uint32_t elapsed_us);
 
 #if J1939_TP_ENABLE
 /**
- * @brief Checks the transport protocol members of a stack configuration.
- * @param cfg  Stack configuration.
- * @return true if the buffer pointers and lengths are consistent.
+ * @brief Resets the sessions and frees the buffers of the configuration.
+ * @param s  Stack with its configuration set.
  */
-bool j1939_tp_cfg_valid(const j1939_cfg_t *cfg);
-
-/**
- * @brief Resets the sessions, takes over the buffers of the configuration and clears the
- *        transport protocol counters.
- * @param s    Stack.
- * @param cfg  Stack configuration, already validated.
- */
-void j1939_tp_init(j1939_t *s, const j1939_cfg_t *cfg);
+void j1939_tp_init(j1939_t *s);
 
 /**
  * @brief Handles a received TP.CM or TP.DT frame addressed to this stack or to all nodes.
@@ -390,18 +375,12 @@ void j1939_tp_msg_release(j1939_t *s, const uint8_t *data);
  * @return true with at least one transmit buffer.
  */
 static inline bool j1939_tp_tx_buf_allocated(const j1939_t *s) {
-	return (s->tp.tx_buf != NULL) && (s->tp.tx_buf_len > 0U);
+	return s->cfg->tp_tx_buf_len > 0U;
 }
 
 #else
-static inline bool j1939_tp_cfg_valid(const j1939_cfg_t *cfg) {
-	(void)cfg;
-	return true;
-}
-
-static inline void j1939_tp_init(j1939_t *s, const j1939_cfg_t *cfg) {
+static inline void j1939_tp_init(j1939_t *s) {
 	(void)s;
-	(void)cfg;
 }
 
 static inline void j1939_tp_address_lost(j1939_t *s, uint8_t address) {
@@ -428,10 +407,11 @@ static inline bool j1939_tp_tx_buf_allocated(const j1939_t *s) {
 /* ---- Receive objects ---- */
 
 /**
- * @brief Removes the receive objects and clears their counters.
- * @param s  Stack.
+ * @brief Checks the receive objects of the configuration and resets their state.
+ * @param s  Stack with its configuration set.
+ * @return false for an invalid table, see j1939_rxobj_cfg_t.
  */
-void j1939_rxobj_stack_init(j1939_t *s);
+bool j1939_rxobj_init(j1939_t *s);
 
 /**
  * @brief Tells whether a receive object takes a PGN from a sender.
@@ -460,10 +440,12 @@ void j1939_rxobj_process(j1939_t *s, uint32_t elapsed_us);
 /* ---- Transmit objects ---- */
 
 /**
- * @brief Removes the transmit objects and clears their counters.
- * @param s  Stack.
+ * @brief Checks the transmit objects of the configuration, resets their state and fills their
+ *        payloads with 0xFF.
+ * @param s  Stack with its configuration set.
+ * @return false for an invalid table, see j1939_txobj_cfg_t.
  */
-void j1939_txobj_stack_init(j1939_t *s);
+bool j1939_txobj_init(j1939_t *s);
 
 /**
  * @brief Handles a Request for the PGN of a transmit object.
@@ -485,10 +467,11 @@ void j1939_txobj_process(j1939_t *s, uint32_t elapsed_us);
 /* ---- Diagnostics ---- */
 
 /**
- * @brief Disables diagnostics for every CA and clears the diagnostics counters.
- * @param s  Stack.
+ * @brief Checks the diagnostics configuration of every CA and resets its state.
+ * @param s  Stack with its configuration set.
+ * @return false for an invalid configuration, see j1939_dm_cfg_t.
  */
-void j1939_dm_stack_init(j1939_t *s);
+bool j1939_dm_init(j1939_t *s);
 
 /**
  * @brief Handles a Request for a diagnostic message.

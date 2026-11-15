@@ -130,7 +130,7 @@ static void expect_abort(uint8_t da, uint8_t reason, uint32_t pgn) {
 }
 
 static void expect_none(void) {
-	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.count);
 }
 
 /* Drains the tx queue; none of the frames may belong to the transport protocol. */
@@ -193,13 +193,16 @@ static j1939_ret_t send(uint8_t da, uint32_t pgn, uint16_t len) {
 
 /* Re-initialises the stack with one CA that has not sent its Address Claimed yet. */
 static void init_unclaimed(uint16_t tx_bufs, uint16_t rx_bufs, uint8_t address, uint64_t name) {
-	const j1939_ca_cfg_t ca_cfg = {.address = address, .name = name};
+	static j1939_ca_cfg_t ca_cfg;
 
+	ca_cfg = (j1939_ca_cfg_t){.address = address, .name = name};
+	cfg.ca = &ca_cfg;
+	cfg.ca_len = 1U;
 	cfg.tp_tx_buf_len = tx_bufs;
 	cfg.tp_rx_buf_len = rx_bufs;
 	own = address;
+	ca = 0U;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_ca_add(&s, &ca_cfg, &ca));
 }
 
 static void init(uint16_t tx_bufs, uint16_t rx_bufs) {
@@ -692,10 +695,10 @@ static void test_bam_send_waits_for_tx_queue_then_gives_up(void) {
 	}
 	run(0U);
 	run(GAP);
-	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.count);
 	(void)j1939_tx_pop(&s); /* room for one packet */
 	run(J1939_TR_US);
-	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.count);
 	run(GAP + J1939_TR_US - 1U);
 	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open());
 	run(1U);
@@ -889,10 +892,10 @@ static void test_data_waits_for_tx_queue_then_aborts(void) {
 	(void)j1939_tx_pop(&s); /* the RTS */
 	rx_cts(PEER, 3U, 1U, PGN_B);
 	run(0U);
-	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.count);
 	(void)j1939_tx_pop(&s);
 	run(J1939_TR_US - 1U); /* one packet goes out and restarts Tr */
-	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.count);
 	run(J1939_TR_US - 1U);
 	TEST_ASSERT_EQUAL_UINT8(1U, sessions_open());
 	run(1U);

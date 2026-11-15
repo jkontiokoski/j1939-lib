@@ -95,21 +95,26 @@ void setUp(void) {
 	for (i = 0U; i < N_MSGS; i++) {
 		rx_pgns[i] = PGN_BASE + i;
 	}
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&sender, &(j1939_cfg_t){.tx_buf = tx_buf,
-	                                                                   .tx_len = TX_LEN,
-	                                                                   .msg_buf = sender_msgs,
-	                                                                   .msg_len = 1U}));
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&sender, &(j1939_ca_cfg_t){.address = SENDER}, &sender_ca));
+	/* The stacks keep their configurations: they must outlive them. */
+	static const j1939_ca_cfg_t sender_ca_cfg = {.address = SENDER};
+	static const j1939_cfg_t sender_cfg = {.tx_buf = tx_buf,
+	                                       .tx_len = TX_LEN,
+	                                       .msg_buf = sender_msgs,
+	                                       .msg_len = 1U,
+	                                       .ca = &sender_ca_cfg,
+	                                       .ca_len = 1U};
+	static const j1939_cfg_t receiver_cfg = {.tx_buf = receiver_tx_buf,
+	                                         .tx_len = 1U,
+	                                         .msg_buf = receiver_msgs,
+	                                         .msg_len = N_MSGS,
+	                                         .rx_pgns = rx_pgns,
+	                                         .rx_pgns_len = N_MSGS};
+
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&sender, &sender_cfg));
+	sender_ca = 0U;
 	/* An address outside 128-247 is claimed at once. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&sender, 0U));
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_init(&receiver, &(j1939_cfg_t){.tx_buf = receiver_tx_buf,
-	                                                       .tx_len = 1U,
-	                                                       .msg_buf = receiver_msgs,
-	                                                       .msg_len = N_MSGS,
-	                                                       .rx_pgns = rx_pgns,
-	                                                       .rx_pgns_len = N_MSGS}));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&receiver, &receiver_cfg));
 	received = 0U;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_open(ifname, &fd_tx));
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_socketcan_open(ifname, &fd_rx));

@@ -26,7 +26,8 @@
  * NAME with a NAME table set up.
  */
 static bool rx_entry_valid(const j1939_t *s, const j1939_rxobj_cfg_t *c) {
-	bool sender_valid = (c->name == 0U) ? (c->sa <= J1939_ADDR_MAX) : (s->nametab.buf != NULL);
+	bool sender_valid =
+	        (c->name == 0U) ? (c->sa <= J1939_ADDR_MAX) : (s->cfg->nametab_len > 0U);
 
 	return (c->buf != NULL) && j1939_pgn_valid(c->pgn) && !j1939_stack_pgn_owned(c->pgn) &&
 	       sender_valid && (c->min_len >= 1U) && (c->min_len <= c->buf_len) &&
@@ -46,25 +47,6 @@ static bool rx_entry_same(const j1939_rxobj_cfg_t *a, const j1939_rxobj_cfg_t *b
 		same_sender = a->name == b->name;
 	}
 	return (a->pgn == b->pgn) && same_sender;
-}
-
-/**
- * Checks a whole receive object table: every entry is valid and no two take the same PGN from the
- * same sender. Both arrays may be NULL if len is 0.
- */
-static bool rx_table_valid(const j1939_t *s, const j1939_rxobj_cfg_t *cfg, const j1939_rxobj_t *obj,
-                           uint16_t len) {
-	bool valid = ((cfg != NULL) && (obj != NULL)) || (len == 0U);
-	uint16_t i;
-	uint16_t k;
-
-	for (i = 0U; valid && (i < len); i++) {
-		valid = rx_entry_valid(s, &cfg[i]);
-		for (k = 0U; valid && (k < i); k++) {
-			valid = !rx_entry_same(&cfg[k], &cfg[i]);
-		}
-	}
-	return valid;
 }
 
 /** Sender of a received message; its NAME is looked up at most once per message. */
@@ -89,7 +71,7 @@ static bool rx_matches(const j1939_t *s, const j1939_rxobj_cfg_t *c, uint32_t pg
 	} else {
 		if (!sender->known) {
 			sender->known = true;
-			if ((s->nametab.buf == NULL) || (sender->sa > J1939_ADDR_MAX) ||
+			if ((s->cfg->nametab_len == 0U) || (sender->sa > J1939_ADDR_MAX) ||
 			    !j1939_nametab_lookup(s, sender->sa, &sender->name)) {
 				sender->name = 0U;
 			}
@@ -99,42 +81,29 @@ static bool rx_matches(const j1939_t *s, const j1939_rxobj_cfg_t *c, uint32_t pg
 	return match;
 }
 
-void j1939_rxobj_stack_init(j1939_t *s) {
-	s->rxobj_cfg = NULL;
-	s->rxobj = NULL;
-	s->rxobj_len = 0U;
-	s->stats.rxobj_rejected = 0U;
-	s->stats.rxobj_timeout = 0U;
-}
+bool j1939_rxobj_init(j1939_t *s) {
+	const j1939_rxobj_cfg_t *cfg = s->cfg->rxobj_cfg;
+	bool valid = true;
+	uint16_t i;
+	uint16_t k;
 
-j1939_ret_t j1939_rxobj_init(j1939_t *s, const j1939_rxobj_cfg_t *cfg, j1939_rxobj_t *obj,
-                             uint16_t len) {
-	j1939_ret_t ret = J1939_RET_ERR_ARG;
-
-	if ((s != NULL) && rx_table_valid(s, cfg, obj, len)) {
-		uint16_t i;
-
-		for (i = 0U; i < len; i++) {
-			obj[i].age_us = 0U;
-			obj[i].len = 0U;
-			obj[i].received = false;
-			obj[i].timed_out = false;
-			obj[i].updated = false;
-			obj[i].fresh = false;
+	/* Every entry is valid and no two take the same PGN from the same sender. The states
+	 * start zeroed: no data yet. */
+	for (i = 0U; valid && (i < s->cfg->rxobj_len); i++) {
+		valid = rx_entry_valid(s, &cfg[i]);
+		for (k = 0U; valid && (k < i); k++) {
+			valid = !rx_entry_same(&cfg[k], &cfg[i]);
 		}
-		s->rxobj_cfg = (len > 0U) ? cfg : NULL;
-		s->rxobj = (len > 0U) ? obj : NULL;
-		s->rxobj_len = len;
-		ret = J1939_RET_OK;
+		(void)memset(&s->cfg->rxobj[i], 0, sizeof(s->cfg->rxobj[i]));
 	}
-	return ret;
+	return valid;
 }
 
 j1939_ret_t j1939_rxobj_get(j1939_t *s, uint16_t index, j1939_rxobj_status_t *status) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((s != NULL) && (status != NULL) && (index < s->rxobj_len)) {
-		j1939_rxobj_t *o = &s->rxobj[index];
+	if ((s != NULL) && (status != NULL) && (index < s->cfg->rxobj_len)) {
+		j1939_rxobj_t *o = &s->cfg->rxobj[index];
 
 		if (!o->received) {
 			status->state = J1939_RXOBJ_NO_DATA;
@@ -153,25 +122,31 @@ j1939_ret_t j1939_rxobj_get(j1939_t *s, uint16_t index, j1939_rxobj_status_t *st
 }
 
 bool j1939_rxobj_wanted(const j1939_t *s, uint32_t pgn, uint8_t sa) {
+	const j1939_rxobj_cfg_t *table = s->cfg->rxobj_cfg;
+	uint16_t len = s->cfg->rxobj_len;
 	rx_sender_t sender = {0U, sa, false};
 	bool wanted = false;
 	uint16_t i;
 
-	for (i = 0U; (!wanted) && (i < s->rxobj_len); i++) {
-		wanted = rx_matches(s, &s->rxobj_cfg[i], pgn, &sender);
+	for (i = 0U; (!wanted) && (i < len); i++) {
+		wanted = rx_matches(s, &table[i], pgn, &sender);
 	}
 	return wanted;
 }
 
 void j1939_rxobj_handle(j1939_t *s, const j1939_msg_t *msg) {
+	const j1939_rxobj_cfg_t *table = s->cfg->rxobj_cfg;
+	j1939_rxobj_t *state = s->cfg->rxobj;
+	uint16_t len = s->cfg->rxobj_len;
+	uint32_t pgn = msg->pgn;
 	rx_sender_t sender = {0U, msg->sa, false};
 	uint16_t i;
 
-	for (i = 0U; i < s->rxobj_len; i++) {
-		const j1939_rxobj_cfg_t *c = &s->rxobj_cfg[i];
+	for (i = 0U; i < len; i++) {
+		const j1939_rxobj_cfg_t *c = &table[i];
 
-		if (rx_matches(s, c, msg->pgn, &sender)) {
-			j1939_rxobj_t *o = &s->rxobj[i];
+		if (rx_matches(s, c, pgn, &sender)) {
+			j1939_rxobj_t *o = &state[i];
 
 			if ((msg->len < c->min_len) || (msg->len > c->buf_len)) {
 				s->stats.rxobj_rejected++;
@@ -189,11 +164,14 @@ void j1939_rxobj_handle(j1939_t *s, const j1939_msg_t *msg) {
 }
 
 void j1939_rxobj_process(j1939_t *s, uint32_t elapsed_us) {
+	const j1939_rxobj_cfg_t *table = s->cfg->rxobj_cfg;
+	j1939_rxobj_t *state = s->cfg->rxobj;
+	uint16_t len = s->cfg->rxobj_len;
 	uint16_t i;
 
-	for (i = 0U; i < s->rxobj_len; i++) {
-		const j1939_rxobj_cfg_t *c = &s->rxobj_cfg[i];
-		j1939_rxobj_t *o = &s->rxobj[i];
+	for (i = 0U; i < len; i++) {
+		const j1939_rxobj_cfg_t *c = &table[i];
+		j1939_rxobj_t *o = &state[i];
 
 		/* Nothing is supervised before the first reception. */
 		if (o->received) {

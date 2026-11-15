@@ -18,8 +18,8 @@
  * @addtogroup grp_nametab
  *
  * Normal traffic identifies a sender only by its source address; the NAME
- * appears only in Address Claimed. j1939_nametab_init() gives the stack a table
- * in which it records the NAME and the current address of every other node,
+ * appears only in Address Claimed. With j1939_cfg_t::nametab the stack has a
+ * table in which it records the NAME and the current address of every other node,
  * so that the application can tell who sent a message. The stack's own CAs
  * are never listed.
  *
@@ -40,13 +40,13 @@
  * The stack fills the table itself with Requests for Address Claimed (PGN
  * 60928):
  *
- * - Once after j1939_nametab_init(): a global Request, sent by the
+ * - Once after j1939_init(): a global Request, sent by the
  *   j1939_process() call in which a CA of the stack has claimed its address,
  *   from that CA. Every node answers it, so nodes that claimed before this
  *   one came online are listed too. The answers arrive within a few
  *   milliseconds; the receive path from the CAN driver must hold one frame
  *   per node on the bus. It is not sent if a global Request for Address
- *   Claimed already went out since j1939_nametab_init(): a CA's request before
+ *   Claimed already went out since j1939_init(): a CA's request before
  *   claim (j1939_addr.h) or one sent with j1939_request_send().
  * - When j1939_nametab_name_get() finds no NAME at an address: a Request to that
  *   address, sent by the next j1939_process(), from a CA that has claimed its
@@ -69,31 +69,14 @@ typedef struct j1939_nametab_entry {
 	uint8_t address;  /**< Address the NAME holds; J1939_ADDR_NULL if none. */
 } j1939_nametab_entry_t;
 
-/** NAME table state, see j1939_nametab.h. Members are private. */
+/** NAME table state; the entries are in j1939_cfg_t::nametab. Members are private. */
 typedef struct j1939_nametab {
-	j1939_nametab_entry_t *buf; /**< Entries; NULL while no table is set up. */
-	uint32_t hold_us;           /**< Time before the next Request for an unknown address. */
-	uint16_t len;               /**< Entries in buf. */
-	uint16_t count;             /**< Entries in use. */
-	uint16_t changes;           /**< Change counter. */
-	uint8_t request;            /**< Unknown address to request; J1939_ADDR_NULL if none. */
-	bool startup_due;           /**< The global Request is still to be sent. */
+	uint32_t hold_us; /**< Time before the next Request for an unknown address. */
+	uint16_t count;   /**< Entries in use. */
+	uint16_t changes; /**< Change counter. */
+	uint8_t request;  /**< Unknown address to request; J1939_ADDR_NULL if none. */
+	bool startup_due; /**< The global Request is still to be sent. */
 } j1939_nametab_t;
-
-/**
- * @brief Gives the stack its NAME table, or replaces it.
- *
- * The table starts empty, and the global Request for Address Claimed is sent
- * again as described above. @p len 0 removes the table, and so does
- * j1939_init(). The storage must outlive the stack.
- *
- * @param s    Stack.
- * @param buf  Storage for @p len entries. May be NULL if @p len is 0.
- * @param len  Number of entries: the most other nodes the table lists.
- * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL stack or a NULL
- *         @p buf with @p len above 0.
- */
-j1939_ret_t j1939_nametab_init(j1939_t *s, j1939_nametab_entry_t *buf, uint16_t len);
 
 /**
  * @brief Reads the NAME of the node at an address.

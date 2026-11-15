@@ -32,6 +32,8 @@ enum { OBJ_STATUS = 0, OBJ_INFO, OBJ_COUNT };
 
 typedef struct node {
 	j1939_t s;
+	j1939_cfg_t cfg;
+	j1939_ca_cfg_t ca_cfg;
 	j1939_ca_id_t ca;
 	j1939_port_frame_t tx[TX_LEN];
 	j1939_msg_slot_t msgs[MSG_LEN];
@@ -54,7 +56,7 @@ static uint32_t elapsed;
 static uint8_t counter;
 
 static void node_init(node_t *n, uint8_t address, uint64_t name) {
-	const j1939_cfg_t cfg = {
+	n->cfg = (j1939_cfg_t){
 	        .tx_buf = n->tx,
 	        .tx_len = TX_LEN,
 	        .msg_buf = n->msgs,
@@ -63,12 +65,12 @@ static void node_init(node_t *n, uint8_t address, uint64_t name) {
 	        .tp_tx_buf_len = 1U,
 	        .tp_rx_buf = n->tp_rx,
 	        .tp_rx_buf_len = 1U,
+	        .ca = &n->ca_cfg,
+	        .ca_len = 1U,
 	};
-
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &cfg));
-	TEST_ASSERT_EQUAL(
-	        J1939_RET_OK,
-	        j1939_ca_add(&n->s, &(j1939_ca_cfg_t){.address = address, .name = name}, &n->ca));
+	n->ca_cfg = (j1939_ca_cfg_t){.address = address, .name = name};
+	n->ca = 0U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &n->cfg));
 	test_bus_attach(&bus, &n->s);
 }
 
@@ -110,7 +112,10 @@ void setUp(void) {
 	test_bus_init(&bus);
 	node_init(&ecu, ADDR_ECU, NAME_ECU);
 	node_init(&display, ADDR_DISPLAY, NAME_DISPLAY);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&display.s, objs_cfg, objs, OBJ_COUNT));
+	display.cfg.rxobj_cfg = objs_cfg;
+	display.cfg.rxobj = objs;
+	display.cfg.rxobj_len = OBJ_COUNT;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&display.s, &display.cfg));
 	elapsed = 0U;
 	counter = 0U;
 	test_bus_settle(&bus, 4U);

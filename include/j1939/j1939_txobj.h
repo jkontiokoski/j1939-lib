@@ -17,8 +17,8 @@
  * @addtogroup grp_txobj
  *
  * The integrator describes each transmitted PGN in a `const` table of
- * j1939_txobj_cfg_t and supplies a state array of the same length;
- * j1939_txobj_init() hands both to the stack. An object is referred to by its
+ * j1939_txobj_cfg_t and supplies a state array of the same length, both in
+ * j1939_cfg_t. An object is referred to by its
  * index in the table. The application writes the payload only with
  * j1939_txobj_set(), so change detection sees every update; j1939_process()
  * decides when to send it:
@@ -63,7 +63,16 @@
  * @{
  */
 
-/** Transmit object configuration. Usually `const` data; the buffer must outlive the stack. */
+/**
+ * Transmit object configuration, an entry of j1939_cfg_t::txobj_cfg. Usually `const` data; the
+ * buffer must outlive the stack.
+ *
+ * j1939_init() rejects a NULL buffer, an unknown CA, an invalid PGN, priority or destination,
+ * a length of 0, above J1939_MAX_MSG_LEN or above 8 while the stack has no transport protocol
+ * transmit buffer, a PGN the stack handles itself (Request, Acknowledgement, transport protocol,
+ * Address Claimed, Commanded Address, DM1, DM2, DM3, DM11) or answered by the application (in
+ * j1939_cfg_t::req_pgns), and two entries with the same CA, PGN and destination.
+ */
 typedef struct j1939_txobj_cfg {
 	uint8_t *buf;        /**< Payload storage of len bytes. Written only by the stack. */
 	uint32_t pgn;        /**< PGN; for PDU1 formats with the lowest byte 0. */
@@ -86,30 +95,6 @@ typedef struct j1939_txobj {
 	uint8_t requester;  /**< Requester of the pending answer; J1939_ADDR_GLOBAL for all. */
 	uint8_t flags;      /**< State bits. */
 } j1939_txobj_t;
-
-/**
- * @brief Hands the transmit objects to the stack.
- *
- * Called after the CAs are added. Every entry is validated before the stack
- * changes. Fills every payload buffer with 0xFF. May be called again to
- * replace or reset the objects; @p len 0 removes them, and so does
- * j1939_init().
- *
- * @param s    Stack.
- * @param cfg  Configuration table of @p len entries. May be NULL if @p len is 0.
- * @param obj  State array of @p len entries. May be NULL if @p len is 0.
- * @param len  Number of objects.
- * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer, an unknown
- *         CA, an invalid PGN, priority or destination, a NULL buffer, a
- *         length of 0, above J1939_MAX_MSG_LEN or above 8 while the stack
- *         has no transport protocol transmit buffer, a PGN the stack handles
- *         itself (Request, Acknowledgement, transport protocol, Address
- *         Claimed, Commanded Address, DM1, DM2, DM3, DM11) or answered by the
- *         application (in j1939_cfg_t::req_pgns), or two entries with the same
- *         CA, PGN and destination.
- */
-j1939_ret_t j1939_txobj_init(j1939_t *s, const j1939_txobj_cfg_t *cfg, j1939_txobj_t *obj,
-                             uint16_t len);
 
 /**
  * @brief Replaces the payload of a transmit object.

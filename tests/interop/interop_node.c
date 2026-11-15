@@ -187,6 +187,8 @@ int main(int argc, char **argv) {
 	}
 
 	rx_pgns[0] = (uint32_t)pgn;
+	/* Locals of main(): they outlive the stack, which keeps a pointer to them. */
+	const j1939_ca_cfg_t ca_cfg = {.address = (uint8_t)address, .name = name};
 	const j1939_cfg_t cfg = {
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
@@ -194,16 +196,16 @@ int main(int argc, char **argv) {
 	        .msg_len = MSG_LEN,
 	        .rx_pgns = rx_pgns,
 	        .rx_pgns_len = (mode == NODE_RECV) ? 1U : 0U,
+	        .ca = &ca_cfg,
+	        .ca_len = 1U,
 	        .tp_tx_buf = tp_tx_buf,
 	        .tp_tx_buf_len = 1U,
 	        .tp_rx_buf = tp_rx_buf,
 	        .tp_rx_buf_len = 2U,
 	};
-	const j1939_ca_cfg_t ca_cfg = {.address = (uint8_t)address, .name = name};
-	j1939_ca_id_t ca = 0U;
+	const j1939_ca_id_t ca = 0U;
 
-	if ((j1939_init(&stack, &cfg) != J1939_RET_OK) ||
-	    (j1939_ca_add(&stack, &ca_cfg, &ca) != J1939_RET_OK)) {
+	if (j1939_init(&stack, &cfg) != J1939_RET_OK) {
 		(void)fprintf(stderr, "stack setup failed: check the PGN\n");
 		return EXIT_USAGE;
 	}

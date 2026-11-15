@@ -203,6 +203,12 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	const j1939_ca_cfg_t ca_cfg = {
+	        .address = (uint8_t)address,
+	        .name = example_name(identity, false),
+	};
+	const j1939_ca_id_t ca = 0U;
+
 	/* No rx_pgns: this node receives nothing for the application. The
 	 * stack still handles address claiming and the CTS / EndOfMsgAck /
 	 * Connection Abort frames of its own RTS/CTS transfers. */
@@ -211,21 +217,13 @@ int main(int argc, char **argv) {
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
 	        .msg_len = MSG_LEN,
+	        .ca = &ca_cfg,
+	        .ca_len = 1U,
 	        .tp_tx_buf = tp_tx_buf,
 	        .tp_tx_buf_len = TP_TX_LEN,
 	};
 	if (j1939_init(&stack, &cfg) != J1939_RET_OK) {
 		(void)fprintf(stderr, "j1939_init failed\n");
-		return EXIT_FAILURE;
-	}
-
-	const j1939_ca_cfg_t ca_cfg = {
-	        .address = (uint8_t)address,
-	        .name = example_name(identity, false),
-	};
-	j1939_ca_id_t ca;
-	if (j1939_ca_add(&stack, &ca_cfg, &ca) != J1939_RET_OK) {
-		(void)fprintf(stderr, "j1939_ca_add failed\n");
 		return EXIT_FAILURE;
 	}
 

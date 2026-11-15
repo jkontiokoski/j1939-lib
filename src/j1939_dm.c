@@ -34,30 +34,17 @@
 #define DM_BUF_NEED(n) ((uint32_t)J1939_DM_BUF_LEN((uint32_t)(n)))
 
 /**
- * Looks up the diagnostic state of a CA; the stack may be NULL.
+ * Looks up the diagnostics configuration of a CA, which names its state; the stack may be NULL.
  *
  * Returns J1939_RET_OK, J1939_RET_ERR_STATE when diagnostics are not enabled for the CA, or
- * J1939_RET_ERR_ARG on a NULL stack or an unknown CA. dm is written when the CA is known.
+ * J1939_RET_ERR_ARG on a NULL stack or an unknown CA. cfg is written when the CA is known.
  */
-static j1939_ret_t dm_lookup(const j1939_t *s, j1939_ca_id_t ca, const j1939_dm_t **dm) {
+static j1939_ret_t dm_lookup(const j1939_t *s, j1939_ca_id_t ca, const j1939_dm_cfg_t **cfg) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((s != NULL) && (ca < s->ca_count)) {
-		*dm = s->dm[ca];
-		ret = (*dm != NULL) ? J1939_RET_OK : J1939_RET_ERR_STATE;
-	}
-	return ret;
-}
-
-/** As dm_lookup(), for changing the stack's diagnostic state. */
-static j1939_ret_t dm_lookup_mut(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t **dm) {
-	j1939_ret_t ret = J1939_RET_ERR_ARG;
-
-	if ((s != NULL) && (ca < s->ca_count)) {
-		struct j1939_dm **slot = &s->dm[ca];
-
-		*dm = *slot;
-		ret = (*dm != NULL) ? J1939_RET_OK : J1939_RET_ERR_STATE;
+	if ((s != NULL) && (ca < s->cfg->ca_len)) {
+		*cfg = s->cfg->ca[ca].dm;
+		ret = (*cfg != NULL) ? J1939_RET_OK : J1939_RET_ERR_STATE;
 	}
 	return ret;
 }
@@ -114,11 +101,11 @@ static j1939_ret_t dtc_list_check(const j1939_dtc_t *dtcs, uint16_t count, uint1
 }
 
 /** Counts the change hold records down; records started since the previous call wait. */
-static void dm_hold_tick(j1939_dm_t *dm, uint32_t elapsed_us) {
+static void dm_hold_tick(const j1939_dm_cfg_t *cfg, uint32_t elapsed_us) {
 	uint16_t i;
 
-	for (i = 0U; i < dm->hold_len; i++) {
-		j1939_dm_hold_t *h = &dm->hold[i];
+	for (i = 0U; i < cfg->hold_len; i++) {
+		j1939_dm_hold_t *h = &cfg->hold[i];
 
 		if (h->fresh) {
 			h->fresh = false;
@@ -134,13 +121,13 @@ static void dm_hold_tick(j1939_dm_t *dm, uint32_t elapsed_us) {
  * Records a DTC that changed state. Returns true if the change triggers a DM1: the DTC has no
  * running hold and a free record takes it.
  */
-static bool dtc_changed(j1939_dm_t *dm, const j1939_dtc_t *dtc) {
+static bool dtc_changed(const j1939_dm_cfg_t *cfg, const j1939_dtc_t *dtc) {
 	j1939_dm_hold_t *free_rec = NULL;
 	bool held = false;
 	uint16_t i;
 
-	for (i = 0U; (!held) && (i < dm->hold_len); i++) {
-		j1939_dm_hold_t *h = &dm->hold[i];
+	for (i = 0U; (!held) && (i < cfg->hold_len); i++) {
+		j1939_dm_hold_t *h = &cfg->hold[i];
 
 		if (h->left_us == 0U) {
 			if (free_rec == NULL) {
@@ -164,23 +151,25 @@ static bool dtc_changed(j1939_dm_t *dm, const j1939_dtc_t *dtc) {
 }
 
 /** Replaces the active DTCs with a checked list, scheduling a DM1 on a reportable change. */
-static void active_update(j1939_dm_t *dm, const j1939_dtc_t *dtcs, uint16_t count) {
+static void active_update(const j1939_dm_cfg_t *cfg, const j1939_dtc_t *dtcs, uint16_t count) {
+	j1939_dm_t *dm = cfg->state;
 	bool trigger = false;
 	uint16_t i;
 
 	for (i = 0U; i < dm->active_count; i++) {
-		if (!dtc_listed(dtcs, count, &dm->active[i]) && dtc_changed(dm, &dm->active[i])) {
+		if (!dtc_listed(dtcs, count, &cfg->active[i]) &&
+		    dtc_changed(cfg, &cfg->active[i])) {
 			trigger = true;
 		}
 	}
 	for (i = 0U; i < count; i++) {
-		if (!dtc_listed(dm->active, dm->active_count, &dtcs[i]) &&
-		    dtc_changed(dm, &dtcs[i])) {
+		if (!dtc_listed(cfg->active, dm->active_count, &dtcs[i]) &&
+		    dtc_changed(cfg, &dtcs[i])) {
 			trigger = true;
 		}
 	}
 	if (count > 0U) {
-		(void)memcpy(dm->active, dtcs, (size_t)count * sizeof(dtcs[0]));
+		(void)memcpy(cfg->active, dtcs, (size_t)count * sizeof(dtcs[0]));
 	}
 	dm->active_count = count;
 	if (trigger) {
@@ -209,15 +198,20 @@ static bool send_done(j1939_t *s, j1939_ret_t ret, uint32_t age_us) {
  */
 static j1939_ret_t dm_send(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, const j1939_dtc_t *dtcs,
                            uint16_t count, uint8_t da) {
-	j1939_dm_t *dm = s->dm[ca];
+	const j1939_dm_cfg_t *cfg = s->cfg->ca[ca].dm;
+	const j1939_dm_t *dm = cfg->state;
+	uint8_t *buf = cfg->buf;
 	uint16_t len = 0U;
-	j1939_ret_t ret = j1939_dtc_dm_build(&dm->lamps, dtcs, count, dm->buf, dm->buf_len, &len);
+	j1939_ret_t ret = j1939_dtc_dm_build(&dm->lamps, dtcs, count, buf, cfg->buf_len, &len);
 
 	if (ret == J1939_RET_OK) {
 		const j1939_msg_t msg = {
-		        pgn, DM_PRIO,
-		        0U,  (len > J1939_MSG_SINGLE_FRAME_MAX) ? da : J1939_ADDR_GLOBAL,
-		        len, dm->buf};
+		        .pgn = pgn,
+		        .prio = DM_PRIO,
+		        .da = (len > J1939_MSG_SINGLE_FRAME_MAX) ? da : J1939_ADDR_GLOBAL,
+		        .len = len,
+		        .data = buf,
+		};
 
 		ret = j1939_send(s, ca, &msg);
 	}
@@ -396,8 +390,11 @@ static void answer_request(j1939_dm_answer_t *a, uint8_t requester) {
 }
 
 /** Runs the diagnostics of one CA: holds, DM1 schedule, clear requests and answers. */
-static void ca_process(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_t elapsed_us) {
-	dm_hold_tick(dm, elapsed_us);
+static void ca_process(j1939_t *s, j1939_ca_id_t ca, const j1939_dm_cfg_t *cfg,
+                       uint32_t elapsed_us) {
+	j1939_dm_t *dm = cfg->state;
+
+	dm_hold_tick(cfg, elapsed_us);
 	if (!j1939_addr_ca_claimed(&s->ca[ca])) {
 		dm_stop(s, dm);
 	} else {
@@ -408,15 +405,15 @@ static void ca_process(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_t el
 			clear_tick(s, ca, &dm->clear[k], CLEAR_PGN(k), elapsed_us);
 		}
 		if (dm->dm1_due && send_done(s,
-		                             dm_send(s, ca, J1939_PGN_DM1, dm->active,
+		                             dm_send(s, ca, J1939_PGN_DM1, cfg->active,
 		                                     dm->active_count, J1939_ADDR_GLOBAL),
 		                             J1939_STACK_NO_EXPIRY)) {
 			dm->dm1_due = false;
 		}
-		answer_tick(s, ca, &dm->answer[ANSWER_DM1], J1939_PGN_DM1, dm->active,
+		answer_tick(s, ca, &dm->answer[ANSWER_DM1], J1939_PGN_DM1, cfg->active,
 		            dm->active_count, elapsed_us);
-		answer_tick(s, ca, &dm->answer[ANSWER_DM2], J1939_PGN_DM2, dm->prev, dm->prev_count,
-		            elapsed_us);
+		answer_tick(s, ca, &dm->answer[ANSWER_DM2], J1939_PGN_DM2, cfg->prev,
+		            dm->prev_count, elapsed_us);
 	}
 }
 
@@ -441,12 +438,12 @@ static bool clear_index(uint32_t pgn, uint32_t *k) {
  * Tells whether a CA's diagnostics handle a Request for a PGN: DM1 and DM2 always, DM3 and DM11
  * when enabled.
  */
-static bool dm_supported(const j1939_dm_t *dm, uint32_t pgn) {
+static bool dm_supported(const j1939_dm_cfg_t *cfg, uint32_t pgn) {
 	uint32_t k = 0U;
 	bool supported = (pgn == J1939_PGN_DM1) || (pgn == J1939_PGN_DM2);
 
 	if (clear_index(pgn, &k)) {
-		supported = dm->clear[k].enabled;
+		supported = (k == CLEAR_DM3) ? cfg->dm3_enable : cfg->dm11_enable;
 	}
 	return supported;
 }
@@ -479,15 +476,16 @@ static void request_accept(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, uint32_
 }
 
 /**
- * Checks a diagnostics configuration: the capacities are within J1939_DTC_DM_DTC_MAX, the storage
- * is present, the buffer holds the larger list, the payload is at most J1939_MAX_MSG_LEN and a
- * multi-packet payload has a TP transmit buffer.
+ * Checks a diagnostics configuration: the state is present, the capacities are within
+ * J1939_DTC_DM_DTC_MAX, the storage is present, the buffer holds the larger list, the payload is
+ * at most J1939_MAX_MSG_LEN and a multi-packet payload has a TP transmit buffer.
  */
 static bool dm_cfg_valid(const j1939_t *s, const j1939_dm_cfg_t *cfg) {
 	uint16_t max = (cfg->active_len > cfg->prev_len) ? cfg->active_len : cfg->prev_len;
 	uint32_t need = DM_BUF_NEED(max);
 
-	return (cfg->active_len <= DM_DTC_MAX) && (cfg->prev_len <= DM_DTC_MAX) &&
+	return (cfg->state != NULL) && (cfg->active_len <= DM_DTC_MAX) &&
+	       (cfg->prev_len <= DM_DTC_MAX) &&
 	       ((cfg->active != NULL) || (cfg->active_len == 0U)) &&
 	       ((cfg->prev != NULL) || (cfg->prev_len == 0U)) &&
 	       ((cfg->hold != NULL) || (cfg->hold_len == 0U)) && (cfg->buf != NULL) &&
@@ -495,39 +493,73 @@ static bool dm_cfg_valid(const j1939_t *s, const j1939_dm_cfg_t *cfg) {
 	       ((need <= J1939_MSG_SINGLE_FRAME_MAX) || (j1939_tp_tx_buf_allocated(s)));
 }
 
-/** Tells whether diagnostic state storage is registered for a CA other than ca. */
-static bool dm_used(const j1939_t *s, j1939_ca_id_t ca, const j1939_dm_t *dm) {
-	bool used = false;
+/** Tells whether a CA before ca uses the same diagnostic state. */
+static bool dm_state_shared(const j1939_t *s, j1939_ca_id_t ca) {
+	const j1939_dm_t *dm = s->cfg->ca[ca].dm->state;
+	bool shared = false;
 	uint8_t i;
 
-	for (i = 0U; (!used) && (i < s->ca_count); i++) {
-		used = (i != ca) && (s->dm[i] == dm);
+	for (i = 0U; (!shared) && (i < ca); i++) {
+		const j1939_dm_cfg_t *other = s->cfg->ca[i].dm;
+
+		shared = (other != NULL) && (other->state == dm);
 	}
-	return used;
+	return shared;
 }
 
-void j1939_dm_stack_init(j1939_t *s) {
-	uint32_t i;
+/** Starts the diagnostics of a CA: no DTCs, all lamps off, no hold running, nothing pending. */
+static void dm_reset(const j1939_dm_cfg_t *cfg) {
+	j1939_dm_t *dm = cfg->state;
+	uint16_t i;
+	uint32_t k;
 
-	for (i = 0U; i < (uint32_t)J1939_CFG_CA_MAX; i++) {
-		s->dm[i] = NULL;
+	(void)memset(dm, 0, sizeof(*dm));
+	dm->lamps.mil_flash = J1939_DTC_FLASH_OFF;
+	dm->lamps.red_stop_flash = J1939_DTC_FLASH_OFF;
+	dm->lamps.amber_warning_flash = J1939_DTC_FLASH_OFF;
+	dm->lamps.protect_flash = J1939_DTC_FLASH_OFF;
+	for (i = 0U; i < cfg->hold_len; i++) {
+		cfg->hold[i].left_us = 0U;
+		cfg->hold[i].fresh = false;
 	}
-	s->stats.dm_tx_retry = 0U;
-	s->stats.dm_tx_dropped = 0U;
+	for (k = 0U; k < CLEAR_KINDS; k++) {
+		dm->clear[k].state = J1939_DM_CLEAR_IDLE;
+		dm->clear[k].requester = J1939_ADDR_GLOBAL;
+	}
+}
+
+bool j1939_dm_init(j1939_t *s) {
+	bool valid = true;
+	uint8_t i;
+
+	for (i = 0U; valid && (i < s->cfg->ca_len); i++) {
+		const j1939_dm_cfg_t *cfg = s->cfg->ca[i].dm;
+
+		/* A CA without a configuration has no diagnostics. */
+		if (cfg != NULL) {
+			valid = dm_cfg_valid(s, cfg) && !dm_state_shared(s, i);
+			if (valid) {
+				dm_reset(cfg);
+			}
+		}
+	}
+	return valid;
 }
 
 bool j1939_dm_request_handle(j1939_t *s, const j1939_msg_t *req, uint32_t pgn) {
 	bool handled = false;
 	uint8_t i;
 
-	for (i = 0U; i < s->ca_count; i++) {
-		j1939_dm_t *dm = s->dm[i];
+	for (i = 0U; i < s->cfg->ca_len; i++) {
+		const j1939_dm_cfg_t *cfg = s->cfg->ca[i].dm;
 
-		if ((dm != NULL) && j1939_addr_ca_addressed(&s->ca[i], req->da) &&
-		    dm_supported(dm, pgn)) {
+		if ((cfg != NULL) && j1939_addr_ca_addressed(&s->ca[i], req->da) &&
+		    dm_supported(cfg, pgn)) {
 			handled = true;
 			/* Nothing is sent before the claim completes. */
 			if (j1939_addr_ca_claimed(&s->ca[i])) {
+				j1939_dm_t *dm = cfg->state;
+
 				request_accept(s, i, dm, pgn, j1939_request_requester(req));
 			}
 		}
@@ -538,70 +570,28 @@ bool j1939_dm_request_handle(j1939_t *s, const j1939_msg_t *req, uint32_t pgn) {
 void j1939_dm_process(j1939_t *s, uint32_t elapsed_us) {
 	uint8_t i;
 
-	for (i = 0U; i < s->ca_count; i++) {
-		j1939_dm_t *dm = s->dm[i];
+	for (i = 0U; i < s->cfg->ca_len; i++) {
+		const j1939_dm_cfg_t *cfg = s->cfg->ca[i].dm;
 
-		if (dm != NULL) {
-			ca_process(s, i, dm, elapsed_us);
+		if (cfg != NULL) {
+			ca_process(s, i, cfg, elapsed_us);
 		}
 	}
-}
-
-j1939_ret_t j1939_dm_init(j1939_t *s, j1939_ca_id_t ca, j1939_dm_t *dm, const j1939_dm_cfg_t *cfg) {
-	j1939_ret_t ret = J1939_RET_ERR_ARG;
-
-	if ((s != NULL) && (dm != NULL) && (cfg != NULL) && (ca < s->ca_count) &&
-	    dm_cfg_valid(s, cfg) && !dm_used(s, ca, dm)) {
-		/* Locals keep cppcheck's MISRA 11.8 check from treating the storage as const. */
-		j1939_dtc_t *active = cfg->active;
-		j1939_dtc_t *prev = cfg->prev;
-		j1939_dm_hold_t *hold = cfg->hold;
-		uint8_t *buf = cfg->buf;
-		uint16_t i;
-		uint32_t k;
-
-		(void)memset(dm, 0, sizeof(*dm));
-		dm->active = active;
-		dm->active_len = cfg->active_len;
-		dm->prev = prev;
-		dm->prev_len = cfg->prev_len;
-		dm->hold = hold;
-		dm->hold_len = cfg->hold_len;
-		dm->buf = buf;
-		dm->buf_len = cfg->buf_len;
-		dm->lamps.mil_flash = J1939_DTC_FLASH_OFF;
-		dm->lamps.red_stop_flash = J1939_DTC_FLASH_OFF;
-		dm->lamps.amber_warning_flash = J1939_DTC_FLASH_OFF;
-		dm->lamps.protect_flash = J1939_DTC_FLASH_OFF;
-		for (i = 0U; i < cfg->hold_len; i++) {
-			hold[i].left_us = 0U;
-			hold[i].fresh = false;
-		}
-		for (k = 0U; k < CLEAR_KINDS; k++) {
-			dm->clear[k].state = J1939_DM_CLEAR_IDLE;
-			dm->clear[k].requester = J1939_ADDR_GLOBAL;
-		}
-		dm->clear[CLEAR_DM3].enabled = cfg->dm3_enable;
-		dm->clear[CLEAR_DM11].enabled = cfg->dm11_enable;
-		s->dm[ca] = dm;
-		ret = J1939_RET_OK;
-	}
-	return ret;
 }
 
 j1939_ret_t j1939_dm_lamps_set(j1939_t *s, j1939_ca_id_t ca, const j1939_dtc_lamps_t *lamps) {
-	j1939_dm_t *dm = NULL;
+	const j1939_dm_cfg_t *cfg = NULL;
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if (lamps != NULL) {
-		ret = dm_lookup_mut(s, ca, &dm);
+		ret = dm_lookup(s, ca, &cfg);
 	}
 	if (ret == J1939_RET_OK) {
 		uint8_t tmp[J1939_DTC_LAMPS_LEN];
 
 		ret = j1939_dtc_lamps_encode(lamps, tmp);
 		if (ret == J1939_RET_OK) {
-			dm->lamps = *lamps;
+			cfg->state->lamps = *lamps;
 		}
 	}
 	return ret;
@@ -609,43 +599,45 @@ j1939_ret_t j1939_dm_lamps_set(j1939_t *s, j1939_ca_id_t ca, const j1939_dtc_lam
 
 j1939_ret_t j1939_dm_active_set(j1939_t *s, j1939_ca_id_t ca, const j1939_dtc_t *dtcs,
                                 uint16_t count) {
-	j1939_dm_t *dm = NULL;
-	j1939_ret_t ret = dm_lookup_mut(s, ca, &dm);
+	const j1939_dm_cfg_t *cfg = NULL;
+	j1939_ret_t ret = dm_lookup(s, ca, &cfg);
 
 	if (ret == J1939_RET_OK) {
-		ret = dtc_list_check(dtcs, count, dm->active_len);
+		ret = dtc_list_check(dtcs, count, cfg->active_len);
 	}
 	if (ret == J1939_RET_OK) {
-		active_update(dm, dtcs, count);
+		active_update(cfg, dtcs, count);
 	}
 	return ret;
 }
 
 j1939_ret_t j1939_dm_prev_set(j1939_t *s, j1939_ca_id_t ca, const j1939_dtc_t *dtcs,
                               uint16_t count) {
-	j1939_dm_t *dm = NULL;
-	j1939_ret_t ret = dm_lookup_mut(s, ca, &dm);
+	const j1939_dm_cfg_t *cfg = NULL;
+	j1939_ret_t ret = dm_lookup(s, ca, &cfg);
 
 	if (ret == J1939_RET_OK) {
-		ret = dtc_list_check(dtcs, count, dm->prev_len);
+		ret = dtc_list_check(dtcs, count, cfg->prev_len);
 	}
 	if (ret == J1939_RET_OK) {
 		if (count > 0U) {
-			(void)memcpy(dm->prev, dtcs, (size_t)count * sizeof(dtcs[0]));
+			(void)memcpy(cfg->prev, dtcs, (size_t)count * sizeof(dtcs[0]));
 		}
-		dm->prev_count = count;
+		cfg->state->prev_count = count;
 	}
 	return ret;
 }
 
 j1939_ret_t j1939_dm_clear_get(const j1939_t *s, j1939_ca_id_t ca, uint32_t *pgn) {
-	const j1939_dm_t *dm = NULL;
+	const j1939_dm_cfg_t *cfg = NULL;
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if (pgn != NULL) {
-		ret = dm_lookup(s, ca, &dm);
+		ret = dm_lookup(s, ca, &cfg);
 	}
 	if (ret == J1939_RET_OK) {
+		const j1939_dm_t *dm = cfg->state;
+
 		if (dm->clear[CLEAR_DM3].state == J1939_DM_CLEAR_REQUESTED) {
 			*pgn = J1939_PGN_DM3;
 		} else if (dm->clear[CLEAR_DM11].state == J1939_DM_CLEAR_REQUESTED) {
@@ -658,24 +650,24 @@ j1939_ret_t j1939_dm_clear_get(const j1939_t *s, j1939_ca_id_t ca, uint32_t *pgn
 }
 
 j1939_ret_t j1939_dm_clear_confirm(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, bool accept) {
-	j1939_dm_t *dm = NULL;
+	const j1939_dm_cfg_t *cfg = NULL;
 	uint32_t k = 0U;
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if (clear_index(pgn, &k)) {
-		ret = dm_lookup_mut(s, ca, &dm);
+		ret = dm_lookup(s, ca, &cfg);
 	}
 	if (ret == J1939_RET_OK) {
-		j1939_dm_clear_t *c = &dm->clear[k];
+		j1939_dm_clear_t *c = &cfg->state->clear[k];
 
 		if (c->state != J1939_DM_CLEAR_REQUESTED) {
 			ret = J1939_RET_ERR_STATE;
 		} else {
 			if (accept) {
 				if (k == CLEAR_DM3) {
-					dm->prev_count = 0U;
+					cfg->state->prev_count = 0U;
 				} else {
-					active_update(dm, NULL, 0U);
+					active_update(cfg, NULL, 0U);
 				}
 			}
 			clear_decide(c, accept, true);

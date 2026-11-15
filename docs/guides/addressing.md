@@ -38,15 +38,19 @@ Give every unit its own identity number, for example from its serial number; two
 A node whose functions have fixed addresses in the system design uses those.
 A node that may meet unknown devices sets `arbitrary_address` in its NAME, so that it moves to a free self-configurable address instead of going silent when it loses.
 
-## Add the CA and follow its claim
+## Configure the CA and follow its claim
+
+A CA is an entry of `j1939_cfg_t::ca`; its index there is its handle. With a NAME built at runtime, fill the entry before `j1939_init()`:
 
 ```c
-static j1939_ca_id_t ca;
+static j1939_ca_cfg_t cas[1];                       /* in j1939_cfg_t: .ca = cas, .ca_len = 1 */
+static const j1939_ca_id_t ca = 0U;
 
-j1939_ca_add(&stack, &(j1939_ca_cfg_t){.address = 0x80U, .name = name}, &ca);
+cas[ca] = (j1939_ca_cfg_t){.address = 0x80U, .name = name};
+j1939_init(&stack, &cfg);
 ```
 
-The claim starts with the next `j1939_process()`; nothing else is needed.
+The claim starts with the first `j1939_process()` after `j1939_init()`; nothing else is needed.
 Read the result whenever it matters, for example before enabling functions that transmit:
 
 ```c
@@ -78,7 +82,7 @@ On a network that is already running, that can push a working node off its addre
 With `request_before_claim` the CA first asks every node for its claim, waits `J1939_ADDR_PRECLAIM_WAIT_US` (250 ms) and then claims an address nobody holds:
 
 ```c
-j1939_ca_add(&stack, &(j1939_ca_cfg_t){.address = 0x80U, .name = name, .request_before_claim = true}, &ca);
+cas[ca] = (j1939_ca_cfg_t){.address = 0x80U, .name = name, .request_before_claim = true};
 ```
 
 - Use it for nodes that join a running network, and for arbitrary address capable CAs on busy networks: such a CA claims a free self-configurable address directly when its preferred one is taken.
@@ -93,8 +97,7 @@ Give the stack a NAME table, and it tells you the NAME behind an address:
 
 ```c
 static j1939_nametab_entry_t names[16];   /* one entry per other node expected on the bus */
-
-j1939_nametab_init(&stack, names, 16U);   /* after j1939_init() */
+/* in j1939_cfg_t: .nametab = names, .nametab_len = 16 */
 
 uint64_t sender;
 
@@ -117,7 +120,7 @@ A service tool moves a CA to another address with Commanded Address.
 The target accepts it only if its configuration allows it:
 
 ```c
-j1939_ca_add(&stack, &(j1939_ca_cfg_t){.address = 0x80U, .name = name, .accept_commanded = true}, &ca);
+cas[ca] = (j1939_ca_cfg_t){.address = 0x80U, .name = name, .accept_commanded = true};
 ```
 
 The tool side sends the command from its own claimed CA:
@@ -132,5 +135,5 @@ j1939_addr_command_send(&tool_stack, tool_ca, target_name, 0x85U, J1939_ADDR_GLO
 ## Reference
 
 API reference, topic *Address claiming*: `j1939_addr_get()`, `j1939_addr_command_send()`, `j1939_addr_state_t`, `j1939_ca_cfg_t`.
-The NAME table is the topic *NAME table*: `j1939_nametab_init()`, `j1939_nametab_name_get()`, `j1939_nametab_address_get()`.
+The NAME table is the topic *NAME table*: `j1939_nametab_name_get()`, `j1939_nametab_address_get()`, `j1939_nametab_entry_t`.
 The NAME fields are in the topic *NAME*: `j1939_name_encode()`, `j1939_name_fields_t`.

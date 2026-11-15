@@ -17,6 +17,8 @@
 
 typedef struct node {
 	j1939_t s;
+	j1939_cfg_t cfg;
+	j1939_ca_cfg_t ca_cfg;
 	j1939_ca_id_t ca;
 	j1939_port_frame_t tx[LEN];
 	j1939_msg_slot_t msgs[LEN];
@@ -32,7 +34,8 @@ static test_bus_t bus;
 
 static void node_init(node_t *n, uint8_t address, const uint32_t *rx_pgns, uint16_t rx_pgns_len,
                       const uint32_t *req_pgns, uint16_t req_pgns_len) {
-	const j1939_cfg_t cfg = {
+	n->ca_cfg = (j1939_ca_cfg_t){.address = address};
+	n->cfg = (j1939_cfg_t){
 	        .tx_buf = n->tx,
 	        .tx_len = LEN,
 	        .msg_buf = n->msgs,
@@ -41,11 +44,11 @@ static void node_init(node_t *n, uint8_t address, const uint32_t *rx_pgns, uint1
 	        .rx_pgns_len = rx_pgns_len,
 	        .req_pgns = req_pgns,
 	        .req_pgns_len = req_pgns_len,
+	        .ca = &n->ca_cfg,
+	        .ca_len = 1U,
 	};
-
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&n->s, &(j1939_ca_cfg_t){.address = address}, &n->ca));
+	n->ca = 0U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &n->cfg));
 	test_bus_attach(&bus, &n->s);
 }
 

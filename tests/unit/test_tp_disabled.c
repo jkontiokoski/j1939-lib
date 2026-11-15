@@ -31,6 +31,7 @@ static const uint32_t rx_pgns[] = {PGN_A, PGN_B};
 static const j1939_dtc_t dtc_a = {520210U, 3U, 1U, J1939_DTC_CM_V4};
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
+static j1939_ca_cfg_t ca_cfg;
 static j1939_cfg_t cfg;
 static j1939_t s;
 static j1939_ca_id_t ca;
@@ -69,7 +70,7 @@ static void process(uint32_t us) {
 }
 
 static void expect_none(void) {
-	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.count);
 }
 
 /* Pops the next sent frame and checks its PGN; returns its payload. */
@@ -103,10 +104,12 @@ void setUp(void) {
 	        .msg_len = MSG_LEN,
 	        .rx_pgns = rx_pgns,
 	        .rx_pgns_len = 2U,
+	        .ca = &ca_cfg,
+	        .ca_len = 1U,
 	};
+	ca_cfg = (j1939_ca_cfg_t){.address = OWN, .name = NAME};
+	ca = 0U;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN, .name = NAME}, &ca));
 }
 
 void tearDown(void) {
@@ -182,9 +185,12 @@ static void test_txobj_takes_single_frames_only(void) {
 	                          .ca = ca};
 	j1939_txobj_t obj;
 
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, &ocfg, &obj, 1U));
+	cfg.txobj_cfg = &ocfg;
+	cfg.txobj = &obj;
+	cfg.txobj_len = 1U;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&s, &cfg));
 	ocfg.len = 8U;
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_txobj_init(&s, &ocfg, &obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 }
 
 static void test_rxobj_takes_single_frames_only(void) {
@@ -194,9 +200,12 @@ static void test_rxobj_takes_single_frames_only(void) {
 	j1939_rxobj_t obj;
 
 	TEST_ASSERT_EQUAL_UINT32(8U, J1939_MAX_MSG_LEN);
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_init(&s, &ocfg, &obj, 1U));
+	cfg.rxobj_cfg = &ocfg;
+	cfg.rxobj = &obj;
+	cfg.rxobj_len = 1U;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&s, &cfg));
 	ocfg.buf_len = 8U;
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&s, &ocfg, &obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 }
 
 static void test_dm_takes_single_frame_configurations_only(void) {
@@ -204,7 +213,9 @@ static void test_dm_takes_single_frame_configurations_only(void) {
 	static j1939_dtc_t prev[2];
 	static j1939_dm_hold_t hold[1];
 	static uint8_t dm_buf[J1939_DM_BUF_LEN(2U)];
-	j1939_dm_cfg_t dm_cfg = {.active = active,
+	j1939_dm_t dm;
+	j1939_dm_cfg_t dm_cfg = {.state = &dm,
+	                         .active = active,
 	                         .active_len = 2U,
 	                         .prev = prev,
 	                         .prev_len = 2U,
@@ -212,14 +223,14 @@ static void test_dm_takes_single_frame_configurations_only(void) {
 	                         .hold_len = 1U,
 	                         .buf = dm_buf,
 	                         .buf_len = sizeof(dm_buf)};
-	j1939_dm_t dm;
 	const uint8_t *sent;
 
 	/* Two DTCs need a multi-packet DM1. */
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm, &dm_cfg));
+	ca_cfg.dm = &dm_cfg;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&s, &cfg));
 	dm_cfg.active_len = 1U;
 	dm_cfg.prev_len = 1U;
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_init(&s, ca, &dm, &dm_cfg));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 
 	claim();
 	(void)expect_pgn(J1939_PGN_DM1, 8U); /* first DM1 right after the claim */

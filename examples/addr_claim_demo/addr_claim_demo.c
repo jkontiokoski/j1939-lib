@@ -115,7 +115,17 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	/* 1. Stack instance over the static buffers. */
+	/* 1. One Controller Application. It claims its address with the first
+	 *    j1939_process() and may transmit once the claim succeeds. Its index
+	 *    in the configuration is its handle. */
+	const j1939_ca_cfg_t ca_cfg = {
+	        .address = (uint8_t)address,
+	        .name = example_name(identity, arbitrary),
+	};
+	const j1939_ca_id_t ca = 0U;
+
+	/* 2. Stack instance over the static buffers. The stack keeps the
+	 *    configuration: locals of main() live as long as the program. */
 	const j1939_cfg_t cfg = {
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
@@ -123,21 +133,11 @@ int main(int argc, char **argv) {
 	        .msg_len = MSG_LEN,
 	        .rx_pgns = rx_pgns,
 	        .rx_pgns_len = (uint16_t)(sizeof(rx_pgns) / sizeof(rx_pgns[0])),
+	        .ca = &ca_cfg,
+	        .ca_len = 1U,
 	};
 	if (j1939_init(&stack, &cfg) != J1939_RET_OK) {
 		(void)fprintf(stderr, "j1939_init failed\n");
-		return EXIT_FAILURE;
-	}
-
-	/* 2. One Controller Application. It claims its address with the first
-	 *    j1939_process() and may transmit once the claim succeeds. */
-	const j1939_ca_cfg_t ca_cfg = {
-	        .address = (uint8_t)address,
-	        .name = example_name(identity, arbitrary),
-	};
-	j1939_ca_id_t ca;
-	if (j1939_ca_add(&stack, &ca_cfg, &ca) != J1939_RET_OK) {
-		(void)fprintf(stderr, "j1939_ca_add failed\n");
 		return EXIT_FAILURE;
 	}
 

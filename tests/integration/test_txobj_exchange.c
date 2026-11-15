@@ -41,6 +41,8 @@
 
 typedef struct node {
 	j1939_t s;
+	j1939_cfg_t cfg;
+	j1939_ca_cfg_t ca_cfg;
 	j1939_ca_id_t ca;
 	j1939_port_frame_t tx[TX_LEN];
 	j1939_msg_slot_t msgs[MSG_LEN];
@@ -88,24 +90,24 @@ static const j1939_txobj_cfg_t obj_cfg[3] = {
 };
 
 static void node_init(node_t *n, uint8_t address, uint64_t name) {
-	const j1939_cfg_t cfg = {
+	n->ca_cfg = (j1939_ca_cfg_t){.address = address, .name = name};
+	n->cfg = (j1939_cfg_t){
 	        .tx_buf = n->tx,
 	        .tx_len = TX_LEN,
 	        .msg_buf = n->msgs,
 	        .msg_len = MSG_LEN,
 	        .rx_pgns = pgns,
 	        .rx_pgns_len = 3U,
+	        .ca = &n->ca_cfg,
+	        .ca_len = 1U,
 	        .tp_tx_buf = n->tp_tx,
 	        .tp_tx_buf_len = 1U,
 	        .tp_rx_buf = n->tp_rx,
 	        .tp_rx_buf_len = 1U,
 	};
-
+	n->ca = 0U;
 	(void)memset(n->count, 0, sizeof(n->count));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &cfg));
-	TEST_ASSERT_EQUAL(
-	        J1939_RET_OK,
-	        j1939_ca_add(&n->s, &(j1939_ca_cfg_t){.address = address, .name = name}, &n->ca));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &n->cfg));
 }
 
 /* The receiving application: records each object PGN from the ECU. */
@@ -149,7 +151,10 @@ void setUp(void) {
 	test_bus_attach(&bus, &ecu.s);
 	test_bus_attach(&bus, &monitor.s);
 	test_bus_attach(&bus, &tool.s);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_txobj_init(&ecu.s, obj_cfg, obj, 3U));
+	ecu.cfg.txobj_cfg = obj_cfg;
+	ecu.cfg.txobj = obj;
+	ecu.cfg.txobj_len = 3U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&ecu.s, &ecu.cfg));
 }
 
 void tearDown(void) {

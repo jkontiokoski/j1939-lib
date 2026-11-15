@@ -37,19 +37,20 @@ static void rx_request(uint8_t da, uint32_t pgn, uint8_t len) {
 }
 
 void setUp(void) {
-	const j1939_cfg_t cfg = {
+	static const j1939_ca_cfg_t ca_cfg = {.address = OWN};
+	static const j1939_cfg_t cfg = {
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
 	        .msg_len = MSG_LEN,
-	        .rx_pgns = NULL,
-	        .rx_pgns_len = 0U,
 	        .req_pgns = req_pgns,
 	        .req_pgns_len = 1U,
+	        .ca = &ca_cfg,
+	        .ca_len = 1U,
 	};
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN}, &ca));
+	ca = 0U;
 	/* Claim the address; the CA may transmit right after its Address Claimed. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
@@ -82,7 +83,7 @@ static void test_request_for_supported_pgn_is_delivered(void) {
 	TEST_ASSERT_EQUAL_HEX32(PGN_SUP, pgn);
 	(void)j1939_msg_pop(&s);
 
-	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.count);
 }
 
 static void test_specific_request_for_unsupported_pgn_is_nacked(void) {
@@ -111,7 +112,7 @@ static void test_requests_without_answer_are_ignored(void) {
 	rx_request(OWN, 0xFFFFFFU, 3U);             /* not a PGN */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
 	TEST_ASSERT_NULL(j1939_msg_peek(&s));
-	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.count);
 }
 
 /* A node without an address may only ask for the claims: it cannot be answered. */
@@ -140,7 +141,7 @@ static void test_nack_overflow_is_counted(void) {
 		rx_request(OWN, PGN_UNS, 3U);
 	}
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
-	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(TX_LEN, s.tx.count);
 	TEST_ASSERT_EQUAL_UINT32(1U, j1939_stats_get(&s)->tx_overflow);
 }
 

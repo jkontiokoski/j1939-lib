@@ -35,7 +35,7 @@ void j1939_request_handle(j1939_t *s, const j1939_msg_t *req) {
 			/* Diagnostic message answered by the stack. */
 		} else if (j1939_txobj_request_handle(s, req, pgn)) {
 			/* Transmit object answered by the stack. */
-		} else if (j1939_stack_pgn_listed(s->req_pgns, s->req_pgns_len, pgn)) {
+		} else if (j1939_stack_pgn_listed(s->cfg->req_pgns, s->cfg->req_pgns_len, pgn)) {
 			(void)j1939_stack_deliver(s, req);
 		} else if ((req->da != J1939_ADDR_GLOBAL) && j1939_addr_claimed(s, req->da)) {
 			/* Nobody answers it: NACK from the CA it was sent to. */
@@ -82,7 +82,7 @@ j1939_ret_t j1939_request_send(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, uint8
 	} else if (pgn == J1939_PGN_ADDRESS_CLAIMED) {
 		/* Allowed without an address. */
 		ret = j1939_addr_request_send(s, ca, da);
-	} else if ((s != NULL) && (ca < s->ca_count)) {
+	} else if ((s != NULL) && (ca < s->cfg->ca_len)) {
 		const j1939_ca_t *c = &s->ca[ca];
 
 		ret = j1939_addr_ca_claimed(c) ? j1939_request_tx(s, c->address, da, pgn)

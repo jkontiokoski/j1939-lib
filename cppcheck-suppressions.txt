@@ -15,3 +15,7 @@ unusedFunction
 
 // The optional integrator configuration include is only resolvable in integrator builds.
 preprocessorErrorDirective:include/j1939/j1939_config.h
+
+// The diagnostics setters change the state of the stack. It lives in integrator storage that the
+// constant configuration names, so the checker sees only reads of the stack and asks for const.
+constParameterPointer:src/j1939_dm.c
