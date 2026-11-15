@@ -23,10 +23,13 @@ static const uint32_t rx_pgns[] = {PGN_DS, J1939_PGN_ADDRESS_CLAIMED};
 static const uint32_t req_pgns[] = {J1939_PGN_ADDRESS_CLAIMED};
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
+static j1939_ca_cfg_t ca_cfg[J1939_CFG_CA_MAX];
+static j1939_cfg_t cfg;
 static j1939_t s;
 
+/* Starts a stack without CAs; ca_add() gives it its CAs. */
 static void init(uint16_t rx_pgns_len) {
-	const j1939_cfg_t cfg = {
+	cfg = (j1939_cfg_t){
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
@@ -35,17 +38,19 @@ static void init(uint16_t rx_pgns_len) {
 	        .rx_pgns_len = rx_pgns_len,
 	        .req_pgns = req_pgns,
 	        .req_pgns_len = 1U,
+	        .ca = ca_cfg,
 	};
-
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 }
 
+/* Adds a CA to the configuration and starts the stack again with it: for the beginning of a
+ * test, before anything has happened on the stack. */
 static j1939_ca_id_t ca_add(uint8_t address, uint64_t name) {
-	j1939_ca_id_t id = 0xFFU;
+	j1939_ca_id_t id = cfg.ca_len;
 
-	TEST_ASSERT_EQUAL(
-	        J1939_RET_OK,
-	        j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = address, .name = name}, &id));
+	ca_cfg[id] = (j1939_ca_cfg_t){.address = address, .name = name};
+	cfg.ca_len++;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 	return id;
 }
 
@@ -96,7 +101,7 @@ static void tx_expect_claim(uint8_t sa, uint64_t name) {
 }
 
 static void tx_expect_empty(void) {
-	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.count);
 }
 
 static void expect_state(j1939_ca_id_t ca, j1939_addr_state_t state, uint8_t address) {
@@ -144,7 +149,7 @@ static void test_claim_is_sent_by_first_process(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(ca));
 
 	process(1000000U);
-	TEST_ASSERT_EQUAL_UINT16(1U, s.tx.ring.count); /* no new claim */
+	TEST_ASSERT_EQUAL_UINT16(1U, s.tx.count); /* no new claim */
 }
 
 /* J1939/81: only a CA claiming a self-configurable address waits 250 ms. */
@@ -298,7 +303,6 @@ static void test_arbitrary_ca_moves_to_free_address(void) {
 static void test_arbitrary_ca_skips_addresses_of_its_own_stack(void) {
 	j1939_ca_id_t a = ca_add(OWN, ARB | NAME_OWN);
 	j1939_ca_id_t b = ca_add(0x80U, NAME_LOSE);
-	j1939_ca_id_t c = 0xAAU;
 
 	process(0U);
 	tx_expect_claim(OWN, ARB | NAME_OWN);
@@ -308,11 +312,6 @@ static void test_arbitrary_ca_skips_addresses_of_its_own_stack(void) {
 	tx_expect_claim(0x81U, ARB | NAME_OWN);
 	expect_state(a, J1939_ADDR_STATE_CLAIMING, 0x81U);
 	expect_state(b, J1939_ADDR_STATE_CLAIMING, 0x80U);
-
-	/* The new address is in use by the stack. */
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = 0x81U}, &c));
-	TEST_ASSERT_EQUAL_HEX8(0xAAU, c);
 }
 
 static void test_arbitrary_ca_without_free_address_cannot_claim(void) {
@@ -504,18 +503,18 @@ static void test_request_send_uses_null_address_until_claimed(void) {
 
 static void test_full_tx_queue_delays_claims(void) {
 	j1939_ca_id_t a = ca_add(OWN, NAME_OWN);
-	j1939_ca_id_t b;
+	j1939_ca_id_t b = ca_add(0x80U, ARB | NAME_LOSE);
 	uint32_t i;
 
-	process(0U);
-	for (i = 1U; i < TX_LEN; i++) {
-		TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(a));
+	/* A Request for Address Claimed needs no address: these fill the queue before the
+	 * first claims. */
+	for (i = 0U; i < TX_LEN; i++) {
+		TEST_ASSERT_EQUAL(J1939_RET_OK,
+		                  j1939_request_send(&s, a, J1939_PGN_ADDRESS_CLAIMED, OTHER));
 	}
-	b = ca_add(0x80U, ARB | NAME_LOSE);
-	rx_request(J1939_ADDR_GLOBAL); /* a's answer does not fit: it waits for space */
 	process(0U);
+	expect_state(a, J1939_ADDR_STATE_UNCLAIMED, J1939_ADDR_NULL);
 	expect_state(b, J1939_ADDR_STATE_UNCLAIMED, J1939_ADDR_NULL);
-
 	for (i = 0U; i < TX_LEN; i++) {
 		(void)j1939_tx_pop(&s);
 	}
@@ -523,6 +522,20 @@ static void test_full_tx_queue_delays_claims(void) {
 	tx_expect_claim(OWN, NAME_OWN);
 	tx_expect_claim(0x80U, ARB | NAME_LOSE);
 	expect_state(b, J1939_ADDR_STATE_CLAIMING, 0x80U);
+
+	/* The answers to a Request for Address Claimed wait for space too. */
+	for (i = 0U; i < TX_LEN; i++) {
+		TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(a));
+	}
+	rx_request(J1939_ADDR_GLOBAL);
+	process(0U);
+	for (i = 0U; i < TX_LEN; i++) {
+		(void)j1939_tx_pop(&s);
+	}
+	process(0U);
+	tx_expect_claim(OWN, NAME_OWN);
+	tx_expect_claim(0x80U, ARB | NAME_LOSE);
+	tx_expect_empty();
 
 	/* b loses while the queue is full: the new claim waits for space. */
 	for (i = 0U; i < TX_LEN; i++) {

@@ -163,13 +163,15 @@ static j1939_tp_session_t *session_match(j1939_t *s, bool tx, uint8_t local, uin
 }
 
 /**
- * Reserves an unused session and a buffer from a pool.
+ * Reserves an unused session and a buffer, a transmit buffer for a sending session and a
+ * reassembly buffer otherwise.
  *
  * Returns NULL if either is missing, with the reason: J1939_TP_ABORT_BUSY without a free session,
  * J1939_TP_ABORT_RESOURCES without a free buffer. The reason is REASON_NONE on success.
  */
-static j1939_tp_session_t *session_new(j1939_t *s, j1939_tp_buf_t *pool, uint16_t pool_len,
-                                       uint8_t *reason) {
+static j1939_tp_session_t *session_new(j1939_t *s, bool tx, uint8_t *reason) {
+	j1939_tp_buf_t *pool = tx ? s->cfg->tp_tx_buf : s->cfg->tp_rx_buf;
+	uint16_t pool_len = tx ? s->cfg->tp_tx_buf_len : s->cfg->tp_rx_buf_len;
 	j1939_tp_session_t *found = NULL;
 	uint8_t i;
 
@@ -247,7 +249,7 @@ static void session_abort(j1939_t *s, j1939_tp_session_t *se, uint8_t reason) {
  * Commanded Address and receive objects may take a PGN for the stack only.
  */
 static bool tp_for_app(const j1939_t *s, uint32_t pgn) {
-	return j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, pgn);
+	return j1939_stack_pgn_listed(s->cfg->rx_pgns, s->cfg->rx_pgns_len, pgn);
 }
 
 /**
@@ -257,7 +259,7 @@ static bool tp_for_app(const j1939_t *s, uint32_t pgn) {
 static bool tp_msg_slot_free(j1939_t *s, const j1939_tp_session_t *se) {
 	uint16_t index;
 
-	return !tp_for_app(s, se->pgn) || j1939_ring_head(&s->msgs.ring, &index);
+	return !tp_for_app(s, se->pgn) || j1939_ring_head(&s->msgs, &index);
 }
 
 /**
@@ -369,7 +371,7 @@ static uint8_t rx_open(j1939_t *s, const j1939_msg_t *cm, uint8_t local, j1939_t
 
 	*out = NULL;
 	if (reason == REASON_NONE) {
-		*out = session_new(s, s->tp.rx_buf, s->tp.rx_buf_len, &reason);
+		*out = session_new(s, false, &reason);
 		if (*out == NULL) {
 			s->stats.tp_rx_refused++;
 		} else {
@@ -735,30 +737,13 @@ static void tp_pool_init(j1939_tp_buf_t *pool, uint16_t len) {
 	}
 }
 
-bool j1939_tp_cfg_valid(const j1939_cfg_t *cfg) {
-	return ((cfg->tp_tx_buf != NULL) || (cfg->tp_tx_buf_len == 0U)) &&
-	       ((cfg->tp_rx_buf != NULL) || (cfg->tp_rx_buf_len == 0U));
-}
+void j1939_tp_init(j1939_t *s) {
+	j1939_tp_buf_t *tx_buf = s->cfg->tp_tx_buf;
+	j1939_tp_buf_t *rx_buf = s->cfg->tp_rx_buf;
 
-void j1939_tp_init(j1939_t *s, const j1939_cfg_t *cfg) {
-	/* Locals keep cppcheck's MISRA 11.8 check from treating the buffers as const. */
-	j1939_tp_buf_t *tx_buf = cfg->tp_tx_buf;
-	j1939_tp_buf_t *rx_buf = cfg->tp_rx_buf;
-	uint8_t i;
-
-	for (i = 0U; i < SESSIONS; i++) {
-		s->tp.sessions[i].state = J1939_TP_IDLE;
-		s->tp.sessions[i].buf = NULL;
-	}
-	s->tp.tx_buf = tx_buf;
-	s->tp.tx_buf_len = cfg->tp_tx_buf_len;
-	s->tp.rx_buf = rx_buf;
-	s->tp.rx_buf_len = cfg->tp_rx_buf_len;
-	tp_pool_init(tx_buf, cfg->tp_tx_buf_len);
-	tp_pool_init(rx_buf, cfg->tp_rx_buf_len);
-	s->stats.tp_tx_aborted = 0U;
-	s->stats.tp_rx_aborted = 0U;
-	s->stats.tp_rx_refused = 0U;
+	/* The sessions start zeroed: idle, without a buffer. */
+	tp_pool_init(tx_buf, s->cfg->tp_tx_buf_len);
+	tp_pool_init(rx_buf, s->cfg->tp_rx_buf_len);
 }
 
 void j1939_tp_handle(j1939_t *s, const j1939_msg_t *msg) {
@@ -775,9 +760,9 @@ void j1939_tp_handle(j1939_t *s, const j1939_msg_t *msg) {
 void j1939_tp_msg_release(j1939_t *s, const uint8_t *data) {
 	uint16_t i;
 
-	for (i = 0U; i < s->tp.rx_buf_len; i++) {
-		if (s->tp.rx_buf[i].data == data) {
-			s->tp.rx_buf[i].used = false;
+	for (i = 0U; i < s->cfg->tp_rx_buf_len; i++) {
+		if (s->cfg->tp_rx_buf[i].data == data) {
+			s->cfg->tp_rx_buf[i].used = false;
 		}
 	}
 }
@@ -817,7 +802,7 @@ j1939_ret_t j1939_tp_send(j1939_t *s, uint8_t sa, const j1939_msg_t *msg) {
 	} else if (session_find(s, true, sa, msg->da) != NULL) {
 		ret = J1939_RET_ERR_BUSY;
 	} else {
-		j1939_tp_session_t *se = session_new(s, s->tp.tx_buf, s->tp.tx_buf_len, &reason);
+		j1939_tp_session_t *se = session_new(s, true, &reason);
 
 		ret = J1939_RET_ERR_FULL;
 		if (se != NULL) {

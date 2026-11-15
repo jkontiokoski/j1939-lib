@@ -11,10 +11,9 @@ It is for integrators; the transmission rules are in the API reference, topic *D
 | Copies the result into the stack | Answers Requests for DM1 and DM2 |
 | Decides whether a clear request (DM3, DM11) is allowed | Receives the clear request and acknowledges the decision |
 
-
 ## Enable diagnostics for a CA
 
-The application supplies the storage, sized for the most DTCs it reports at once:
+The application supplies the storage, sized for the most DTCs it reports at once, and names it in the CA's configuration:
 
 ```c
 static j1939_dtc_t active[8], prev[8];
@@ -22,15 +21,20 @@ static j1939_dm_hold_t hold[4];
 static uint8_t dm_buf[J1939_DM_BUF_LEN(8)];
 static j1939_dm_t dm;
 
-const j1939_dm_cfg_t dm_cfg = {
+static const j1939_dm_cfg_t dm_cfg = {
+	.state = &dm,
 	.active = active, .active_len = 8,
 	.prev = prev, .prev_len = 8,
 	.hold = hold, .hold_len = 4,          /* DTCs whose changes can trigger a DM1 per second */
 	.buf = dm_buf, .buf_len = sizeof(dm_buf),
 	.dm3_enable = false, .dm11_enable = true,
 };
-j1939_dm_init(&stack, ca, &dm, &dm_cfg);
+static const j1939_ca_cfg_t cas[] = {
+	{.address = 0x80U, .name = MY_NAME, .dm = &dm_cfg},   /* a CA without .dm has no diagnostics */
+};
 ```
+
+- Diagnostics start with no DTCs and all lamps off; `j1939_init()` starts them anew.
 
 - Two or more DTCs make a multi-packet DM1, so the stack needs a transport protocol transmit buffer (`tp_tx_buf`).
 - A DM1 with many DTCs is long on the bus; size the lists for what the bus can carry once per second.
@@ -97,5 +101,5 @@ A DM1 with more DTCs than `dtcs` holds returns `J1939_RET_ERR_FULL` and still re
 
 ## Reference
 
-API reference, topic *Diagnostics*: `j1939_dm_init()`, `j1939_dm_active_set()`, `j1939_dm_prev_set()`, `j1939_dm_lamps_set()`, `j1939_dm_clear_get()`, `j1939_dm_clear_confirm()`.
+API reference, topic *Diagnostics*: `j1939_dm_cfg_t`, `j1939_dm_active_set()`, `j1939_dm_prev_set()`, `j1939_dm_lamps_set()`, `j1939_dm_clear_get()`, `j1939_dm_clear_confirm()`.
 Topic *Diagnostic message codec*: `j1939_dtc_dm_parse()`, `j1939_dtc_dm_build()`, `j1939_dtc_t`, `j1939_dtc_lamps_t`.

@@ -41,6 +41,7 @@ static j1939_tp_buf_t tp_tx[1];
 static uint8_t bufs[OBJ_MAX][LONG];
 static j1939_txobj_cfg_t ocfg[OBJ_MAX];
 static j1939_txobj_t obj[OBJ_MAX];
+static j1939_ca_cfg_t ca_cfg[2];
 static j1939_cfg_t cfg;
 static j1939_t s;
 static j1939_ca_id_t ca;
@@ -79,7 +80,7 @@ static void process(uint32_t us) {
 }
 
 static void expect_none(void) {
-	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.count);
 }
 
 static void expect_frame(uint32_t id, const uint8_t *d, uint8_t len) {
@@ -197,7 +198,7 @@ static void tx_fill(void) {
 	                         .len = 0U,
 	                         .data = NULL};
 
-	while (s.tx.ring.count < TX_LEN) {
+	while (s.tx.count < TX_LEN) {
 		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_send(&s, ca, &msg));
 	}
 }
@@ -219,8 +220,24 @@ static void obj_def(uint16_t i, uint32_t pgn, uint32_t period, uint32_t inhibit)
 	                              .ca = ca};
 }
 
+/* Starts the stack again with a transmit object table. */
+static j1939_ret_t objs_try(const j1939_txobj_cfg_t *table, j1939_txobj_t *state, uint16_t n) {
+	cfg.txobj_cfg = table;
+	cfg.txobj = state;
+	cfg.txobj_len = n;
+	return j1939_init(&s, &cfg);
+}
+
+/* Starts the stack again with the first n objects of ocfg. */
 static void objs_init(uint16_t n) {
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_txobj_init(&s, ocfg, obj, n));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_try(ocfg, obj, n));
+}
+
+/* Adds a second CA to the configuration; the stack starts with it at the next objs_init(). */
+static j1939_ca_id_t ca2_add(void) {
+	ca_cfg[1] = (j1939_ca_cfg_t){.address = OWN2, .name = 2U};
+	cfg.ca_len = 2U;
+	return 1U;
 }
 
 static void set(uint16_t i, const uint8_t *d) {
@@ -233,14 +250,15 @@ static void stack_setup(uint8_t address, uint64_t name) {
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
 	        .msg_len = MSG_LEN,
+	        .ca = ca_cfg,
+	        .ca_len = 1U,
 	        .tp_tx_buf = tp_tx,
 	        .tp_tx_buf_len = 1U,
 	};
+	ca_cfg[0] = (j1939_ca_cfg_t){.address = address, .name = name};
 	own = address;
+	ca = 0U;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	TEST_ASSERT_EQUAL(
-	        J1939_RET_OK,
-	        j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = address, .name = name}, &ca));
 	(void)memset(bufs, 0, sizeof(bufs));
 }
 
@@ -433,7 +451,7 @@ static void test_lost_address_stops_and_the_next_claim_restarts(void) {
 	process(PERIOD);
 	/* The pending answer is dropped; the CA claims 0x80 and waits. */
 	TEST_ASSERT_EQUAL_UINT32(1U, j1939_stats_get(&s)->txobj_tx_dropped);
-	TEST_ASSERT_EQUAL_UINT16(1U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(1U, s.tx.count);
 	tx_drain();
 	process(J1939_ADDR_CLAIM_WAIT_US - 1U);
 	expect_none();
@@ -537,11 +555,8 @@ static void test_answer_not_sent_in_time_is_dropped(void) {
 }
 
 static void test_requests_for_other_cas_and_during_the_claim(void) {
-	j1939_ca_id_t ca2 = 0U;
-
 	stack_setup(SELF, NAME);
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN2, .name = 2U}, &ca2));
+	(void)ca2_add();
 	obj_def(0U, PGN_A, 0U, 0U);
 	objs_init(1U);
 	process(0U);
@@ -573,10 +588,9 @@ static void test_requests_for_other_cas_and_during_the_claim(void) {
 }
 
 static void test_objects_of_two_cas(void) {
-	j1939_ca_id_t ca2 = 0U;
+	j1939_ca_id_t ca2;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN2, .name = 2U}, &ca2));
+	ca2 = ca2_add();
 	obj_def(0U, PGN_A, 0U, 0U);
 	obj_def(1U, PGN_A, 0U, 0U);
 	ocfg[1].ca = ca2;
@@ -594,7 +608,6 @@ static void test_objects_of_two_cas(void) {
 }
 
 static void test_init_validates_every_entry(void) {
-	j1939_t s2;
 	const uint32_t req_pgns[] = {PGN_B};
 	const uint32_t owned[] = {J1939_PGN_REQUEST,
 	                          J1939_PGN_ACK,
@@ -609,63 +622,59 @@ static void test_init_validates_every_entry(void) {
 	uint32_t i;
 
 	obj_def(0U, PGN_A, PERIOD, 0U);
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(NULL, ocfg, obj, 1U));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, NULL, obj, 1U));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, NULL, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(NULL, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, NULL, 1U));
 	ocfg[0].buf = NULL;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	obj_def(0U, PGN_A, PERIOD, 0U);
 	ocfg[0].ca = 1U;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	obj_def(0U, 0xEF01U, PERIOD, 0U);
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	obj_def(0U, 0x40000U, PERIOD, 0U);
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	obj_def(0U, PGN_A, PERIOD, 0U);
 	ocfg[0].prio = 8U;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	obj_def(0U, PGN_A, PERIOD, 0U);
 	ocfg[0].len = 0U;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	ocfg[0].len = (uint16_t)(J1939_CFG_TP_BUF_SIZE + 1U);
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	/* Single frame PDU2 needs the global address; multi-packet goes with RTS/CTS. */
 	obj_def(0U, PGN_A, PERIOD, 0U);
 	ocfg[0].da = OTHER;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	ocfg[0].len = LONG;
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_txobj_init(&s, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_try(ocfg, obj, 1U));
 	obj_def(0U, PGN_P1, PERIOD, 0U);
 	ocfg[0].da = J1939_ADDR_NULL;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	for (i = 0U; i < (sizeof(owned) / sizeof(owned[0])); i++) {
 		obj_def(0U, owned[i], PERIOD, 0U);
-		TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, obj, 1U));
+		TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	}
 	/* Duplicate CA, PGN and destination. */
 	obj_def(0U, PGN_A, PERIOD, 0U);
 	obj_def(1U, PGN_A, 0U, INHIBIT);
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s, ocfg, obj, 2U));
-	/* A rejected table leaves the objects in use. */
-	TEST_ASSERT_EQUAL_UINT16(1U, s.txobj_len);
-	/* len 0 removes the objects. */
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_txobj_init(&s, NULL, NULL, 0U));
-	TEST_ASSERT_EQUAL_UINT16(0U, s.txobj_len);
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 2U));
+	/* A rejected table leaves a stack without objects. */
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_set(&s, 0U, data_a, 8U));
+	/* A stack may have no objects. */
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_try(NULL, NULL, 0U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_set(&s, 0U, data_a, 8U));
 	/* A PGN the application answers; multi-packet without a transport protocol buffer. */
 	cfg.req_pgns = req_pgns;
 	cfg.req_pgns_len = 1U;
 	cfg.tp_tx_buf = NULL;
 	cfg.tp_tx_buf_len = 0U;
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s2, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&s2, &(j1939_ca_cfg_t){.address = OWN, .name = NAME}, &ca));
 	obj_def(0U, PGN_B, PERIOD, 0U);
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s2, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	obj_def(0U, PGN_A, PERIOD, 0U);
 	ocfg[0].len = 9U;
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_txobj_init(&s2, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_try(ocfg, obj, 1U));
 	ocfg[0].len = 8U;
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_txobj_init(&s2, ocfg, obj, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_try(ocfg, obj, 1U));
 }
 
 static void test_set_rejects_invalid_input(void) {

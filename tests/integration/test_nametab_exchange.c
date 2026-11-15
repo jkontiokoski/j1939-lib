@@ -30,6 +30,8 @@
 
 typedef struct node {
 	j1939_t s;
+	j1939_cfg_t cfg;
+	j1939_ca_cfg_t ca_cfg;
 	j1939_ca_id_t ca;
 	j1939_port_frame_t tx[TX_LEN];
 	j1939_msg_slot_t msgs[MSG_LEN];
@@ -45,7 +47,7 @@ static test_bus_t bus;
 static j1939_nametab_entry_t entries[TABLE_LEN];
 
 static void node_init(node_t *n, uint8_t address, uint64_t name, bool accept_commanded) {
-	const j1939_cfg_t cfg = {
+	n->cfg = (j1939_cfg_t){
 	        .tx_buf = n->tx,
 	        .tx_len = TX_LEN,
 	        .msg_buf = n->msgs,
@@ -54,15 +56,13 @@ static void node_init(node_t *n, uint8_t address, uint64_t name, bool accept_com
 	        .tp_tx_buf_len = 1U,
 	        .tp_rx_buf = n->tp_rx,
 	        .tp_rx_buf_len = 1U,
+	        .ca = &n->ca_cfg,
+	        .ca_len = 1U,
 	};
-
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&n->s,
-	                               &(j1939_ca_cfg_t){.address = address,
-	                                                 .name = name,
-	                                                 .accept_commanded = accept_commanded},
-	                               &n->ca));
+	n->ca_cfg = (j1939_ca_cfg_t){
+	        .address = address, .name = name, .accept_commanded = accept_commanded};
+	n->ca = 0U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &n->cfg));
 }
 
 static void steps(uint32_t count) {
@@ -98,7 +98,9 @@ static void running_nodes(void) {
 
 static void joiner_online(uint8_t address) {
 	node_init(&joiner, address, NAME_JOINER, false);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&joiner.s, entries, TABLE_LEN));
+	joiner.cfg.nametab = entries;
+	joiner.cfg.nametab_len = TABLE_LEN;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&joiner.s, &joiner.cfg));
 	test_bus_attach(&bus, &joiner.s);
 }
 

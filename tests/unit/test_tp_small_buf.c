@@ -24,6 +24,8 @@ static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_tp_buf_t tp_tx[1];
 static j1939_tp_buf_t tp_rx[1];
 static const uint32_t rx_pgns[] = {PGN_A};
+static j1939_ca_cfg_t ca_cfg;
+static j1939_cfg_t cfg;
 static j1939_t s;
 static j1939_ca_id_t ca;
 
@@ -79,22 +81,23 @@ static void expect_cts(uint8_t packets, uint8_t next) {
 }
 
 void setUp(void) {
-	const j1939_cfg_t cfg = {
+	ca_cfg = (j1939_ca_cfg_t){.address = OWN, .name = 1U};
+	cfg = (j1939_cfg_t){
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
 	        .msg_len = MSG_LEN,
 	        .rx_pgns = rx_pgns,
 	        .rx_pgns_len = 1U,
+	        .ca = &ca_cfg,
+	        .ca_len = 1U,
 	        .tp_tx_buf = tp_tx,
 	        .tp_tx_buf_len = 1U,
 	        .tp_rx_buf = tp_rx,
 	        .tp_rx_buf_len = 1U,
 	};
-
+	ca = 0U;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN, .name = 1U}, &ca));
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s)); /* Address Claimed */
 }
@@ -204,11 +207,14 @@ static void test_dm_payload_beyond_the_buffer_is_rejected(void) {
 	static j1939_dtc_t dtcs[25];
 	static uint8_t buf[J1939_DM_BUF_LEN(25U)];
 	static j1939_dm_t dm;
-	j1939_dm_cfg_t c = {.prev = dtcs, .prev_len = 25U, .buf = buf, .buf_len = sizeof(buf)};
+	static j1939_dm_cfg_t c;
 
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_dm_init(&s, ca, &dm, &c));
+	c = (j1939_dm_cfg_t){
+	        .state = &dm, .prev = dtcs, .prev_len = 25U, .buf = buf, .buf_len = sizeof(buf)};
+	ca_cfg.dm = &c;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&s, &cfg));
 	c.prev_len = 24U;
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_dm_init(&s, ca, &dm, &c));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 }
 
 int main(void) {

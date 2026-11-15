@@ -22,6 +22,7 @@ Each deviation is listed in `cppcheck-suppressions.txt` or `cppcheck-misra-suppr
 | ---------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
 | `unusedFunction`                               | All                  | Public API functions have no callers inside the library                    |
 | `preprocessorErrorDirective`                   | `j1939_config.h`     | The optional `J1939_CONFIG_FILE` include is resolved only in integrator builds |
+| `constParameterPointer`                        | `j1939_dm.c`         | The diagnostics setters change the stack's state, which lives in storage named by the constant configuration; the checker sees only reads of the stack |
 | MISRA 2.5 (unused macro)                       | `include/j1939/`     | Public headers define macros for the integrator's use                     |
 
 ## Verification

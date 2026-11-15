@@ -53,10 +53,9 @@
  *    application if its PGN is in rx_pgns. The rest is dropped.
  *
  * All functions of a stack instance run in one execution context. All memory
- * is supplied by the integrator through j1939_cfg_t. When the message slots
- * or the tx queue are full, the stack drops the message or frame it generated
- * and counts it in j1939_stats_t; application sends report J1939_RET_ERR_FULL
- * instead.
+ * is supplied by the integrator through j1939_cfg_t, in one call to j1939_init(). When the message
+ * slots or the tx queue are full, the stack drops the message or frame it generated and counts it
+ * in j1939_stats_t; application sends report J1939_RET_ERR_FULL instead.
  *
  * @{
  */
@@ -67,22 +66,43 @@ typedef struct j1939_msg_slot {
 	uint8_t data[J1939_MSG_SINGLE_FRAME_MAX]; /**< Payload of single frame messages. */
 } j1939_msg_slot_t;
 
-/** Stack configuration. All buffers and lists must outlive the stack instance. */
+/**
+ * Stack configuration: everything a stack instance uses, given to j1939_init() in one piece.
+ *
+ * The stack keeps a pointer to the configuration, so the struct, and every buffer, list and
+ * table it names, must outlive the stack instance. A part that is not used is left out: a
+ * NULL pointer with a length of 0. j1939_init() says what makes a configuration valid.
+ */
 typedef struct j1939_cfg {
 	j1939_port_frame_t *tx_buf; /**< Transmit frame queue storage. */
 	uint16_t tx_len;            /**< Frames in tx_buf, at least 1. */
 	j1939_msg_slot_t *msg_buf;  /**< Received message storage. */
 	uint16_t msg_len;           /**< Slots in msg_buf, at least 1. */
-	const uint32_t *rx_pgns;    /**< PGNs delivered to the application. May be NULL if empty. */
+	const uint32_t *rx_pgns;    /**< PGNs delivered to the application. */
 	uint16_t rx_pgns_len;       /**< Entries in rx_pgns. */
-	const uint32_t
-	        *req_pgns; /**< PGNs the application answers Requests for. May be NULL if empty. */
-	uint16_t req_pgns_len; /**< Entries in req_pgns. */
+	const uint32_t *req_pgns;   /**< PGNs the application answers Requests for. */
+	uint16_t req_pgns_len;      /**< Entries in req_pgns. */
+
+	/** Controller Applications, see @ref grp_addr. The index of a CA is its j1939_ca_id_t. */
+	const j1939_ca_cfg_t *ca;
+	uint8_t ca_len; /**< Entries in ca, at most J1939_CFG_CA_MAX. */
+
+	/** NAME table storage, one entry per other node expected, see @ref grp_nametab. */
+	j1939_nametab_entry_t *nametab;
+	uint16_t nametab_len; /**< Entries in nametab. */
+
+	const j1939_rxobj_cfg_t *rxobj_cfg; /**< Receive object table, see @ref grp_rxobj. */
+	j1939_rxobj_t *rxobj;               /**< State storage, one entry per receive object. */
+	uint16_t rxobj_len;                 /**< Entries in rxobj_cfg and in rxobj. */
+
+	const j1939_txobj_cfg_t *txobj_cfg; /**< Transmit object table, see @ref grp_txobj. */
+	j1939_txobj_t *txobj;               /**< State storage, one entry per transmit object. */
+	uint16_t txobj_len;                 /**< Entries in txobj_cfg and in txobj. */
 
 #if J1939_TP_ENABLE
-	j1939_tp_buf_t *tp_tx_buf; /**< Multi-packet transmit buffers. May be NULL if empty. */
+	j1939_tp_buf_t *tp_tx_buf; /**< Multi-packet transmit buffers, see @ref grp_tp. */
 	uint16_t tp_tx_buf_len;    /**< Entries in tp_tx_buf. */
-	j1939_tp_buf_t *tp_rx_buf; /**< Multi-packet reassembly buffers. May be NULL if empty. */
+	j1939_tp_buf_t *tp_rx_buf; /**< Multi-packet reassembly buffers. */
 	uint16_t tp_rx_buf_len;    /**< Entries in tp_rx_buf. */
 #endif
 } j1939_cfg_t;
@@ -105,69 +125,48 @@ typedef struct j1939_stats {
 	uint32_t nametab_dropped;  /**< New NAMEs not recorded: NAME table full. */
 } j1939_stats_t;
 
-/** Transmit frame queue. Members are private. */
-typedef struct j1939_tx_queue {
-	j1939_port_frame_t *buf; /**< Integrator storage. */
-	j1939_ring_t ring;       /**< Indices into buf. */
-} j1939_tx_queue_t;
-
-/** Message slot queue. Members are private. */
-typedef struct j1939_msg_queue {
-	j1939_msg_slot_t *buf; /**< Integrator storage. */
-	j1939_ring_t ring;     /**< Indices into buf. */
-} j1939_msg_queue_t;
-
 /** Stack instance. Allocated by the integrator, members are private. */
 struct j1939 {
-	j1939_tx_queue_t tx;             /**< Frames to transmit. */
-	j1939_msg_queue_t msgs;          /**< Messages for the application. */
-	const uint32_t *rx_pgns;         /**< See j1939_cfg_t. */
-	uint16_t rx_pgns_len;            /**< See j1939_cfg_t. */
-	const uint32_t *req_pgns;        /**< See j1939_cfg_t. */
-	uint16_t req_pgns_len;           /**< See j1939_cfg_t. */
-	j1939_ca_t ca[J1939_CFG_CA_MAX]; /**< Controller Applications. */
-	uint8_t ca_count;                /**< Controller Applications in use. */
-	j1939_stats_t stats;             /**< Event counters. */
+	const j1939_cfg_t *cfg; /**< Configuration given to j1939_init(). */
+	j1939_ring_t tx;        /**< Frames to transmit: indices into cfg->tx_buf. */
+	j1939_ring_t msgs;      /**< Messages for the application: indices into cfg->msg_buf. */
+	j1939_ca_t ca[J1939_CFG_CA_MAX]; /**< State of the Controller Applications. */
 	/** Self-configurable addresses claimed by other nodes, one bit each. */
 	uint8_t addr_taken[J1939_ADDR_TAKEN_LEN];
+	j1939_nametab_t nametab; /**< NAME table state. */
 #if J1939_TP_ENABLE
-	j1939_tp_t tp; /**< Transport protocol sessions and buffers. */
+	j1939_tp_t tp; /**< Transport protocol sessions. */
 #endif
-	/** Diagnostic state of each CA; NULL while diagnostics are not enabled. */
-	j1939_dm_t *dm[J1939_CFG_CA_MAX];
-	const j1939_rxobj_cfg_t *rxobj_cfg; /**< Receive object table; NULL if none. */
-	j1939_rxobj_t *rxobj;               /**< Receive object states; NULL if none. */
-	uint16_t rxobj_len;                 /**< Receive objects. */
-	const j1939_txobj_cfg_t *txobj_cfg; /**< Transmit objects; NULL while none are set. */
-	j1939_txobj_t *txobj;               /**< State of the transmit objects. */
-	uint16_t txobj_len;                 /**< Number of transmit objects. */
-	j1939_nametab_t nametab;            /**< NAME table. */
+	j1939_stats_t stats; /**< Event counters. */
 };
 
 /**
- * @brief Initialises a stack instance.
+ * @brief Sets up a stack instance from its configuration.
  *
- * PGNs in the lists must be valid: at most J1939_PGN_MAX, lowest byte 0 for
- * PDU1 formats.
+ * This is the only setup call. The stack keeps @p cfg, which must outlive it. Everything
+ * starts from the beginning: the queues are empty, the counters 0, every CA starts its claim
+ * with the next j1939_process(), the NAME table is empty, the receive objects have no data and
+ * the payload buffers of the transmit objects are filled with 0xFF.
  *
- * @return J1939_RET_OK, or J1939_RET_ERR_ARG if a pointer, length or PGN is invalid.
- */
-j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg);
-
-/**
- * @brief Adds a Controller Application.
+ * A configuration is valid if:
  *
- * The CA claims its preferred address with the next j1939_process() and may
- * transmit once the claim succeeds, see j1939_addr.h.
+ * - tx_buf and msg_buf hold at least one entry each;
+ * - every other pointer is set where its length is above 0;
+ * - the PGNs in rx_pgns and req_pgns are valid: at most J1939_PGN_MAX, lowest byte 0 for PDU1
+ *   formats;
+ * - there are at most J1939_CFG_CA_MAX CAs, each with an address of at most 253 that no other
+ *   CA of the stack has;
+ * - the receive objects, the transmit objects and the diagnostics of each CA are valid, see
+ *   j1939_rxobj_cfg_t, j1939_txobj_cfg_t and j1939_dm_cfg_t.
+ *
+ * With an invalid configuration the stack is left without CAs, queues and tables: every later
+ * call on it does nothing or reports an error, until j1939_init() succeeds.
  *
  * @param s    Stack.
- * @param cfg  CA configuration.
- * @param id   Handle of the new CA. Written only on success.
- * @return J1939_RET_OK, J1939_RET_ERR_FULL if J1939_CFG_CA_MAX CAs exist, or
- *         J1939_RET_ERR_ARG on a NULL pointer, an address above 253 or an
- *         address already used by another CA of this stack.
+ * @param cfg  Configuration.
+ * @return J1939_RET_OK, or J1939_RET_ERR_ARG on a NULL pointer or an invalid configuration.
  */
-j1939_ret_t j1939_ca_add(j1939_t *s, const j1939_ca_cfg_t *cfg, j1939_ca_id_t *id);
+j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg);
 
 /**
  * @brief Handles a received frame.

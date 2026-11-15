@@ -16,7 +16,7 @@ A PGN may use a receive object and a message slot at the same time; the object i
 
 ## Receive objects
 
-Describe the received PGNs in a `const` table, typically generated, and give the stack a state array of the same length:
+Describe the received PGNs in a `const` table, typically generated, and give the stack a state array of the same length, both in the stack's `j1939_cfg_t`:
 
 ```c
 enum { RX_PUMP, RX_COUNT };                       /* handles: indexes into the table */
@@ -28,8 +28,7 @@ static const j1939_rxobj_cfg_t rx_cfg[RX_COUNT] = {
 	             .timeout_us = 500000U},           /* five times its 100 ms period */
 };
 static j1939_rxobj_t rx_obj[RX_COUNT];
-
-j1939_rxobj_init(&stack, rx_cfg, rx_obj, RX_COUNT);
+/* in j1939_cfg_t: .rxobj_cfg = rx_cfg, .rxobj = rx_obj, .rxobj_len = RX_COUNT */
 ```
 
 Read the state, then decode in place from the object's buffer:
@@ -57,7 +56,6 @@ if ((j1939_rxobj_get(&stack, RX_PUMP, &st) == J1939_RET_OK) && (st.state == J193
 - An object bound to a source address takes whatever node holds that address: when a node loses it, the node that claims it next reaches the same object.
 
 ### Follow a node by NAME
-
 Set `name` instead of `sa` to receive a PGN from one node wherever it is on the bus. The object then takes the PGN from the address the [NAME table](addressing.md) records for that NAME, and keeps receiving when the node moves to another address. It is one more entry of the same table, with its own buffer:
 
 ```c
@@ -70,15 +68,16 @@ static uint8_t pump_by_name_buf[8];
 	                     .timeout_us = 500000U},
 
 static j1939_nametab_entry_t names[16];
-j1939_nametab_init(&stack, names, 16U);                  /* before j1939_rxobj_init() */
+/* in j1939_cfg_t: .nametab = names, .nametab_len = 16 */
 ```
 
+- An object bound by NAME needs the NAME table: `j1939_init()` rejects it without one.
 - While the NAME has no address, or before the table has learned it, nothing reaches the object and its timeout runs as usual.
 - A table can mix objects bound by address and by NAME; a message that matches one of each updates both.
 
 ## Transmit objects
 
-Describe the transmitted PGNs the same way, after the CAs are added:
+Describe the transmitted PGNs the same way; `ca` is the index of the sending CA in `j1939_cfg_t::ca`:
 
 ```c
 enum { TX_PUMP, TX_IDENT, TX_COUNT };
@@ -91,8 +90,7 @@ static const j1939_txobj_cfg_t tx_cfg[TX_COUNT] = {
 	              .da = J1939_ADDR_GLOBAL, .ca = 0U},                  /* on Request only */
 };
 static j1939_txobj_t tx_obj[TX_COUNT];
-
-j1939_txobj_init(&stack, tx_cfg, tx_obj, TX_COUNT);
+/* in j1939_cfg_t: .txobj_cfg = tx_cfg, .txobj = tx_obj, .txobj_len = TX_COUNT */
 ```
 
 | `period_us` | `inhibit_us` | Sent |
@@ -113,12 +111,12 @@ uint8_t payload[8];
 (void)j1939_txobj_set(&stack, TX_PUMP, payload, sizeof(payload));
 ```
 
-- Until the first `j1939_txobj_set()` the object sends all 0xFF, so receivers see the node with no values yet.
+- `j1939_init()` fills the payload buffers with 0xFF: until the first `j1939_txobj_set()` the object sends all 0xFF, so receivers see the node with no values yet.
 - Nothing is sent before the object's CA has claimed its address. Periodic and change-triggered objects go out once as soon as the claim completes.
 - Never write the object's buffer directly; only `j1939_txobj_set()` detects changes.
 
 ## Reference
 
-API reference, topic *Receive objects*: `j1939_rxobj_init()`, `j1939_rxobj_get()`, `j1939_rxobj_cfg_t`.
-Topic *Transmit objects*: `j1939_txobj_init()`, `j1939_txobj_set()`, `j1939_txobj_cfg_t`.
+API reference, topic *Receive objects*: `j1939_rxobj_cfg_t`, `j1939_rxobj_get()`.
+Topic *Transmit objects*: `j1939_txobj_cfg_t`, `j1939_txobj_set()`.
 Memory per object: [Configuration](../configuration.md).

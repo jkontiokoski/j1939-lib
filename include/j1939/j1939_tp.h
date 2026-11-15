@@ -177,10 +177,6 @@ typedef struct j1939_tp_session {
 /** Transport protocol state of a stack. Members are private. */
 typedef struct j1939_tp {
 	j1939_tp_session_t sessions[J1939_CFG_TP_SESSIONS]; /**< Session pool. */
-	j1939_tp_buf_t *tx_buf;                             /**< Transmit buffers. */
-	j1939_tp_buf_t *rx_buf;                             /**< Reassembly buffers. */
-	uint16_t tx_buf_len;                                /**< Entries in tx_buf. */
-	uint16_t rx_buf_len;                                /**< Entries in rx_buf. */
 } j1939_tp_t;
 #endif
 

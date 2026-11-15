@@ -32,25 +32,32 @@
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_nametab_entry_t entries[TABLE_LEN];
+static j1939_ca_cfg_t ca_cfg;
+static j1939_cfg_t cfg;
 static j1939_t s;
 static j1939_ca_id_t ca;
 
 static void stack_init(bool with_ca, uint8_t address) {
-	const j1939_cfg_t cfg = {
+	ca_cfg = (j1939_ca_cfg_t){.address = address, .name = NAME_OWN};
+	cfg = (j1939_cfg_t){
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
 	        .msg_len = MSG_LEN,
+	        .ca = &ca_cfg,
+	        .ca_len = with_ca ? 1U : 0U,
+	        .nametab = entries,
+	        .nametab_len = TABLE_LEN,
 	};
-
+	ca = 0U;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	if (with_ca) {
-		TEST_ASSERT_EQUAL(
-		        J1939_RET_OK,
-		        j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = address, .name = NAME_OWN},
-		                     &ca));
-	}
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, entries, TABLE_LEN));
+}
+
+/* Starts the stack again without a NAME table. */
+static void stack_init_without_table(void) {
+	cfg.nametab = NULL;
+	cfg.nametab_len = 0U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 }
 
 static void process(uint32_t us) {
@@ -142,17 +149,18 @@ static void test_entry_is_12_bytes(void) {
 	TEST_ASSERT_EQUAL(12U, sizeof(j1939_nametab_entry_t));
 }
 
-static void test_init_checks_arguments(void) {
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_nametab_init(NULL, entries, TABLE_LEN));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_nametab_init(&s, NULL, 1U));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, NULL, 0U));
+static void test_init_checks_the_table_storage(void) {
+	cfg.nametab = NULL;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&s, &cfg));
+	cfg.nametab_len = 0U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 }
 
 static void test_without_table_nothing_is_recorded_or_sent(void) {
 	uint64_t name = 0U;
 	uint8_t address = 0U;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, NULL, 0U));
+	stack_init_without_table();
 	process(0U);
 	expect_claim(OWN);
 	expect_empty();
@@ -336,30 +344,23 @@ static void test_address_get_of_unknown_name_is_empty(void) {
 }
 
 static void test_init_again_empties_the_table_and_requests_again(void) {
-	uint16_t changes;
-
 	start();
 	rx_claim(PEER, NAME_A);
-	changes = j1939_nametab_changes(&s);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, entries, TABLE_LEN));
+	TEST_ASSERT_EQUAL(1U, j1939_nametab_count(&s));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 	TEST_ASSERT_EQUAL(0U, j1939_nametab_count(&s));
-	TEST_ASSERT_EQUAL(changes + 1U, j1939_nametab_changes(&s));
-	process(0U);
-	expect_request(J1939_ADDR_GLOBAL, OWN);
-	expect_claim(OWN);
-	expect_empty();
+	TEST_ASSERT_EQUAL(0U, j1939_nametab_changes(&s));
+	start();
 }
 
-static void test_stack_init_removes_the_table(void) {
-	const j1939_cfg_t cfg = {
-	        .tx_buf = tx_buf, .tx_len = TX_LEN, .msg_buf = msg_buf, .msg_len = MSG_LEN};
+static void test_init_without_table_removes_it(void) {
 	uint64_t name = 0U;
 
 	rx_claim(PEER, NAME_A);
 	rx_claim(OTHER, NAME_B);
 	rx_claim(THIRD, NAME_C);
 	rx_claim(0x45U, NAME_D);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
+	stack_init_without_table();
 	TEST_ASSERT_EQUAL(0U, j1939_nametab_count(&s));
 	TEST_ASSERT_EQUAL(0U, j1939_stats_get(&s)->nametab_dropped);
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_STATE, j1939_nametab_name_get(&s, PEER, &name));
@@ -386,9 +387,14 @@ static void test_startup_request_waits_for_the_claim(void) {
 }
 
 static void test_startup_request_is_retried_while_the_tx_queue_is_full(void) {
-	start();
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, entries, TABLE_LEN));
-	fill_tx_queue();
+	uint32_t i;
+
+	/* Room for the claim only: a Request for Address Claimed to one node needs no address
+	 * and does not replace the startup Request. */
+	for (i = 1U; i < TX_LEN; i++) {
+		TEST_ASSERT_EQUAL(J1939_RET_OK,
+		                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, PEER));
+	}
 	process(0U);
 	drain();
 	process(0U);
@@ -505,7 +511,7 @@ static void test_entry_at_an_address_the_stack_holds_is_not_reported(void) {
 int main(void) {
 	UNITY_BEGIN();
 	RUN_TEST(test_entry_is_12_bytes);
-	RUN_TEST(test_init_checks_arguments);
+	RUN_TEST(test_init_checks_the_table_storage);
 	RUN_TEST(test_without_table_nothing_is_recorded_or_sent);
 	RUN_TEST(test_api_checks_arguments);
 	RUN_TEST(test_claim_is_recorded);
@@ -522,7 +528,7 @@ int main(void) {
 	RUN_TEST(test_at_lists_entries_in_arrival_order);
 	RUN_TEST(test_address_get_of_unknown_name_is_empty);
 	RUN_TEST(test_init_again_empties_the_table_and_requests_again);
-	RUN_TEST(test_stack_init_removes_the_table);
+	RUN_TEST(test_init_without_table_removes_it);
 	RUN_TEST(test_startup_request_is_sent_once);
 	RUN_TEST(test_startup_request_waits_for_the_claim);
 	RUN_TEST(test_startup_request_is_retried_while_the_tx_queue_is_full);

@@ -44,33 +44,36 @@ static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
 static j1939_tp_buf_t tp_tx[BUF_LEN];
 static j1939_tp_buf_t tp_rx[BUF_LEN];
+static j1939_ca_cfg_t ca_cfg[J1939_CFG_CA_MAX];
+static j1939_cfg_t cfg;
 static j1939_t s;
 
+/* Starts a stack without CAs; ca_add() gives it its CAs. */
 static void init(const uint32_t *rx_pgns, uint16_t rx_pgns_len, uint16_t tp_tx_len) {
-	const j1939_cfg_t cfg = {
+	cfg = (j1939_cfg_t){
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
 	        .msg_len = MSG_LEN,
 	        .rx_pgns = rx_pgns,
 	        .rx_pgns_len = rx_pgns_len,
+	        .ca = ca_cfg,
 	        .tp_tx_buf = tp_tx,
 	        .tp_tx_buf_len = tp_tx_len,
 	        .tp_rx_buf = tp_rx,
 	        .tp_rx_buf_len = BUF_LEN,
 	};
-
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 }
 
+/* Adds a CA to the configuration and starts the stack again with it: for the beginning of a
+ * test, before anything has happened on the stack. */
 static j1939_ca_id_t ca_add(uint8_t address, uint64_t name, bool accept) {
-	j1939_ca_id_t id = 0xFFU;
+	j1939_ca_id_t id = cfg.ca_len;
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_ca_add(&s,
-	                                             &(j1939_ca_cfg_t){.address = address,
-	                                                               .name = name,
-	                                                               .accept_commanded = accept},
-	                                             &id));
+	ca_cfg[id] = (j1939_ca_cfg_t){.address = address, .name = name, .accept_commanded = accept};
+	cfg.ca_len++;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 	return id;
 }
 
@@ -164,7 +167,7 @@ static void tx_expect_cm(uint8_t sa, uint8_t da, uint8_t prio, uint8_t ctrl, uin
 }
 
 static void tx_expect_empty(void) {
-	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.count);
 }
 
 static void tx_drain(void) {
@@ -457,15 +460,22 @@ static void test_command_leaves_cannot_claim(void) {
 	tx_expect_empty();
 }
 
-/* A CA whose claim has not gone out yet claims the commanded address instead. */
-static void test_command_before_first_claim(void) {
-	j1939_ca_id_t a = claimed_ca(NAME_LOSE);
-	j1939_ca_id_t b = ca_add(OWN_B, NAME_OWN, true);
+/* Fills the tx queue before any CA has an address: a Request for Address Claimed needs none. */
+static void tx_fill_before_claims(j1939_ca_id_t ca) {
 	uint32_t i;
 
 	for (i = 0U; i < TX_LEN; i++) {
-		TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(a));
+		TEST_ASSERT_EQUAL(J1939_RET_OK,
+		                  j1939_request_send(&s, ca, J1939_PGN_ADDRESS_CLAIMED, PEER));
 	}
+}
+
+/* A CA whose claim has not gone out yet claims the commanded address instead. */
+static void test_command_before_first_claim(void) {
+	j1939_ca_id_t a = ca_add(OWN, NAME_LOSE, true);
+	j1939_ca_id_t b = ca_add(OWN_B, NAME_OWN, true);
+
+	tx_fill_before_claims(a);
 	rx_command_bam(NAME_OWN, NEW);
 	process(0U);
 	expect_state(b, J1939_ADDR_STATE_UNCLAIMED, J1939_ADDR_NULL);
@@ -475,23 +485,24 @@ static void test_command_before_first_claim(void) {
 	expect_state(b, J1939_ADDR_STATE_UNCLAIMED, J1939_ADDR_NULL);
 	tx_drain();
 	process(0U);
+	tx_expect_claim(OWN, NAME_LOSE);
 	tx_expect_claim(NEW, NAME_OWN);
 	tx_expect_empty();
 	expect_state(b, J1939_ADDR_STATE_CLAIMED, NEW);
 
 	/* Commanded to the address it is about to claim: the claim goes out as usual. */
 	init(NULL, 0U, BUF_LEN);
-	a = claimed_ca(NAME_LOSE);
+	a = ca_add(OWN, NAME_LOSE, true);
 	b = ca_add(OWN_B, NAME_OWN, true);
-	for (i = 0U; i < TX_LEN; i++) {
-		TEST_ASSERT_EQUAL(J1939_RET_OK, send_bc(a));
-	}
+	tx_fill_before_claims(a);
 	rx_command_bam(NAME_OWN, OWN_B);
 	process(0U);
 	tx_drain();
 	process(0U);
+	tx_expect_claim(OWN, NAME_LOSE);
 	tx_expect_claim(OWN_B, NAME_OWN);
 	tx_expect_empty();
+	expect_state(b, J1939_ADDR_STATE_CLAIMED, OWN_B);
 }
 
 /* RTS/CTS to the old address: EndOfMsgAck from it, then the claim; other sessions end. */

@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "j1939/j1939_dm.h"
 #include "j1939/j1939_types.h"
 
 /**
@@ -31,7 +32,7 @@
  * | CLAIMED                    | Yes          | Everything                      |
  * | CANNOT_CLAIM               | No           | Request for Address Claimed     |
  *
- * - The first j1939_process() after j1939_ca_add() sends Address Claimed (PGN
+ * - The first j1939_process() after j1939_init() sends Address Claimed (PGN
  *   60928, to the global address, the NAME as data) from the preferred
  *   address. It is retried by later calls while the tx queue is full.
  * - A CA whose address is outside J1939_ADDR_SELF_CFG_MIN..MAX is CLAIMED as
@@ -143,7 +144,10 @@
 /** Cannot Claim delay unit; the delay is 0..255 units, 0..153 ms. */
 #define J1939_ADDR_CANNOT_CLAIM_STEP_US 600U
 
-/** Controller Application configuration. */
+/**
+ * Controller Application configuration, an entry of j1939_cfg_t::ca. Its index there is the
+ * CA's handle, j1939_ca_id_t.
+ */
 typedef struct j1939_ca_cfg {
 	uint8_t address; /**< Preferred address, 0..253. */
 	uint64_t name;   /**< NAME, see j1939_name.h. Must be unique on the network. */
@@ -151,6 +155,8 @@ typedef struct j1939_ca_cfg {
 	bool accept_commanded;
 	/** true: ask for the other nodes' claims before claiming (request before claim). */
 	bool request_before_claim;
+	/** Diagnostics of the CA, see @ref grp_dm; NULL: none. */
+	const j1939_dm_cfg_t *dm;
 } j1939_ca_cfg_t;
 
 #define J1939_ADDR_SELF_CFG_MIN 128U /**< First self-configurable address. */

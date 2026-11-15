@@ -14,6 +14,8 @@
 
 typedef struct node {
 	j1939_t s;
+	j1939_cfg_t cfg;
+	j1939_ca_cfg_t ca_cfg;
 	j1939_ca_id_t ca;
 	j1939_port_frame_t tx[LEN];
 	j1939_msg_slot_t msgs[LEN];
@@ -28,25 +30,25 @@ static node_t m; /* monitor: no CA, receives every Address Claimed */
 static test_bus_t bus;
 
 static void node_init(node_t *n, bool monitor) {
-	const j1939_cfg_t cfg = {
+	n->cfg = (j1939_cfg_t){
 	        .tx_buf = n->tx,
 	        .tx_len = LEN,
 	        .msg_buf = n->msgs,
 	        .msg_len = LEN,
 	        .rx_pgns = monitor ? claim_pgns : NULL,
 	        .rx_pgns_len = monitor ? 1U : 0U,
-	        .req_pgns = NULL,
-	        .req_pgns_len = 0U,
+	        .ca = &n->ca_cfg,
 	};
-
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &cfg));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &n->cfg));
 	test_bus_attach(&bus, &n->s);
 }
 
+/* Gives a node its CA and starts its stack again: the node has done nothing before. */
 static void ca_add(node_t *n, uint8_t address, uint64_t name) {
-	TEST_ASSERT_EQUAL(
-	        J1939_RET_OK,
-	        j1939_ca_add(&n->s, &(j1939_ca_cfg_t){.address = address, .name = name}, &n->ca));
+	n->ca_cfg = (j1939_ca_cfg_t){.address = address, .name = name};
+	n->cfg.ca_len = 1U;
+	n->ca = 0U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &n->cfg));
 }
 
 /* Advances every node's time by elapsed_us, then lets the bus settle. */

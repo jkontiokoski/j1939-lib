@@ -43,8 +43,8 @@ static const j1939_rxobj_cfg_t objs_cfg[OBJ_COUNT] = {
         {buf_tp, PGN_TP, 0U, 20U, 9U, 0U, PEER_NAME},
 };
 static j1939_rxobj_t objs[OBJ_COUNT];
+static j1939_cfg_t cfg;
 static j1939_t s;
-static j1939_ca_id_t ca;
 
 static const uint8_t pay1[8] = {1U, 1U, 1U, 1U, 1U, 1U, 1U, 1U};
 static const uint8_t pay2[8] = {2U, 2U, 2U, 2U, 2U, 2U, 2U, 2U};
@@ -85,23 +85,31 @@ static j1939_rxobj_status_t status_of(uint16_t index) {
 	return st;
 }
 
+/* Starts a stack without receive objects, with or without a NAME table. */
 static void stack_init(bool with_names) {
-	const j1939_cfg_t cfg = {
+	static const j1939_ca_cfg_t ca_cfg = {.address = OWN, .name = OWN_NAME};
+
+	cfg = (j1939_cfg_t){
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
 	        .msg_buf = msg_buf,
 	        .msg_len = MSG_LEN,
+	        .ca = &ca_cfg,
+	        .ca_len = 1U,
+	        .nametab = with_names ? names : NULL,
+	        .nametab_len = with_names ? NAMES_LEN : 0U,
 	        .tp_rx_buf = tp_rx,
 	        .tp_rx_buf_len = 1U,
 	};
-
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	TEST_ASSERT_EQUAL(
-	        J1939_RET_OK,
-	        j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN, .name = OWN_NAME}, &ca));
-	if (with_names) {
-		TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, names, NAMES_LEN));
-	}
+}
+
+/* Starts the stack again with a receive object table. */
+static j1939_ret_t objs_init(const j1939_rxobj_cfg_t *table, j1939_rxobj_t *state, uint16_t len) {
+	cfg.rxobj_cfg = table;
+	cfg.rxobj = state;
+	cfg.rxobj_len = len;
+	return j1939_init(&s, &cfg);
 }
 
 void setUp(void) {
@@ -109,7 +117,7 @@ void setUp(void) {
 	(void)memset(buf_sa, 0, sizeof(buf_sa));
 	(void)memset(buf_tp, 0, sizeof(buf_tp));
 	stack_init(true);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&s, objs_cfg, objs, OBJ_COUNT));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_init(objs_cfg, objs, OBJ_COUNT));
 	process(0U); /* claims OWN, then the startup Request of the NAME table */
 	process(0U);
 	drain();
@@ -126,9 +134,9 @@ static void test_cfg_size(void) {
 
 static void test_init_rejects_name_without_table(void) {
 	stack_init(false);
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_init(&s, objs_cfg, objs, OBJ_COUNT));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_init(objs_cfg, objs, OBJ_COUNT));
 	/* An address-only table is accepted without a NAME table. */
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&s, &objs_cfg[OBJ_SA], objs, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_init(&objs_cfg[OBJ_SA], objs, 1U));
 }
 
 static void test_init_rejects_duplicate_name(void) {
@@ -143,10 +151,10 @@ static void test_init_rejects_duplicate_name(void) {
 	/* With a NAME, sa is ignored: even 254 is accepted. */
 	const j1939_rxobj_cfg_t sa_ignored = {b, PGN_A, 0U, 8U, 8U, J1939_ADDR_NULL, PEER_NAME};
 
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_rxobj_init(&s, dup, o, 2U));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&s, mixed, o, 2U));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&s, other_pgn, o, 2U));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&s, &sa_ignored, o, 1U));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, objs_init(dup, o, 2U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_init(mixed, o, 2U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_init(other_pgn, o, 2U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_init(&sa_ignored, o, 1U));
 }
 
 static void test_unknown_name_receives_nothing(void) {
@@ -250,7 +258,7 @@ static void test_two_names_same_pgn(void) {
 	const j1939_rxobj_cfg_t two[2] = {{b_peer, PGN_A, 0U, 8U, 8U, 0U, PEER_NAME},
 	                                  {b_other, PGN_A, 0U, 8U, 8U, 0U, OTHER_NAME}};
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&s, two, o, 2U));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, objs_init(two, o, 2U));
 	rx_claim(PEER, PEER_NAME);
 	rx_claim(OTHER, OTHER_NAME);
 	rx_msg(PGN_A, J1939_ADDR_GLOBAL, OTHER, pay2, 8U);
@@ -259,14 +267,6 @@ static void test_two_names_same_pgn(void) {
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_get(&s, 1U, &st));
 	TEST_ASSERT_EQUAL(J1939_RXOBJ_VALID, st.state);
 	TEST_ASSERT_EQUAL_HEX8_ARRAY(pay2, b_other, 8U);
-}
-
-static void test_table_removed_stops_matching(void) {
-	rx_claim(PEER, PEER_NAME);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&s, NULL, 0U));
-	rx_msg(PGN_A, J1939_ADDR_GLOBAL, PEER, pay1, 8U);
-	TEST_ASSERT_EQUAL(J1939_RXOBJ_NO_DATA, status_of(OBJ_NAME).state);
-	TEST_ASSERT_EQUAL(J1939_RXOBJ_VALID, status_of(OBJ_SA).state);
 }
 
 static void test_no_match_from_null_address(void) {
@@ -288,7 +288,6 @@ int main(void) {
 	RUN_TEST(test_no_address_times_out);
 	RUN_TEST(test_bam_into_name_object);
 	RUN_TEST(test_two_names_same_pgn);
-	RUN_TEST(test_table_removed_stops_matching);
 	RUN_TEST(test_no_match_from_null_address);
 	return UNITY_END();
 }

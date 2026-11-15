@@ -30,6 +30,8 @@
 
 typedef struct node {
 	j1939_t s;
+	j1939_cfg_t cfg;
+	j1939_ca_cfg_t ca_cfg;
 	j1939_ca_id_t ca;
 	j1939_port_frame_t tx[TX_LEN];
 	j1939_msg_slot_t msgs[MSG_LEN];
@@ -48,17 +50,17 @@ static uint32_t elapsed;
 static uint8_t counter;
 
 static void node_init(node_t *n, uint8_t address, uint64_t name) {
-	const j1939_cfg_t cfg = {
+	n->cfg = (j1939_cfg_t){
 	        .tx_buf = n->tx,
 	        .tx_len = TX_LEN,
 	        .msg_buf = n->msgs,
 	        .msg_len = MSG_LEN,
+	        .ca = &n->ca_cfg,
+	        .ca_len = 1U,
 	};
-
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &cfg));
-	TEST_ASSERT_EQUAL(
-	        J1939_RET_OK,
-	        j1939_ca_add(&n->s, &(j1939_ca_cfg_t){.address = address, .name = name}, &n->ca));
+	n->ca_cfg = (j1939_ca_cfg_t){.address = address, .name = name};
+	n->ca = 0U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &n->cfg));
 	test_bus_attach(&bus, &n->s);
 }
 
@@ -109,8 +111,12 @@ void setUp(void) {
 	test_bus_init(&bus);
 	node_init(&pump, ADDR_PUMP, NAME_PUMP);
 	node_init(&monitor, ADDR_MONITOR, NAME_MONITOR);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&monitor.s, names, NAMES_LEN));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_rxobj_init(&monitor.s, &obj_cfg, &obj, 1U));
+	monitor.cfg.nametab = names;
+	monitor.cfg.nametab_len = NAMES_LEN;
+	monitor.cfg.rxobj_cfg = &obj_cfg;
+	monitor.cfg.rxobj = &obj;
+	monitor.cfg.rxobj_len = 1U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&monitor.s, &monitor.cfg));
 	elapsed = 0U;
 	counter = 0U;
 	(void)memset(status_buf, 0, sizeof(status_buf));

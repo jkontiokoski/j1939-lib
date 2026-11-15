@@ -25,6 +25,8 @@
 
 typedef struct node {
 	j1939_t s;
+	j1939_cfg_t cfg;
+	j1939_ca_cfg_t ca_cfg;
 	j1939_ca_id_t ca;
 	j1939_port_frame_t tx[TX_LEN];
 	j1939_msg_slot_t msgs[MSG_LEN];
@@ -37,20 +39,18 @@ static test_bus_t bus;
 static j1939_nametab_entry_t entries[TABLE_LEN];
 
 static void node_init(node_t *n, uint8_t address, uint64_t name, bool preclaim) {
-	const j1939_cfg_t cfg = {
+	n->cfg = (j1939_cfg_t){
 	        .tx_buf = n->tx,
 	        .tx_len = TX_LEN,
 	        .msg_buf = n->msgs,
 	        .msg_len = MSG_LEN,
+	        .ca = &n->ca_cfg,
+	        .ca_len = 1U,
 	};
-
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&n->s,
-	                               &(j1939_ca_cfg_t){.address = address,
-	                                                 .name = name,
-	                                                 .request_before_claim = preclaim},
-	                               &n->ca));
+	n->ca_cfg = (j1939_ca_cfg_t){
+	        .address = address, .name = name, .request_before_claim = preclaim};
+	n->ca = 0U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&n->s, &n->cfg));
 }
 
 static void steps(uint32_t count) {
@@ -92,7 +92,9 @@ static void test_joiner_with_preclaim_avoids_the_taken_address(void) {
 	uint8_t address = 0U;
 
 	node_init(&joiner, ADDR_SELF, NAME_JOINER, true);
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_nametab_init(&joiner.s, entries, TABLE_LEN));
+	joiner.cfg.nametab = entries;
+	joiner.cfg.nametab_len = TABLE_LEN;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&joiner.s, &joiner.cfg));
 	test_bus_attach(&bus, &joiner.s);
 	steps(60U);
 	/* The joiner claimed the next free address; the running node kept its own. */

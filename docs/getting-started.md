@@ -50,7 +50,8 @@ set(J1939_PORT_DIR "${FETCHCONTENT_BASE_DIR}/j1939-src/port/socketcan")
 ## Set up a stack
 
 One `j1939_t` runs one CAN bus.
-The application allocates its memory and hands it over at initialisation, then adds a Controller Application (CA) for each J1939 function the node performs:
+The application allocates its memory and describes the stack in one `j1939_cfg_t`: the buffers, and a Controller Application (CA) for each J1939 function the node performs.
+`j1939_init()` is the only setup call:
 
 ```c
 #include "j1939/j1939.h"
@@ -61,22 +62,29 @@ static j1939_tp_buf_t tp_tx_buf[1];                    /* multi-packet sends */
 static j1939_tp_buf_t tp_rx_buf[2];                    /* multi-packet reassembly */
 static const uint32_t rx_pgns[] = {0xFF20U, 0xE800U};  /* delivered to the application */
 static const uint32_t req_pgns[] = {0xFF22U};          /* answered on Request by the application */
-static j1939_t stack;
-static j1939_ca_id_t ca;
-
-const j1939_cfg_t cfg = {
+static const j1939_ca_cfg_t cas[] = {
+	{.address = 0x80, .name = MY_NAME},                /* handle 0: its index */
+};
+static const j1939_cfg_t cfg = {
 	.tx_buf = tx_buf, .tx_len = 16,
 	.msg_buf = msg_buf, .msg_len = 8,
 	.rx_pgns = rx_pgns, .rx_pgns_len = 2,
 	.req_pgns = req_pgns, .req_pgns_len = 1,
+	.ca = cas, .ca_len = 1,
 	.tp_tx_buf = tp_tx_buf, .tp_tx_buf_len = 1,
 	.tp_rx_buf = tp_rx_buf, .tp_rx_buf_len = 2,
 };
+static j1939_t stack;
+
 j1939_init(&stack, &cfg);
-j1939_ca_add(&stack, &(j1939_ca_cfg_t){.address = 0x80, .name = MY_NAME}, &ca);
 ```
 
-`j1939_init()` rejects an invalid configuration without changing the stack, for example a PGN above 0x3FFFF or a PDU1 PGN whose lowest byte is not 0.
+- The stack keeps a pointer to `cfg`: the configuration and everything it names must outlive the stack. `static const` data, which can live in flash, does; a compound literal or a local of a function that returns does not.
+- A CA is referred to by its index in `cas`, its `j1939_ca_id_t`.
+- The NAME table, the message objects and the diagnostics of a CA are further members of the same configuration; the guides show each one. A part the node does not use is left out.
+- `j1939_init()` checks the whole configuration, for example that every PGN is at most 0x3FFFF and a PDU1 PGN has 0 in its lowest byte. An invalid one is rejected with `J1939_RET_ERR_ARG` and leaves an inert stack, on which every call does nothing or reports an error.
+- Calling `j1939_init()` again starts the stack anew, from the same or another configuration.
+
 [Configuration](configuration.md) explains how to size each buffer.
 
 <a id="gs-main-loop"></a>

@@ -179,6 +179,11 @@ int main(int argc, char **argv) {
 		return EXIT_FAILURE;
 	}
 
+	const j1939_ca_cfg_t ca_cfg = {
+	        .address = (uint8_t)address,
+	        .name = example_name(identity, false),
+	};
+	const j1939_ca_id_t ca = 0U;
 	const j1939_cfg_t cfg = {
 	        .tx_buf = tx_buf,
 	        .tx_len = TX_LEN,
@@ -188,6 +193,8 @@ int main(int argc, char **argv) {
 	        .rx_pgns_len = n_pgns,
 	        .req_pgns = req_pgns,
 	        .req_pgns_len = (uint16_t)(sizeof(req_pgns) / sizeof(req_pgns[0])),
+	        .ca = &ca_cfg,
+	        .ca_len = 1U,
 	        .tp_tx_buf = tp_tx_buf,
 	        .tp_tx_buf_len = TP_TX_LEN,
 	        .tp_rx_buf = tp_rx_buf,
@@ -196,16 +203,6 @@ int main(int argc, char **argv) {
 	if (j1939_init(&stack, &cfg) != J1939_RET_OK) {
 		/* A PDU1 PGN (0xEF00 and below) must have 0 in its lowest byte. */
 		(void)fprintf(stderr, "j1939_init failed: check the PGNs\n");
-		return EXIT_FAILURE;
-	}
-
-	const j1939_ca_cfg_t ca_cfg = {
-	        .address = (uint8_t)address,
-	        .name = example_name(identity, false),
-	};
-	j1939_ca_id_t ca;
-	if (j1939_ca_add(&stack, &ca_cfg, &ca) != J1939_RET_OK) {
-		(void)fprintf(stderr, "j1939_ca_add failed\n");
 		return EXIT_FAILURE;
 	}
 

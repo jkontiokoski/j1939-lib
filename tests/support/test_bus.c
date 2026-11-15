@@ -24,7 +24,7 @@ uint32_t test_bus_run(test_bus_t *bus) {
 
 	/* Answers the receivers queue meanwhile go out with the next run. */
 	for (i = 0U; i < bus->count; i++) {
-		queued[i] = bus->nodes[i]->tx.ring.count;
+		queued[i] = bus->nodes[i]->tx.count;
 	}
 	for (i = 0U; i < bus->count; i++) {
 		uint16_t k;

@@ -29,8 +29,7 @@ Version 0.1.0, under development: the API may still change.
 ```c
 #include "j1939/j1939.h"
 
-j1939_init(&stack, &cfg);                     /* buffers in cfg, see Getting started */
-j1939_ca_add(&stack, &ca_cfg, &ca);           /* NAME and preferred address */
+j1939_init(&stack, &cfg);                     /* buffers, CAs and tables in cfg, see Getting started */
 
 for (;;) {
 	while (driver_read(&frame)) {

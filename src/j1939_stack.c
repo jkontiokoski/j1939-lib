@@ -3,8 +3,8 @@
 
 /**
  * @file j1939_stack.c
- * @brief Stack instance: configuration, CAs, frame reception and filtering, tx
- *        queue and message slots, and the helpers the stack modules share.
+ * @brief Stack instance: configuration, frame reception and filtering, tx queue
+ *        and message slots, and the helpers the stack modules share.
  */
 
 #include "j1939/j1939_stack.h"
@@ -35,11 +35,36 @@ static bool pgn_list_valid(const uint32_t *list, uint16_t len) {
 	return valid;
 }
 
-/** Checks a stack configuration: the buffers, the PGN lists and the transport protocol members. */
+/** A list of the configuration is present where its length says it has entries. */
+#define LIST_OK(ptr, len) (((ptr) != NULL) || ((len) == 0U))
+
+/**
+ * Checks what the modules rely on before they look at their part of a configuration: the queues
+ * hold an entry each, every list is present, the PGN lists are valid and the CAs fit.
+ */
 static bool cfg_valid(const j1939_cfg_t *cfg) {
-	return (cfg->tx_buf != NULL) && (cfg->tx_len > 0U) && (cfg->msg_buf != NULL) &&
-	       (cfg->msg_len > 0U) && pgn_list_valid(cfg->rx_pgns, cfg->rx_pgns_len) &&
-	       pgn_list_valid(cfg->req_pgns, cfg->req_pgns_len) && j1939_tp_cfg_valid(cfg);
+	bool valid = (cfg->tx_buf != NULL) && (cfg->tx_len > 0U) && (cfg->msg_buf != NULL) &&
+	             (cfg->msg_len > 0U) && pgn_list_valid(cfg->rx_pgns, cfg->rx_pgns_len) &&
+	             pgn_list_valid(cfg->req_pgns, cfg->req_pgns_len) &&
+	             LIST_OK(cfg->ca, cfg->ca_len) && (cfg->ca_len <= (uint8_t)J1939_CFG_CA_MAX) &&
+	             LIST_OK(cfg->nametab, cfg->nametab_len) &&
+	             LIST_OK(cfg->rxobj_cfg, cfg->rxobj_len) &&
+	             LIST_OK(cfg->rxobj, cfg->rxobj_len) &&
+	             LIST_OK(cfg->txobj_cfg, cfg->txobj_len) && LIST_OK(cfg->txobj, cfg->txobj_len);
+
+#if J1939_TP_ENABLE
+	valid = valid && LIST_OK(cfg->tp_tx_buf, cfg->tp_tx_buf_len) &&
+	        LIST_OK(cfg->tp_rx_buf, cfg->tp_rx_buf_len);
+#endif
+	return valid;
+}
+
+/** Puts a stack into its starting state for a configuration: everything empty and zero. */
+static void stack_reset(j1939_t *s, const j1939_cfg_t *cfg) {
+	(void)memset(s, 0, sizeof(*s));
+	s->cfg = cfg;
+	j1939_ring_init(&s->tx, cfg->tx_len);
+	j1939_ring_init(&s->msgs, cfg->msg_len);
 }
 
 /**
@@ -67,7 +92,7 @@ static void rx_dispatch(j1939_t *s, const j1939_msg_t *msg) {
 #endif
 	} else {
 		j1939_rxobj_handle(s, msg);
-		if (j1939_stack_pgn_listed(s->rx_pgns, s->rx_pgns_len, msg->pgn)) {
+		if (j1939_stack_pgn_listed(s->cfg->rx_pgns, s->cfg->rx_pgns_len, msg->pgn)) {
 			(void)j1939_stack_deliver(s, msg);
 		}
 	}
@@ -81,9 +106,11 @@ j1939_ret_t j1939_stack_tx(j1939_t *s, uint8_t prio, uint32_t pgn, uint8_t da, u
 
 	if (ret != J1939_RET_OK) {
 		/* Invalid identifier. */
-	} else if (j1939_ring_head(&s->tx.ring, &index)) {
-		j1939_port_frame_build(&s->tx.buf[index], id, data, len);
-		(void)j1939_ring_push(&s->tx.ring);
+	} else if (j1939_ring_head(&s->tx, &index)) {
+		j1939_port_frame_t *frame = &s->cfg->tx_buf[index];
+
+		j1939_port_frame_build(frame, id, data, len);
+		(void)j1939_ring_push(&s->tx);
 	} else {
 		ret = J1939_RET_ERR_FULL;
 	}
@@ -92,10 +119,10 @@ j1939_ret_t j1939_stack_tx(j1939_t *s, uint8_t prio, uint32_t pgn, uint8_t da, u
 
 bool j1939_stack_deliver(j1939_t *s, const j1939_msg_t *msg) {
 	uint16_t index;
-	bool delivered = j1939_ring_head(&s->msgs.ring, &index);
+	bool delivered = j1939_ring_head(&s->msgs, &index);
 
 	if (delivered) {
-		j1939_msg_slot_t *slot = &s->msgs.buf[index];
+		j1939_msg_slot_t *slot = &s->cfg->msg_buf[index];
 
 		slot->msg = *msg;
 		if (msg->len <= J1939_MSG_SINGLE_FRAME_MAX) {
@@ -105,7 +132,7 @@ bool j1939_stack_deliver(j1939_t *s, const j1939_msg_t *msg) {
 			}
 			slot->msg.data = slot->data;
 		}
-		(void)j1939_ring_push(&s->msgs.ring);
+		(void)j1939_ring_push(&s->msgs);
 	} else {
 		s->stats.rx_msg_overflow++;
 	}
@@ -172,43 +199,29 @@ bool j1939_stack_retry_done(j1939_ret_t ret, uint32_t age_us, uint32_t *retries,
 }
 
 j1939_ret_t j1939_init(j1939_t *s, const j1939_cfg_t *cfg) {
+	/* A stack without CAs, queues and tables: what an invalid configuration leaves. */
+	static const j1939_cfg_t cfg_none = {.tx_buf = NULL};
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((s != NULL) && (cfg != NULL) && cfg_valid(cfg)) {
-		s->tx.buf = cfg->tx_buf;
-		j1939_ring_init(&s->tx.ring, cfg->tx_len);
-		s->msgs.buf = cfg->msg_buf;
-		j1939_ring_init(&s->msgs.ring, cfg->msg_len);
-		s->rx_pgns = cfg->rx_pgns;
-		s->rx_pgns_len = cfg->rx_pgns_len;
-		s->req_pgns = cfg->req_pgns;
-		s->req_pgns_len = cfg->req_pgns_len;
-		s->ca_count = 0U;
-		s->stats.rx_msg_overflow = 0U;
-		s->stats.tx_overflow = 0U;
-		j1939_addr_init(s);
-		j1939_tp_init(s, cfg);
-		j1939_dm_stack_init(s);
-		j1939_nametab_stack_init(s);
-		j1939_rxobj_stack_init(s);
-		j1939_txobj_stack_init(s);
-		ret = J1939_RET_OK;
-	}
-	return ret;
-}
+	if (s != NULL) {
+		stack_reset(s, &cfg_none);
+		if ((cfg != NULL) && cfg_valid(cfg)) {
+			bool valid;
 
-j1939_ret_t j1939_ca_add(j1939_t *s, const j1939_ca_cfg_t *cfg, j1939_ca_id_t *id) {
-	j1939_ret_t ret = J1939_RET_ERR_ARG;
-
-	if ((s != NULL) && (cfg != NULL) && (id != NULL) && (cfg->address <= J1939_ADDR_MAX) &&
-	    !j1939_addr_in_use(s, cfg->address)) {
-		if (s->ca_count < (uint8_t)J1939_CFG_CA_MAX) {
-			j1939_addr_ca_init(&s->ca[s->ca_count], cfg);
-			*id = s->ca_count;
-			s->ca_count++;
-			ret = J1939_RET_OK;
-		} else {
-			ret = J1939_RET_ERR_FULL;
+			stack_reset(s, cfg);
+			/* Every module looks at its part; one invalid part makes the whole invalid.
+			 */
+			valid = j1939_addr_init(s);
+			j1939_nametab_init(s);
+			j1939_tp_init(s);
+			valid = j1939_rxobj_init(s) && valid;
+			valid = j1939_txobj_init(s) && valid;
+			valid = j1939_dm_init(s) && valid;
+			if (valid) {
+				ret = J1939_RET_OK;
+			} else {
+				stack_reset(s, &cfg_none);
+			}
 		}
 	}
 	return ret;
@@ -242,8 +255,8 @@ const j1939_port_frame_t *j1939_tx_peek(j1939_t *s) {
 	const j1939_port_frame_t *frame = NULL;
 	uint16_t index;
 
-	if ((s != NULL) && j1939_ring_tail(&s->tx.ring, &index)) {
-		frame = &s->tx.buf[index];
+	if ((s != NULL) && j1939_ring_tail(&s->tx, &index)) {
+		frame = &s->cfg->tx_buf[index];
 	}
 	return frame;
 }
@@ -252,7 +265,7 @@ j1939_ret_t j1939_tx_pop(j1939_t *s) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
 	if (s != NULL) {
-		ret = j1939_ring_pop(&s->tx.ring) ? J1939_RET_OK : J1939_RET_ERR_EMPTY;
+		ret = j1939_ring_pop(&s->tx) ? J1939_RET_OK : J1939_RET_ERR_EMPTY;
 	}
 	return ret;
 }
@@ -276,8 +289,8 @@ const j1939_msg_t *j1939_msg_peek(j1939_t *s) {
 	const j1939_msg_t *msg = NULL;
 	uint16_t index;
 
-	if ((s != NULL) && j1939_ring_tail(&s->msgs.ring, &index)) {
-		msg = &s->msgs.buf[index].msg;
+	if ((s != NULL) && j1939_ring_tail(&s->msgs, &index)) {
+		msg = &s->cfg->msg_buf[index].msg;
 	}
 	return msg;
 }
@@ -288,14 +301,14 @@ j1939_ret_t j1939_msg_pop(j1939_t *s) {
 
 	if (s == NULL) {
 		/* Invalid argument. */
-	} else if (j1939_ring_tail(&s->msgs.ring, &index)) {
-		const j1939_msg_t *msg = &s->msgs.buf[index].msg;
+	} else if (j1939_ring_tail(&s->msgs, &index)) {
+		const j1939_msg_t *msg = &s->cfg->msg_buf[index].msg;
 
 		if (msg->len > J1939_MSG_SINGLE_FRAME_MAX) {
 			/* A multi-packet message: its reassembly buffer is free again. */
 			j1939_tp_msg_release(s, msg->data);
 		}
-		(void)j1939_ring_pop(&s->msgs.ring);
+		(void)j1939_ring_pop(&s->msgs);
 		ret = J1939_RET_OK;
 	} else {
 		ret = J1939_RET_ERR_EMPTY;
@@ -306,7 +319,7 @@ j1939_ret_t j1939_msg_pop(j1939_t *s) {
 j1939_ret_t j1939_send(j1939_t *s, j1939_ca_id_t ca, const j1939_msg_t *msg) {
 	j1939_ret_t ret = J1939_RET_ERR_ARG;
 
-	if ((s != NULL) && (msg != NULL) && (ca < s->ca_count) &&
+	if ((s != NULL) && (msg != NULL) && (ca < s->cfg->ca_len) &&
 	    ((msg->data != NULL) || (msg->len == 0U))) {
 		const j1939_ca_t *c = &s->ca[ca];
 

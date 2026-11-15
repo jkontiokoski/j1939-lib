@@ -19,6 +19,7 @@
 static const uint32_t rx_pgns[] = {PGN_BC, PGN_DS};
 static j1939_port_frame_t tx_buf[TX_LEN];
 static j1939_msg_slot_t msg_buf[MSG_LEN];
+static j1939_ca_cfg_t ca_cfg[J1939_CFG_CA_MAX + 1U];
 static j1939_cfg_t cfg;
 static j1939_t s;
 static j1939_ca_id_t ca_a;
@@ -47,12 +48,12 @@ void setUp(void) {
 	        .msg_len = MSG_LEN,
 	        .rx_pgns = rx_pgns,
 	        .rx_pgns_len = 2U,
-	        .req_pgns = NULL,
-	        .req_pgns_len = 0U,
+	        .ca = ca_cfg,
+	        .ca_len = 1U,
 	};
+	ca_cfg[0] = (j1939_ca_cfg_t){.address = OWN_A};
+	ca_a = 0U;
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN_A}, &ca_a));
 	/* Claim the address; the CA may transmit right after its Address Claimed. */
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_tx_pop(&s));
@@ -92,28 +93,62 @@ static void test_init_rejects_invalid_configuration(void) {
 	c.req_pgns = bad_range;
 	c.req_pgns_len = 1U;
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&other, &c));
+
+	/* A list with entries needs its storage. */
+	c = cfg;
+	c.ca = NULL;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&other, &c));
+	c = cfg;
+	c.nametab_len = 1U;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&other, &c));
+	c = cfg;
+	c.rxobj_len = 1U;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&other, &c));
+	c = cfg;
+	c.txobj_len = 1U;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&other, &c));
 }
 
-static void test_ca_add_validates_address_and_capacity(void) {
-	j1939_ca_id_t id = 0xAAU;
+static void test_init_validates_the_cas(void) {
+	ca_cfg[0].address = J1939_ADDR_NULL;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&s, &cfg));
+	ca_cfg[0].address = J1939_ADDR_GLOBAL;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&s, &cfg));
 
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = J1939_ADDR_NULL}, &id));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = J1939_ADDR_GLOBAL}, &id));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN_A}, &id));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG,
-	                  j1939_ca_add(NULL, &(j1939_ca_cfg_t){.address = 1U}, &id));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_ca_add(&s, NULL, &id));
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = 1U}, NULL));
-	TEST_ASSERT_EQUAL_HEX8(0xAAU, id);
+	/* Two CAs of a stack cannot have the same address. */
+	ca_cfg[0].address = OWN_A;
+	ca_cfg[1] = (j1939_ca_cfg_t){.address = OWN_A};
+	cfg.ca_len = 2U;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&s, &cfg));
+	ca_cfg[1].address = 0xFDU;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
 
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = 0xFDU}, &id));
-	TEST_ASSERT_EQUAL_UINT8(1U, id);
-	TEST_ASSERT_EQUAL(J1939_RET_ERR_FULL,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = 2U}, &id));
+	/* At most J1939_CFG_CA_MAX CAs. */
+	ca_cfg[2] = (j1939_ca_cfg_t){.address = 2U};
+	cfg.ca_len = (uint8_t)(J1939_CFG_CA_MAX + 1U);
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&s, &cfg));
+
+	/* A stack may have no CA: it only listens. */
+	cfg.ca_len = 0U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
+	cfg.ca = NULL;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
+}
+
+/* An invalid configuration leaves a stack on which every call is harmless. */
+static void test_failed_init_leaves_an_inert_stack(void) {
+	const j1939_msg_t msg = {.pgn = PGN_BC, .prio = 6U, .da = J1939_ADDR_GLOBAL};
+
+	cfg.tx_len = 0U;
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_init(&s, &cfg));
+	rx_frame(make_id(6U, PGN_BC, J1939_ADDR_GLOBAL, OTHER), 8U);
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 1000000U));
+	TEST_ASSERT_NULL(j1939_msg_peek(&s));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_EMPTY, j1939_msg_pop(&s));
+	TEST_ASSERT_NULL(j1939_tx_peek(&s));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_EMPTY, j1939_tx_pop(&s));
+	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_send(&s, ca_a, &msg));
+	TEST_ASSERT_EQUAL_UINT32(0U, j1939_stats_get(&s)->rx_msg_overflow);
 }
 
 static void test_broadcast_in_list_is_delivered(void) {
@@ -158,15 +193,14 @@ static void test_unlisted_and_foreign_frames_are_dropped(void) {
 
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
 	TEST_ASSERT_NULL(j1939_msg_peek(&s));
-	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.count);
 }
 
 static void test_destination_specific_to_each_ca_is_delivered(void) {
-	j1939_ca_id_t ca_b;
-
-	TEST_ASSERT_EQUAL(J1939_RET_OK,
-	                  j1939_ca_add(&s, &(j1939_ca_cfg_t){.address = OWN_B}, &ca_b));
-	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U)); /* OWN_B is claimed */
+	ca_cfg[1] = (j1939_ca_cfg_t){.address = OWN_B};
+	cfg.ca_len = 2U;
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_init(&s, &cfg));
+	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U)); /* both are claimed */
 	rx_frame(make_id(6U, PGN_DS, OWN_A, OTHER), 2U);
 	rx_frame(make_id(6U, PGN_DS, OWN_B, OTHER), 2U);
 	TEST_ASSERT_EQUAL(J1939_RET_OK, j1939_process(&s, 0U));
@@ -272,7 +306,7 @@ static void test_send_rejects_invalid_messages(void) {
 	msg.len = 0U;
 	msg.da = OTHER; /* PDU2 PGN with a destination */
 	TEST_ASSERT_EQUAL(J1939_RET_ERR_ARG, j1939_send(&s, ca_a, &msg));
-	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.ring.count);
+	TEST_ASSERT_EQUAL_UINT16(0U, s.tx.count);
 
 	msg.da = J1939_ADDR_GLOBAL;
 	for (i = 0U; i < TX_LEN; i++) {
@@ -298,7 +332,8 @@ static void test_null_stack_accessors(void) {
 int main(void) {
 	UNITY_BEGIN();
 	RUN_TEST(test_init_rejects_invalid_configuration);
-	RUN_TEST(test_ca_add_validates_address_and_capacity);
+	RUN_TEST(test_init_validates_the_cas);
+	RUN_TEST(test_failed_init_leaves_an_inert_stack);
 	RUN_TEST(test_broadcast_in_list_is_delivered);
 	RUN_TEST(test_empty_message_is_delivered);
 	RUN_TEST(test_unlisted_and_foreign_frames_are_dropped);

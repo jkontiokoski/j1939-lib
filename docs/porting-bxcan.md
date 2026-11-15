@@ -182,8 +182,7 @@ int main(void) {
 	uint32_t last;
 
 	board_init(); /* clocks, CAN bit timing, filters, TXFP, interrupts, TIM2, tick */
-	(void)j1939_init(&stack, &cfg);
-	(void)j1939_ca_add(&stack, &ca_cfg, &ca);
+	(void)j1939_init(&stack, &cfg); /* a static const j1939_cfg_t in flash, see Getting started */
 	last = TIM2->CNT;
 
 	for (;;) {
