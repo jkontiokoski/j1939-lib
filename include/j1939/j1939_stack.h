@@ -120,11 +120,13 @@ typedef struct j1939_stats {
 	uint32_t tp_rx_aborted; /**< Multi-packet receptions ended without delivery. */
 	uint32_t tp_rx_refused; /**< RTS or BAM refused: no free session or reassembly buffer. */
 #endif
-	uint32_t dm_tx_retry;    /**< DM1, DM2 or acknowledgement sends deferred, see j1939_dm.h. */
-	uint32_t dm_tx_dropped;  /**< DM1, DM2 or acknowledgement sends given up, see j1939_dm.h. */
-	uint32_t rxobj_rejected; /**< Payloads a receive object refused for their length. */
-	uint32_t rxobj_timeout;  /**< Receive objects that timed out, see j1939_rxobj.h. */
-	uint32_t txobj_tx_retry; /**< Transmit object sends deferred, see j1939_txobj.h. */
+#if J1939_DM_ENABLE
+	uint32_t dm_tx_retry;   /**< DM1, DM2 or acknowledgement sends deferred, see j1939_dm.h. */
+	uint32_t dm_tx_dropped; /**< DM1, DM2 or acknowledgement sends given up, see j1939_dm.h. */
+#endif
+	uint32_t rxobj_rejected;   /**< Payloads a receive object refused for their length. */
+	uint32_t rxobj_timeout;    /**< Receive objects that timed out, see j1939_rxobj.h. */
+	uint32_t txobj_tx_retry;   /**< Transmit object sends deferred, see j1939_txobj.h. */
 	uint32_t txobj_tx_dropped; /**< Transmit object sends given up, see j1939_txobj.h. */
 	uint32_t nametab_dropped;  /**< New NAMEs not recorded: NAME table full. */
 } j1939_stats_t;

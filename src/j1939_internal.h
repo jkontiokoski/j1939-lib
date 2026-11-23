@@ -466,6 +466,7 @@ void j1939_txobj_process(j1939_t *s, uint32_t elapsed_us);
 
 /* ---- Diagnostics ---- */
 
+#if J1939_DM_ENABLE
 /**
  * @brief Checks the diagnostics configuration of every CA and resets its state.
  * @param s  Stack with its configuration set.
@@ -490,5 +491,24 @@ bool j1939_dm_request_handle(j1939_t *s, const j1939_msg_t *req, uint32_t pgn);
  * @param elapsed_us  Time since the previous j1939_process(), in microseconds.
  */
 void j1939_dm_process(j1939_t *s, uint32_t elapsed_us);
+
+#else
+static inline bool j1939_dm_init(j1939_t *s) {
+	(void)s;
+	return true;
+}
+
+static inline bool j1939_dm_request_handle(j1939_t *s, const j1939_msg_t *req, uint32_t pgn) {
+	(void)s;
+	(void)req;
+	(void)pgn;
+	return false;
+}
+
+static inline void j1939_dm_process(j1939_t *s, uint32_t elapsed_us) {
+	(void)s;
+	(void)elapsed_us;
+}
+#endif
 
 #endif /* J1939_INTERNAL_H */

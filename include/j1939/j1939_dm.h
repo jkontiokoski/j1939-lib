@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "j1939/j1939_config.h"
 #include "j1939/j1939_dtc.h"
 #include "j1939/j1939_types.h"
 
@@ -22,6 +23,7 @@ extern "C" {
 /**
  * @addtogroup grp_dm
  *
+ * Built when J1939_DM_ENABLE is 1, see j1939_config.h.
  * j1939_ca_cfg_t::dm enables diagnostics for a CA. The application owns its
  * fault memory (detection, occurrence counts, moving a DTC from active to
  * previously active) and copies the result into the stack; the stack
@@ -78,6 +80,8 @@ extern "C" {
  *
  * @{
  */
+
+#if J1939_DM_ENABLE
 
 #define J1939_DM1_PERIOD_US 1000000U /**< DM1 period, and the per-DTC change hold time. */
 
@@ -236,6 +240,8 @@ j1939_ret_t j1939_dm_clear_get(const j1939_t *s, j1939_ca_id_t ca, uint32_t *pgn
  *         unknown CA or another PGN.
  */
 j1939_ret_t j1939_dm_clear_confirm(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, bool accept);
+
+#endif /* J1939_DM_ENABLE */
 
 /** @} */
 
