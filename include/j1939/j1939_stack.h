@@ -23,6 +23,10 @@
 #include "j1939/j1939_txobj.h"
 #include "j1939/j1939_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @addtogroup grp_stack
  *
@@ -263,5 +267,9 @@ j1939_ret_t j1939_send(j1939_t *s, j1939_ca_id_t ca, const j1939_msg_t *msg);
 const j1939_stats_t *j1939_stats_get(const j1939_t *s);
 
 /** @} */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* J1939_STACK_H */

@@ -58,7 +58,7 @@ port/<name>/     one directory per port: j1939_target.h, optional port.cmake and
 port/mock/       test port with a deliberately unusual frame layout
 port/socketcan/  Linux SocketCAN port and socket helpers
 examples/        SocketCAN example applications; examples/signals/ holds an illustrative signal table
-tests/           unit/, integration/, port/ (conformance), interop/ (node of the interoperability check), support/ (virtual bus), config/ (test builds), vendor/unity/
+tests/           unit/, integration/, port/ (conformance), cxx/ (the headers used from C++), interop/ (node of the interoperability check), support/ (virtual bus), config/ (test builds), vendor/unity/
 cmake/           library, warnings, instrumentation, toolchain and documentation helpers
 docs/            user documentation, Doxyfile.in, vendored stylesheet; the page order is in cmake/docs.cmake
 tools/           dist.sh (release archives), check-links.sh (Markdown link check), interop.sh (interoperability check)
@@ -117,6 +117,7 @@ A new deviation goes into `cppcheck-suppressions.txt` or `cppcheck-misra-suppres
 - Unit and integration tests link a library variant built with `tests/config/j1939_test_config.h` through `J1939_CONFIG_FILE`, with every optional feature on; `test_tp_small_buf` links one built with `j1939_test_small_tp_config.h`. The variant built with `j1939_test_no_tp_config.h` runs `test_tp_disabled` and, as `<test>_no_tp`, the tests of the features that do not use the transport protocol. Tests set every feature switch they depend on in their configuration, not through the library default.
 - A static inline function with one definition per feature setting appears in several variants at different lines; `make coverage` passes `--merge-mode-functions separate` so that gcovr keeps them apart.
 - `test_queue` links the frame queue built for the mock port; the mock lock records nesting depth and call count.
+- `tests/cxx/` compiles the public headers as C++11: `test_cxx` includes every header of `include/j1939/` on its own and the umbrella header last, `test_cxx_socketcan` includes `j1939_socketcan.h` first. Each calls a function of every header it includes, so a header without the `extern "C"` guard fails to link. Every public header that declares functions wraps its own declarations in the guard and nothing else: `#include` lines and the port's `static inline` functions stay outside it, so that they match the port header, which is compiled without it. Without a C++ compiler the tests are skipped with a CMake warning.
 - Timers are tested by passing the elapsed time to `j1939_process()`, for example one call 1 µs before and one at a deadline.
 - `make interop` checks the library against an independent implementation: `tools/interop.sh` runs `tests/interop/interop_node.c`, a library node on SocketCAN, against the J1939 stack of the Linux kernel (`can-j1939`) driven by `j1939cat` and `j1939acd`. The scenarios are RTS/CTS transfers of 9, 100 and 1785 bytes and a BAM in both directions, each verified by comparing the payload, and address claiming where the library keeps its address, moves to another one and ends in Cannot Claim. The bus traffic of each scenario is kept in `build/interop/`. It uses `vcan0`, or the interface in `J1939_TEST_CANIF`, which nothing else may use during the run, and reports "skipped" without the tools, the interface or kernel support. Run it before a pull request that changes protocol behaviour, address claiming or the transport protocol.
 - Coverage with gcov and gcovr: at least 90 % line coverage of the library core, branch coverage reported.
@@ -125,7 +126,7 @@ A new deviation goes into `cppcheck-suppressions.txt` or `cppcheck-misra-suppres
 
 | Tool                 | Use                                                  |
 | -------------------- | ---------------------------------------------------- |
-| gcc                  | Host compiler                                        |
+| gcc, g++             | Host compilers; g++ builds the C++ header tests      |
 | CMake (≥ 3.21)       | Build system                                         |
 | Unity 2.6.1          | Unit test framework, vendored                        |
 | cppcheck (+ misra)   | Static analysis                                      |

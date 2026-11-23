@@ -14,6 +14,10 @@
 
 #include "j1939/j1939_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @addtogroup grp_id
  *
@@ -81,5 +85,9 @@ bool j1939_pgn_valid(uint32_t pgn);
 j1939_ret_t j1939_id_build(uint8_t prio, uint32_t pgn, uint8_t da, uint8_t sa, uint32_t *id);
 
 /** @} */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* J1939_ID_H */

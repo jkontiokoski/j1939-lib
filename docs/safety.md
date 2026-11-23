@@ -33,6 +33,7 @@ Each deviation is listed in `cppcheck-suppressions.txt` or `cppcheck-misra-suppr
 | Integration tests | Several stacks in one process on a virtual bus: address arbitration, transport protocol transfers of up to 1785 bytes with lost packets and aborts, diagnostics and message objects between nodes |
 | Port conformance | The same suite against the mock port, the SocketCAN port and any configured port |
 | Configuration variants | The library built with a test configuration (two CAs), with small TP buffers (100 bytes) and without the transport protocol, exercising the configuration override, the size limits and the single frame only build |
+| C++ use | The public headers and the SocketCAN helpers compiled as C++11, each included on its own, and linked against the library |
 | Reference models | Signal bit extraction and insertion compared bit by bit against a reference model for every offset and length |
 | SocketCAN loopback | Frames exchanged through the Linux SocketCAN stack on a virtual interface (`vcan0`) |
 | Interoperability | A library node against the J1939 stack of the Linux kernel, an independent implementation: RTS/CTS transfers of 9 to 1785 bytes and BAM in both directions, and address claiming with a won, a lost and an unresolvable contention. Run on request (`make interop`), not part of the release evidence |

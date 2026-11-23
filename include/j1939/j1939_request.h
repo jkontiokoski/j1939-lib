@@ -13,6 +13,10 @@
 
 #include "j1939/j1939_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @addtogroup grp_request
  *
@@ -85,5 +89,9 @@ j1939_ret_t j1939_request_send(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, uint8
 j1939_ret_t j1939_request_pgn_get(const j1939_msg_t *msg, uint32_t *pgn);
 
 /** @} */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* J1939_REQUEST_H */
