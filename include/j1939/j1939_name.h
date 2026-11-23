@@ -14,6 +14,10 @@
 
 #include "j1939/j1939_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @addtogroup grp_name
  *
@@ -112,5 +116,9 @@ j1939_ret_t j1939_name_to_bytes(uint64_t name, uint8_t *data);
 j1939_ret_t j1939_name_from_bytes(const uint8_t *data, uint64_t *name);
 
 /** @} */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* J1939_NAME_H */

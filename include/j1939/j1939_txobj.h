@@ -13,6 +13,10 @@
 
 #include "j1939/j1939_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @addtogroup grp_txobj
  *
@@ -112,5 +116,9 @@ typedef struct j1939_txobj {
 j1939_ret_t j1939_txobj_set(j1939_t *s, uint16_t index, const uint8_t *data, uint16_t len);
 
 /** @} */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* J1939_TXOBJ_H */

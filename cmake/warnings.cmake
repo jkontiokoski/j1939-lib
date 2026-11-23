@@ -11,8 +11,8 @@ function(j1939_set_warnings target)
 			-Wconversion
 			-Wsign-conversion
 			-Wshadow
-			-Wstrict-prototypes
-			-Wmissing-prototypes
+			$<$<COMPILE_LANGUAGE:C>:-Wstrict-prototypes>
+			$<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>
 			-Wcast-align
 			-Wundef
 		)

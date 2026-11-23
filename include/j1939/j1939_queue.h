@@ -80,6 +80,12 @@ static inline void j1939_port_lock(j1939_port_lock_t *lock);
  */
 static inline void j1939_port_unlock(j1939_port_lock_t *lock);
 
+/* The queue's own declarations only: the lock functions above must match their definitions in
+ * j1939_target.h, which is compiled outside this block. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /** Frame queue. Members are private. */
 typedef struct j1939_queue {
 	j1939_port_frame_t *buf; /**< Integrator storage. */
@@ -146,5 +152,9 @@ j1939_ret_t j1939_queue_pop(j1939_queue_t *q);
 uint16_t j1939_queue_count(j1939_queue_t *q);
 
 /** @} */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* J1939_QUEUE_H */

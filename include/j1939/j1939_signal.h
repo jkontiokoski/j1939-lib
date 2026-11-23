@@ -13,6 +13,10 @@
 
 #include "j1939/j1939_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @addtogroup grp_signal
  *
@@ -291,5 +295,9 @@ j1939_ret_t j1939_signal_msg_decode(const j1939_signal_t *sig, const j1939_msg_t
                                     int64_t *value, j1939_signal_class_t *cls);
 
 /** @} */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* J1939_SIGNAL_H */

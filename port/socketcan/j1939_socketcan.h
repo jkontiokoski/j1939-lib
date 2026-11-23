@@ -17,6 +17,10 @@
 #include "j1939/j1939_stack.h"
 #include "j1939/j1939_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @brief Opens a non-blocking CAN_RAW socket bound to @p ifname.
  *
@@ -55,5 +59,9 @@ j1939_ret_t j1939_socketcan_rx(int fd, j1939_t *s, uint16_t max, uint16_t *n_rx)
  * @return J1939_RET_OK, J1939_RET_ERR_ARG on a NULL stack, or J1939_RET_ERR_IO.
  */
 j1939_ret_t j1939_socketcan_tx(int fd, j1939_t *s, uint16_t *n_tx);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* J1939_SOCKETCAN_H */

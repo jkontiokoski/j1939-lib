@@ -35,8 +35,10 @@
  * - **Lock** (only with the optional frame queue): j1939_port_lock_t and the
  *   functions declared in j1939_queue.h.
  *
- * Accessors run in the stack's execution context and must not block. The
- * porting guide, docs/porting.md, shows complete ports.
+ * Accessors run in the stack's execution context and must not block. In a
+ * C++ application j1939_target.h is compiled as C++ as well: it must be valid
+ * C++, and the driver functions it calls need C linkage. The porting guide,
+ * docs/porting.md, shows complete ports.
  *
  * @{
  */

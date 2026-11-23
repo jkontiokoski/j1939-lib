@@ -133,6 +133,10 @@
 #include "j1939/j1939_txobj.h"
 #include "j1939/j1939_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @addtogroup grp_version
  * @{
@@ -158,5 +162,9 @@
 uint32_t j1939_version_get(void);
 
 /** @} */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* J1939_H */

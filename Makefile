@@ -22,9 +22,9 @@ EXAMPLES := addr_claim_demo pgn_listener bam_sender
 
 # Tracked sources only, so untracked work in progress does not fail format-check; outside a git
 # checkout (the release staging) every source file.
-FORMAT_FILES = $(shell git ls-files -- 'include/*.[ch]' 'src/*.[ch]' 'tests/*.[ch]' 'port/*.[ch]' \
-	'examples/*.[ch]' ':!:tests/vendor/*' 2>/dev/null || find include src tests port examples \
-	-path tests/vendor -prune -o -type f \( -name '*.c' -o -name '*.h' \) -print)
+FORMAT_FILES = $(shell git ls-files -- 'include/*.[ch]' 'src/*.[ch]' 'tests/*.[ch]' 'tests/*.cpp' \
+	'port/*.[ch]' 'examples/*.[ch]' ':!:tests/vendor/*' 2>/dev/null || find include src tests port examples \
+	-path tests/vendor -prune -o -type f \( -name '*.c' -o -name '*.h' -o -name '*.cpp' \) -print)
 CPPCHECK_FLAGS = --std=c99 --enable=all --inconclusive --error-exitcode=1 --inline-suppr \
 	--suppressions-list=cppcheck-suppressions.txt
 

@@ -13,6 +13,10 @@
 
 #include "j1939/j1939_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @addtogroup grp_dtc
  *
@@ -196,5 +200,9 @@ j1939_ret_t j1939_dtc_dm_parse(const uint8_t *data, uint16_t len, j1939_dtc_lamp
                                j1939_dtc_t *dtcs, uint16_t dtcs_len, uint16_t *dtc_count);
 
 /** @} */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* J1939_DTC_H */

@@ -6,6 +6,7 @@ It assumes a port for your CAN driver; the library ships one for Linux SocketCAN
 ## Requirements
 
 - A C99 compiler and CMake 3.21 or newer.
+  A C++ application (C++11 or newer) includes the same headers: they declare the API with C linkage.
 - A port: a directory with a `j1939_target.h` that adapts your CAN driver's frame type, see [Porting](porting.md).
 
 ## Add the library to a CMake project

@@ -14,6 +14,10 @@
 
 #include "j1939/j1939_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @addtogroup grp_nametab
  *
@@ -140,5 +144,9 @@ j1939_ret_t j1939_nametab_at(const j1939_t *s, uint16_t index, uint64_t *name, u
 uint16_t j1939_nametab_changes(const j1939_t *s);
 
 /** @} */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* J1939_NAMETAB_H */
