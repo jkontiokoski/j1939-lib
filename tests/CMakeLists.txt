@@ -100,6 +100,18 @@ foreach(_test IN ITEMS
 	j1939_add_test(${_name}_no_tp test_support_no_tp ${_test}.c)
 endforeach()
 
+# Without the diagnostics: what changes, and the tests of the request handling, the stack and the
+# address claim, which the diagnostics hook into, run again against this library.
+j1939_add_test_mock(j1939_test_mock_no_dm test_support_no_dm j1939_test_no_dm_config.h)
+j1939_add_test(test_dm_disabled test_support_no_dm unit/test_dm_disabled.c)
+foreach(_test IN ITEMS
+		unit/test_stack unit/test_request unit/test_addr
+		integration/test_addr_claim integration/test_request_exchange
+		integration/test_txobj_exchange)
+	get_filename_component(_name ${_test} NAME)
+	j1939_add_test(${_name}_no_dm test_support_no_dm ${_test}.c)
+endforeach()
+
 # Port conformance: the bundled ports, plus the configured port if it is another one.
 j1939_add_port_conformance(test_port_mock j1939_test_mock)
 

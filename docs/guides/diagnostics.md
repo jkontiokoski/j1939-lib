@@ -13,6 +13,9 @@ It is for integrators; the transmission rules are in the API reference, topic *D
 
 ## Enable diagnostics for a CA
 
+Diagnostics are built while `J1939_DM_ENABLE` is 1, the default ([Configuration](../configuration.md)).
+Built without them, the stack handles the DM PGNs like any other, so a node with nothing to report can still broadcast a fixed DM1 from a [transmit object](message-objects.md).
+
 The application supplies the storage, sized for the most DTCs it reports at once, and names it in the CA's configuration:
 
 ```c

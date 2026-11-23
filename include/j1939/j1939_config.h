@@ -32,6 +32,16 @@
 #define J1939_TP_ENABLE 1
 #endif
 
+/**
+ * Diagnostics of the CAs (DM1, DM2, DM3 and DM11, see j1939_dm.h): 1 builds them, 0 leaves them
+ * out. Without them, j1939_dm.h declares nothing, j1939_ca_cfg_t has no dm member and
+ * j1939_stats_t no DM counters; the stack handles the DM PGNs like any other PGN. The DTC codec
+ * of j1939_dtc.h is built either way.
+ */
+#ifndef J1939_DM_ENABLE
+#define J1939_DM_ENABLE 1
+#endif
+
 /** Maximum number of Controller Applications per stack instance. */
 #ifndef J1939_CFG_CA_MAX
 #define J1939_CFG_CA_MAX 1
@@ -63,6 +73,10 @@
 
 #if (J1939_TP_ENABLE != 0) && (J1939_TP_ENABLE != 1)
 #error "J1939_TP_ENABLE must be 0 or 1"
+#endif
+
+#if (J1939_DM_ENABLE != 0) && (J1939_DM_ENABLE != 1)
+#error "J1939_DM_ENABLE must be 0 or 1"
 #endif
 
 #if (J1939_CFG_CA_MAX < 1) || (J1939_CFG_CA_MAX > 253)

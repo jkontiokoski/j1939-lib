@@ -18,6 +18,8 @@
 #include "j1939/j1939_request.h"
 #include "j1939_internal.h"
 
+#if J1939_DM_ENABLE
+
 #define CLEAR_DM3    0U                     /**< Index of the DM3 request in j1939_dm_t::clear. */
 #define CLEAR_DM11   1U                     /**< Index of the DM11 request. */
 #define CLEAR_KINDS  2U                     /**< Number of clear request kinds. */
@@ -675,3 +677,5 @@ j1939_ret_t j1939_dm_clear_confirm(j1939_t *s, j1939_ca_id_t ca, uint32_t pgn, b
 	}
 	return ret;
 }
+
+#endif

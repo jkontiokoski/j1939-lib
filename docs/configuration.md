@@ -11,6 +11,7 @@ These settings change the layout of public types, so the library and the applica
 | Macro | Default | Range | Meaning |
 | --- | --- | --- | --- |
 | `J1939_TP_ENABLE` | 1 | 0, 1 | Builds the transport protocol; 0 limits messages to one frame and removes the TP buffers |
+| `J1939_DM_ENABLE` | 1 | 0, 1 | Builds the diagnostics (DM1, DM2, DM3, DM11); 0 removes their API, `j1939_ca_cfg_t::dm` and the DM counters |
 | `J1939_CFG_CA_MAX` | 1 | 1–253 | Controller Applications per stack |
 | `J1939_CFG_TP_SESSIONS` | 2 | 1–32 | Concurrent transport protocol sessions per stack, both directions together |
 | `J1939_CFG_TP_BUF_SIZE` | 1785 | 9–1785 | Largest multi-packet message: the size of each transport protocol (TP) buffer |

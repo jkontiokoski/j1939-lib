@@ -74,8 +74,9 @@ extern "C" {
  * j1939_init() rejects a NULL buffer, an unknown CA, an invalid PGN, priority or destination,
  * a length of 0, above J1939_MAX_MSG_LEN or above 8 while the stack has no transport protocol
  * transmit buffer, a PGN the stack handles itself (Request, Acknowledgement, transport protocol,
- * Address Claimed, Commanded Address, DM1, DM2, DM3, DM11) or answered by the application (in
- * j1939_cfg_t::req_pgns), and two entries with the same CA, PGN and destination.
+ * Address Claimed, Commanded Address, and DM1, DM2, DM3, DM11 when built with J1939_DM_ENABLE) or
+ * answered by the application (in j1939_cfg_t::req_pgns), and two entries with the same CA, PGN
+ * and destination.
  */
 typedef struct j1939_txobj_cfg {
 	uint8_t *buf;        /**< Payload storage of len bytes. Written only by the stack. */

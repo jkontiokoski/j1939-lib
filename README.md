@@ -18,6 +18,7 @@ It uses no dynamic memory and no function pointers, and every loop is statically
 - **J1939/73**: DTC and lamp codec; DM1 and DM2 sent by the stack; DM3 and DM11 clearing decided by the application.
 - **Message objects**: PGNs sent periodically, on change and on Request; received PGNs with timeout supervision, from a source address or from a node by NAME.
 - **Ports**: Linux SocketCAN included; any other CAN driver through one header.
+- **Footprint**: the transport protocol and the diagnostics can be left out of the build; all memory is supplied by the integrator.
 
 ## Status
 

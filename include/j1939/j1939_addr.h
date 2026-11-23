@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "j1939/j1939_config.h"
 #include "j1939/j1939_dm.h"
 #include "j1939/j1939_types.h"
 
@@ -159,8 +160,10 @@ typedef struct j1939_ca_cfg {
 	bool accept_commanded;
 	/** true: ask for the other nodes' claims before claiming (request before claim). */
 	bool request_before_claim;
+#if J1939_DM_ENABLE
 	/** Diagnostics of the CA, see @ref grp_dm; NULL: none. */
 	const j1939_dm_cfg_t *dm;
+#endif
 } j1939_ca_cfg_t;
 
 #define J1939_ADDR_SELF_CFG_MIN 128U /**< First self-configurable address. */

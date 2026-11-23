@@ -43,12 +43,19 @@ static void flag_put(j1939_txobj_t *o, uint8_t flag, bool on) {
 
 /**
  * Tells whether the stack builds or answers the messages of a PGN itself: what the receive path
- * consumes, Acknowledgement, Commanded Address, DM1, DM2, DM3 and DM11.
+ * consumes, Acknowledgement, Commanded Address and, with the diagnostics, DM1, DM2, DM3 and DM11.
  */
 static bool pgn_stack_owned(uint32_t pgn) {
-	return j1939_stack_pgn_owned(pgn) || (pgn == J1939_PGN_ACK) ||
-	       (pgn == J1939_PGN_COMMANDED_ADDRESS) || (pgn == J1939_PGN_DM1) ||
-	       (pgn == J1939_PGN_DM2) || (pgn == J1939_PGN_DM3) || (pgn == J1939_PGN_DM11);
+	bool owned = j1939_stack_pgn_owned(pgn) || (pgn == J1939_PGN_ACK) ||
+	             (pgn == J1939_PGN_COMMANDED_ADDRESS);
+
+#if J1939_DM_ENABLE
+	owned = owned || (pgn == J1939_PGN_DM1) || (pgn == J1939_PGN_DM2) ||
+	        (pgn == J1939_PGN_DM3) || (pgn == J1939_PGN_DM11);
+#else
+	/* Built without the diagnostics: the DM PGNs are free for transmit objects. */
+#endif
+	return owned;
 }
 
 /**
